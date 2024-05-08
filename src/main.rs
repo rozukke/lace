@@ -3,17 +3,16 @@
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 
-
 /// Lace is a complete compiler and interpreter toolchain for the LC3 assembly language.
 #[derive(Parser)]
 #[command(version)]
 struct Args {
     #[command(subcommand)]
     command: Option<Subcommands>,
-    
+
     /// Run commands in debug mode
     #[arg(long)]
-    debug: bool
+    debug: bool,
 }
 
 #[derive(Subcommand)]
@@ -24,29 +23,29 @@ enum Subcommands {
         #[arg(short, long)]
         os: bool,
         /// .asm file to run
-        name: String
+        name: String,
     },
-    /// Create binary .obj files to run later or view compiled data 
+    /// Create binary .obj files to run later or view compiled data
     Compile {
         /// .asm file to compile
         name: String,
         /// destination to output .obj file
-        dest: Option<String>
+        dest: Option<String>,
     },
     /// Remove compilation artifacts for specified source
     Clean {
         /// .asm file to try remove artifacts for
-        name: String
+        name: String,
     },
     /// Place a watch on a .asm file to receive constant compiler updates
     Watch {
         /// .asm file to watch
-        name: String
+        name: String,
     },
     /// Format .asm file to adhere to recommended style
     Fmt {
         /// .asm file to format
-        name: String
+        name: String,
     },
 }
 
@@ -60,7 +59,19 @@ fn main() {
         std::process::exit(0);
     }
 
-    todo!();
+    let debug = args.debug;
+    let command = args.command.unwrap_or_else(|| {
+        println!("{SHORT_HELP}");
+        std::process::exit(1);
+    });
+
+    match command {
+        Subcommands::Run { os, name } => todo!(),
+        Subcommands::Compile { name, dest } => todo!(),
+        Subcommands::Clean { name } => todo!(),
+        Subcommands::Watch { name } => todo!(),
+        Subcommands::Fmt { name } => todo!(),
+    }
 }
 
 const LOGO: &str = r#"      ..                                  
@@ -80,6 +91,10 @@ const SHORT_INFO: &str = r"
 Welcome to lace (a.k.a. LAIS - LC3 Assembler & Interpreter System), an all-in-one toolchain
 for working with Little Computer 3 assembly code. Please use `-h` or `--help` to access
 the usage instructions and documentation.
+";
+
+const SHORT_HELP: &'static str = r"
+Unable to recognise command. Please use `-h` or `--help` to view usage instructions.
 ";
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
