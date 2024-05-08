@@ -1,6 +1,10 @@
 [package]
 name = "lace"
+description = "A complete compiler and interpreter toolchain for the LC3 assembly language."
 version = "0.1.0"
+authors = [
+    "Artemis Rosman"
+]
 edition = "2021"
 
 [dependencies]
@@ -10,3 +14,7 @@ colored = "2.1.0"
 
 [dev-dependencies]
 assert_cmd = "2.0.14"
+
+[[bin]]
+name = "lace"
+path = "src/main.rs"
