@@ -1,0 +1,12 @@
+[package]
+name = "lace"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+glob = "0.3.1"
+clap = { version = "4.5.4", features = ["derive"] }
+colored = "2.1.0"
+
+[dev-dependencies]
+assert_cmd = "2.0.14"
