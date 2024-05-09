@@ -1,7 +1,15 @@
 #![allow(unused)] // Remove later
 
+use std::{
+    fs::File,
+    io::{BufRead, BufReader},
+};
+
 use clap::{Parser, Subcommand};
 use colored::Colorize;
+
+mod command;
+mod state;
 
 /// Lace is a complete compiler and interpreter toolchain for the LC3 assembly language.
 #[derive(Parser)]
@@ -67,7 +75,37 @@ fn main() {
 
     match command {
         Subcommands::Run { os, name } => todo!(),
-        Subcommands::Compile { name, dest } => todo!(),
+        Subcommands::Compile { name, dest } => {
+            // Parse file into a buffer and symbol table
+            let file = File::open(&name).unwrap_or_else(|err| {
+                eprintln!(
+                    "Failed to open file with path {}: {}",
+                    name.bold(),
+                    err.to_string().red()
+                );
+                std::process::exit(1)
+            });
+
+            // Process lines and check for wrong file type
+            let lines = BufReader::new(file)
+                .lines()
+                .enumerate()
+                .map(|(i, line)| {
+                    line.unwrap_or_else(|err| {
+                        eprintln!("Failed to read line {}: {}", i, err.to_string().red());
+                        eprintln!(" --> {}:{}", name, i);
+                        eprintln!(
+                            "Check that you are providing a valid {} file.",
+                            ".asm".bold()
+                        );
+                        std::process::exit(1)
+                    })
+                })
+                .collect::<Vec<String>>();
+
+            // Start parsing lines into symbol table and IR
+            todo!()
+        }
         Subcommands::Clean { name } => todo!(),
         Subcommands::Watch { name } => todo!(),
         Subcommands::Fmt { name } => todo!(),
