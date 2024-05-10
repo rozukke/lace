@@ -20,7 +20,7 @@ pub struct State {
 }
 
 // Set using result from previous instruction
-enum Flag {
+pub enum Flag {
     // Negative
     N,
     // Zero
