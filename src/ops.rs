@@ -1,34 +1,38 @@
-use crate::state::Flag;
-use crate::symbol::Register;
+use crate::symbol::{ByteOffs, Flag, Register};
 
-enum Opcodes {
-    // Add SR1 (source register 1) with SR2 and store in DR (destination register)
+/// Basically the entire 'AST' when it comes to LC3.
+#[allow(clippy::upper_case_acronyms)]
+pub enum Opcodes {
+    /// Add SR1 (source register 1) with SR2 and store in DR (destination register)
     ADD {
         dest_r: Register,
         src_r_1: Register,
         src_r_2: Choice,
     },
-    // Bitwise AND SR1 with SR2 and store in DR
+    /// Bitwise-and SR1 with SR2 and store in DR
     AND {
         dest_r: Register,
         src_r_1: Register,
         src_r_2: Choice,
     },
-    // Branch based on flag by adding offset to PC
+    /// Branch based on flag by adding ByteOffs to PC (program counter)
     BR {
         cc: Flag,
-        pc_offset9: u16,
+        pc_offset9: ByteOffs,
     },
-    // Set PC to BaseR
+    /// Set PC to BR to perform a jump on the next cycle
     JMP {
         base_r: Register,
     },
+    /// Store current instruction at R7 and jump to provided label
     JSR {
         pc_offset11: u16,
     },
+    /// Jump to subroutine stored at BR
     JSRR {
         base_r: Register,
     },
+    /// Load value directly from a memory address into DR
     LD {
         dest_r: Register,
         pc_offset9: u16,
@@ -63,7 +67,7 @@ enum Opcodes {
 }
 
 // ADD and AND commands support immediate value
-enum Choice {
+pub(crate) enum Choice {
     Reg(Register),
     Imm5(u8),
 }
