@@ -1,11 +1,15 @@
 #![allow(unused)] // Remove later
 
+use std::fs;
+
 use clap::{Parser, Subcommand};
 use colored::Colorize;
+use lexer::{tokenize, TokenKind};
 
 mod lexer;
 mod ops;
 mod runtime;
+mod span;
 mod symbol;
 
 /// Lace is a complete & convenient assembler toolchain for the LC3 assembly language.
@@ -60,7 +64,12 @@ fn main() {
     if let Some(command) = args.command {
         match command {
             Command::Run { os, name } => todo!(),
-            Command::Compile { name, dest } => todo!(),
+            Command::Compile { name, dest } => {
+                let file = fs::read_to_string(name).unwrap();
+                for tok in tokenize(&file).filter(|tok| tok.kind != TokenKind::Junk) {
+                    println!("{:?} {}", tok, &file[tok.span.as_range()]);
+                }
+            }
             Command::Clean { name } => todo!(),
             Command::Watch { name } => todo!(),
             Command::Fmt { name } => todo!(),
