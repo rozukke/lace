@@ -21,6 +21,14 @@ pub enum Flag {
     Z,
     /// +
     P,
+    /// <= 0
+    Nz,
+    /// >= 0
+    Zp,
+    /// != 0
+    Np,
+    /// Unconditional
+    Nzp,
 }
 
 /// Newtype representing an address inside the LC3 memory.
@@ -32,5 +40,6 @@ pub struct Addr(u16);
 pub struct ByteOffs(u16);
 
 /// Label used to refer to specific memory addresses
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct Label<'a>(&'a str);
+/// TODO: optimize later
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Label(String);

@@ -1,8 +1,18 @@
-use crate::symbol::{ByteOffs, Flag, Register};
+use crate::{
+    lexer::Token,
+    symbol::{ByteOffs, Flag, Label, Register},
+};
+
+pub struct Stmt {
+    line: u32,
+    label: Label,
+    op: Op,
+}
 
 /// Basically the entire 'AST' when it comes to LC3.
+/// TODO: Convert to labels instead of offsets at this stage.
 #[allow(clippy::upper_case_acronyms)]
-pub enum Opcodes {
+pub enum Op {
     /// Add SR1 (source register 1) with SR2 and store in DR (destination register)
     ADD {
         dest_r: Register,
@@ -63,6 +73,9 @@ pub enum Opcodes {
     STI {
         src_r: Register,
         pc_offset9: u16,
+    },
+    Dir {
+        args: Option<Vec<Token>>,
     },
 }
 
