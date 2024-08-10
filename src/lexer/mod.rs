@@ -17,6 +17,7 @@ pub struct Token {
 pub enum LiteralKind {
     Hex,
     Dec,
+    Str,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -44,6 +45,7 @@ pub fn tokenize(input: &str) -> impl Iterator<Item = Token> + '_ {
         }
     })
 }
+
 lazy_static! {
     // Order is important since some patterns are subpatterns of others.
     // Do NOT rearrange without a good hard think.
@@ -58,9 +60,11 @@ lazy_static! {
             Regex::new(r"^#[0-9]+\b").unwrap(),
         ),
         (TokenKind::Reg, Regex::new(r"^[rR][0-8]\b").unwrap()),
+        // Includes instructions, branches, and labels.
         (TokenKind::Ident, Regex::new(r"^[a-zA-Z_]\w*\b").unwrap()),
         (TokenKind::Comment, Regex::new(r"^;[^\n]*").unwrap()),
         (TokenKind::Direc, Regex::new(r"^\.[a-zA-Z_]*\b").unwrap()),
+        (TokenKind::Lit(LiteralKind::Str), Regex::new(r#"^"([^"\\]|\\.)*""#).unwrap())
     ];
 }
 
