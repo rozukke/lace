@@ -8,6 +8,7 @@ use lexer::{tokenize, TokenKind};
 
 mod lexer;
 mod ops;
+mod parser;
 mod runtime;
 mod span;
 mod symbol;

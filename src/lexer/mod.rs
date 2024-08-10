@@ -5,7 +5,7 @@ use crate::lexer::cursor::Cursor;
 use crate::span::{Idx, Span};
 use crate::symbol::Register;
 
-mod cursor;
+pub mod cursor;
 
 #[derive(Debug)]
 pub struct Token {
