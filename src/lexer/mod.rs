@@ -21,8 +21,55 @@ pub enum LiteralKind {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum InstrKind {
+    Add,
+    And,
+    Branch,
+    Jump,
+    JumpSub,
+    JumpSubReg,
+    Load,
+    LoadInd,
+    LoadReg,
+    LoadAddr,
+    Not,
+    Return,
+    Interrupt,
+    Store,
+    StoreInd,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DirecKind {
+    Orig,
+    Stringz,
+    Blkw,
+    Fill,
+    Alias,
+    Macro,
+    End,
+    Export,
+    Import,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TrapKind {
+    /// Get a character from standard input
+    Getc,
+    /// Output a single character
+    Out,
+    /// Print string
+    Puts,
+    In,
+    Putsp,
+    Halt,
+    Trap,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum TokenKind {
     Ident,
+    Instr(InstrKind),
     Lit(LiteralKind),
     Comment,
     Direc,
@@ -79,8 +126,36 @@ impl Cursor<'_> {
 
         for (kind, re) in PATTERNS.iter() {
             if let Some(tok) = re.find(self.at_curr_pt()) {
+                // Parse into precise definition
+                let mut kind = *kind;
+                kind = match kind {
+                    TokenKind::Ident => match self.get_next(tok.len()).to_lowercase().as_str() {
+                        "add" => TokenKind::Instr(InstrKind::Add),
+                        "and" => TokenKind::Instr(InstrKind::And),
+                        "br" | "brn" | "brz" | "brp" | "brnz" | "brnzp" | "brnp" | "brzp" => {
+                            TokenKind::Instr(InstrKind::Branch)
+                        }
+                        "jmp" => TokenKind::Instr(InstrKind::Jump),
+                        "jsr" => TokenKind::Instr(InstrKind::JumpSub),
+                        "jsrr" => TokenKind::Instr(InstrKind::JumpSubReg),
+                        "ld" => TokenKind::Instr(InstrKind::Load),
+                        "ldi" => TokenKind::Instr(InstrKind::LoadInd),
+                        "ldr" => TokenKind::Instr(InstrKind::LoadReg),
+                        "lea" => TokenKind::Instr(InstrKind::LoadAddr),
+                        "not" => TokenKind::Instr(InstrKind::Not),
+                        "ret" => TokenKind::Instr(InstrKind::Return),
+                        "rti" => TokenKind::Instr(InstrKind::Interrupt),
+                        "st" => TokenKind::Instr(InstrKind::Store),
+                        "sti" => TokenKind::Instr(InstrKind::StoreInd),
+                        _ => TokenKind::Ident,
+                    },
+                    TokenKind::Direc => {
+                        todo!()
+                    }
+                    _ => kind,
+                };
                 let token = Token {
-                    kind: *kind,
+                    kind,
                     span: Span::new(Idx(self.curr_pt() as u32), tok.len() as u16),
                 };
                 self.advance(tok.len());

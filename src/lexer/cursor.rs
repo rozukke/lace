@@ -20,6 +20,11 @@ impl<'a> Cursor<'a> {
         }
     }
 
+    pub fn get_next(&self, len: usize) -> &'a str {
+        println!("{}", &self.chars[self.curr_pt..(self.curr_pt + len)]);
+        &self.chars[self.curr_pt..(self.curr_pt + len)]
+    }
+
     /// File is finished parsing
     pub fn is_eof(&self) -> bool {
         self.len_remaining == 0

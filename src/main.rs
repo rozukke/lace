@@ -5,6 +5,8 @@ use std::fs;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use lexer::{tokenize, TokenKind};
+use miette::Result;
+use parser::AsmParser;
 
 mod lexer;
 mod ops;
@@ -59,7 +61,7 @@ enum Command {
     },
 }
 
-fn main() {
+fn main() -> Result<()> {
     let args = Args::parse();
 
     if let Some(command) = args.command {
@@ -70,6 +72,10 @@ fn main() {
                 for tok in tokenize(&file).filter(|tok| tok.kind != TokenKind::Junk) {
                     println!("{:?} {}", tok, &file[tok.span.as_range()]);
                 }
+
+                let mut parse = AsmParser::from(file.as_str());
+                parse.parse()?;
+                Ok(())
             }
             Command::Clean { name } => todo!(),
             Command::Watch { name } => todo!(),
