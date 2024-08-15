@@ -1,3 +1,9 @@
+use fxhash::FxBuildHasher;
+use indexmap::IndexMap;
+
+// Symbol table of symbol -> memory address (line number)
+type FxMap<K, V> = IndexMap<K, V, FxBuildHasher>;
+
 /// Represents the CPU registers.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum Register {
