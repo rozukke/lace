@@ -4,7 +4,7 @@ use std::fs;
 
 use clap::{Parser, Subcommand};
 use colored::Colorize;
-use lexer::{tokenize, TokenKind};
+use lexer::{tokenize, LTokenKind};
 use miette::Result;
 use parser::AsmParser;
 
@@ -69,8 +69,8 @@ fn main() -> Result<()> {
             Command::Run { os, name } => todo!(),
             Command::Compile { name, dest } => {
                 let file = fs::read_to_string(name).unwrap();
-                for tok in tokenize(&file).filter(|tok| tok.kind != TokenKind::Junk) {
-                    println!("{:?} {}", tok, &file[tok.span.as_range()]);
+                for tok in tokenize(&file).filter(|tok| tok.kind != LTokenKind::Whitespace) {
+                    println!("{:?}", tok);
                 }
 
                 let mut parse = AsmParser::from(file.as_str());
