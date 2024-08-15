@@ -14,7 +14,7 @@ colored = "2.1.0"
 regex = "1.10.6"
 lazy_static = "1.5.0"
 miette = { version = "7.2.0", features = ["fancy"] }
-indexmap = "2.4.0"
+indexmap = { version = "2.4.0", features = ["std"] }
 fxhash = "0.2.1"
 
 [dev-dependencies]
