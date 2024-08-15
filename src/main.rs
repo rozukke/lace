@@ -12,7 +12,6 @@ mod lexer;
 mod ops;
 mod parser;
 mod runtime;
-mod span;
 mod symbol;
 
 /// Lace is a complete & convenient assembler toolchain for the LC3 assembly language.

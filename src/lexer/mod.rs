@@ -59,18 +59,11 @@ pub(crate) fn is_whitespace(c: char) -> bool {
     matches!(c, ' ' | '\n' | '\t' | '\r' | ',')
 }
 
+/// Test if a character is considered an LC3 identifier character.
 pub(crate) fn is_id(c: char) -> bool {
     // Non-prefixed numerical literals are considered identifiers.
     // This is because line numbers can be used as labels.
     matches!(c, 'a'..='z' | 'A'..='Z' | '0'..='9' | '_')
-}
-
-pub(crate) fn is_num(c: char) -> bool {
-    matches!(c, '0'..='9')
-}
-
-pub(crate) fn is_hex(c: char) -> bool {
-    matches!(c, 'a'..='f' | 'A'..='F' | '0'..='9')
 }
 
 impl Cursor<'_> {
@@ -90,12 +83,12 @@ impl Cursor<'_> {
             }
             // Hex literals
             'x' | 'X' => {
-                self.take_while(is_hex);
+                self.take_while(|c| char::is_ascii_hexdigit(&c));
                 LTokenKind::Lit(LiteralKind::Hex)
             }
             '0' => match self.first() {
                 'x' | 'X' => {
-                    self.take_while(is_hex);
+                    self.take_while(|c| char::is_ascii_hexdigit(&c));
                     LTokenKind::Lit(LiteralKind::Hex)
                 }
                 _ => {
@@ -113,7 +106,7 @@ impl Cursor<'_> {
                 if self.first() == '-' {
                     self.bump();
                 }
-                self.take_while(is_num);
+                self.take_while(|c| char::is_ascii_digit(&c));
                 LTokenKind::Lit(LiteralKind::Dec)
             }
             // Directive

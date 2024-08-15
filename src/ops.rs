@@ -3,12 +3,6 @@ use crate::{
     symbol::{ByteOffs, Flag, Label, Register},
 };
 
-pub struct Stmt {
-    line: u32,
-    label: Label,
-    op: Op,
-}
-
 /// Basically the entire 'AST' when it comes to LC3.
 /// TODO: Convert to labels instead of offsets at this stage.
 #[allow(clippy::upper_case_acronyms)]

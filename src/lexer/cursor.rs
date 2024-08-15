@@ -1,6 +1,6 @@
 //! Taken from the lexer in https://github.com/rozukke/mimi
-// Heavily instpired and referenced from `rustc_lexer` and adapted to suit the project.
-// See https://doc.rust-lang.org/beta/nightly-rustc/src/rustc_lexer/cursor.rs.html
+//! Heavily instpired and referenced from `rustc_lexer` and adapted to suit the project.
+//! See https://doc.rust-lang.org/beta/nightly-rustc/src/rustc_lexer/cursor.rs.html
 
 use std::str::Chars;
 

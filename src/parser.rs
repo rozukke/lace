@@ -1,27 +1,57 @@
-use std::error::Error;
+use std::{error::Error, io::Cursor};
 
 use miette::{miette, Result};
 
-use crate::lexer::{cursor::Cursor, LToken, LTokenKind};
+use crate::{
+    lexer::{tokenize, LToken, LTokenKind, LiteralKind},
+    symbol::{DirKind, InstrKind, Register, Span, Symbol, TrapKind},
+};
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Token {
+    kind: TokenKind,
+    span: Span,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TokenKind {
+    /// `r0-r7 | R0-R7`
+    Reg(Register),
+    /// `LOOP_START`, `123`, `coolname`
+    Label(Symbol),
+    /// `.orig`, `.Stringz`, `.BLKW`
+    Dir(DirKind),
+    /// `PUTS`, `Trap`, `putc`
+    Trap(TrapKind),
+    /// `"hi\n"`, `0x3AB5F`, `#-1`
+    Lit(LiteralKind),
+    /// `add`, `JMP`, `Ret`
+    Inst(InstrKind),
+}
+
+pub fn proc_tokens<'a>(src: &'a str) -> Vec<Token> {
+    todo!()
+}
 
 /// Transforms token stream into 'AST'
-pub struct AsmParser<'source> {
+pub struct AsmParser<'a> {
     /// Reference to the source file
-    src: &'source str,
+    src: &'a Vec<Token>,
     /// Used to parse tokens
-    cur: Cursor<'source>,
+    cur: Cursor<'a>,
 }
 
 impl<'a> From<&'a str> for AsmParser<'a> {
     fn from(value: &'a str) -> Self {
+        let toks: Vec<LToken> = tokenize(value).collect();
         AsmParser {
-            src: value,
+            src: toks,
             cur: Cursor::new(value),
         }
     }
 }
 
-impl<'source> AsmParser<'source> {
+impl<'a> AsmParser<'a> {
     pub fn parse(&mut self) -> Result<()> {
         // First, check that there is an .orig directive with an appropriate value.
         // Should emit error with a label to the first line stating "Expected memory init"

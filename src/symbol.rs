@@ -4,6 +4,21 @@ use indexmap::IndexMap;
 // Symbol table of symbol -> memory address (line number)
 type FxMap<K, V> = IndexMap<K, V, FxBuildHasher>;
 
+thread_local! {
+    static SYMBOL_TABLE: FxMap<String, u16> = IndexMap::with_hasher(FxBuildHasher::default());
+}
+
+/// Reference to symbol table index
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub struct Symbol(u16);
+
+/// Location within source
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Span {
+    offs: ByteOffs,
+    len: usize,
+}
+
 /// Represents the CPU registers.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum Register {
@@ -35,6 +50,21 @@ pub enum Flag {
     Np,
     /// Unconditional
     Nzp,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum InstrKind {
+    Add,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TrapKind {
+    Trap(u16),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DirKind {
+    Orig,
 }
 
 /// Newtype representing an address inside the LC3 memory.
