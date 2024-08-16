@@ -2,7 +2,6 @@ use lazy_static::lazy_static;
 use regex::Regex;
 
 use crate::lexer::cursor::Cursor;
-use crate::span::{Idx, Span};
 use crate::symbol::Register;
 
 pub mod cursor;
@@ -111,8 +110,13 @@ impl Cursor<'_> {
             }
             // Directive
             '.' => {
+                let check = self.take_n(3).to_ascii_lowercase();
                 self.take_while(is_id);
-                LTokenKind::Direc
+                // Need to check for .end directive to avoid unnecessary parsing and errors
+                match (self.pos_in_token(), check.as_str()) {
+                    (3, "end") => LTokenKind::Eof,
+                    _ => LTokenKind::Direc,
+                }
             }
             // String literal
             // TODO: Allow for escaped characters and the terminated thing
