@@ -1,9 +1,9 @@
-use std::{error::Error, io::Cursor};
+use std::error::Error;
 
 use miette::{miette, Result};
 
 use crate::{
-    lexer::{tokenize, LToken, LTokenKind, LiteralKind},
+    lexer::{cursor::Cursor, tokenize, LToken, LTokenKind, LiteralKind},
     symbol::{DirKind, InstrKind, Register, Span, Symbol, TrapKind},
 };
 
@@ -29,24 +29,33 @@ pub enum TokenKind {
     Inst(InstrKind),
 }
 
-pub fn proc_tokens<'a>(src: &'a str) -> Vec<Token> {
+pub fn proc_tokens(src: &str) -> Vec<Token> {
+    // Get reference to global symbol table
+    // Iterate through, +1 to symbol count per inst
+    // +len(str) for every string literal
+    // +number of lines for BLKW (need to process cringe inconsistent literals)
+    // Also need to do matching to process register and instruction tokens into the correct contents
+    let toks: Vec<LToken> = tokenize(src).collect();
     todo!()
 }
 
 /// Transforms token stream into 'AST'
 pub struct AsmParser<'a> {
     /// Reference to the source file
-    src: &'a Vec<Token>,
+    src: &'a str,
+    /// List of processed tokens
+    tok: Vec<Token>,
     /// Used to parse tokens
     cur: Cursor<'a>,
 }
 
 impl<'a> From<&'a str> for AsmParser<'a> {
-    fn from(value: &'a str) -> Self {
-        let toks: Vec<LToken> = tokenize(value).collect();
+    fn from(src: &'a str) -> Self {
+        let tok: Vec<Token> = proc_tokens(src);
         AsmParser {
-            src: toks,
-            cur: Cursor::new(value),
+            src,
+            tok,
+            cur: Cursor::new(src),
         }
     }
 }
