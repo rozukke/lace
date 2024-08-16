@@ -1,4 +1,3 @@
-//! Taken from the lexer in https://github.com/rozukke/mimi
 //! Heavily instpired and referenced from `rustc_lexer` and adapted to suit the project.
 //! See https://doc.rust-lang.org/beta/nightly-rustc/src/rustc_lexer/cursor.rs.html
 
@@ -57,5 +56,9 @@ impl<'a> Cursor<'a> {
         while predicate(self.first()) && !self.is_eof() {
             self.bump();
         }
+    }
+
+    pub(crate) fn take_n(&self, n: usize) -> String {
+        self.chars.clone().take(n).collect()
     }
 }
