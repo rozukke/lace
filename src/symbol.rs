@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+
 use fxhash::FxBuildHasher;
 use indexmap::IndexMap;
 
@@ -5,18 +7,37 @@ use indexmap::IndexMap;
 type FxMap<K, V> = IndexMap<K, V, FxBuildHasher>;
 
 thread_local! {
-    static SYMBOL_TABLE: FxMap<String, u16> = IndexMap::with_hasher(FxBuildHasher::default());
+    pub static SYMBOL_TABLE: RefCell<FxMap<String, u16>> = RefCell::new(IndexMap::with_hasher(FxBuildHasher::default()));
+}
+
+pub fn with_symbol_table<R, F>(f: F) -> R
+where
+    F: FnOnce(&mut FxMap<String, u16>) -> R,
+{
+    SYMBOL_TABLE.with_borrow_mut(f)
 }
 
 /// Reference to symbol table index
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
-pub struct Symbol(u16);
+pub struct Symbol(usize);
+
+impl From<usize> for Symbol {
+    fn from(value: usize) -> Self {
+        Symbol { 0: value }
+    }
+}
 
 /// Location within source
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Span {
     offs: ByteOffs,
     len: usize,
+}
+
+impl Span {
+    pub fn new(offs: ByteOffs, len: usize) -> Self {
+        Span { offs, len }
+    }
 }
 
 /// Represents the CPU registers.

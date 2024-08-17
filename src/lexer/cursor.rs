@@ -61,4 +61,8 @@ impl<'a> Cursor<'a> {
     pub(crate) fn take_n(&self, n: usize) -> String {
         self.chars.clone().take(n).collect()
     }
+
+    pub(crate) fn remaining(&self) -> usize {
+        self.chars.as_str().len()
+    }
 }

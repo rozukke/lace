@@ -1,12 +1,16 @@
-use std::error::Error;
+use std::{borrow::BorrowMut, error::Error};
 
 use miette::{miette, Result};
 
 use crate::{
     lexer::{cursor::Cursor, tokenize, LToken, LTokenKind, LiteralKind},
-    symbol::{DirKind, InstrKind, Register, Span, Symbol, TrapKind},
+    symbol::{
+        with_symbol_table, ByteOffs, DirKind, InstrKind, Register, Span, Symbol, TrapKind,
+        SYMBOL_TABLE,
+    },
 };
 
+/// Token with full span info and proper types
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Token {
     kind: TokenKind,
@@ -29,14 +33,69 @@ pub enum TokenKind {
     Inst(InstrKind),
 }
 
-pub fn proc_tokens(src: &str) -> Vec<Token> {
-    // Get reference to global symbol table
-    // Iterate through, +1 to symbol count per inst
-    // +len(str) for every string literal
-    // +number of lines for BLKW (need to process cringe inconsistent literals)
-    // Also need to do matching to process register and instruction tokens into the correct contents
-    let toks: Vec<LToken> = tokenize(src).collect();
-    todo!()
+/// Used to parse symbols and process exact instructions
+pub struct StrParser<'a> {
+    src: &'a str,
+    cur: Cursor<'a>,
+    pos: usize,
+    line_num: usize,
+}
+
+impl<'a> StrParser<'a> {
+    pub fn new(src: &'a str) -> Self {
+        StrParser {
+            src,
+            cur: Cursor::new(src),
+            pos: 0,
+            line_num: 1,
+        }
+    }
+
+    fn get_next(&self, n: usize) -> &str {
+        &self.src[self.pos..=(self.pos + n)]
+    }
+
+    pub fn proc_tokens(&mut self) -> Vec<Token> {
+        // Iterate through, +1 to symbol count per inst
+        // +len(str) for every string literal
+        // +number of lines for BLKW (need to process cringe inconsistent literals)
+        // Also need to do matching to process register and instruction tokens into the correct contents
+        let mut toks_final: Vec<Token> = Vec::new();
+        let mut line_num = 1;
+        loop {
+            let tok = self.cur.advance_token();
+            if let Some(tok_final) = match tok.kind {
+                // Add identifier to symbol table at with correct line number
+                LTokenKind::Ident => {
+                    // Process possibility of it being a trap
+                    todo!();
+                    // Add to symbol table as identifier
+                    let idx = with_symbol_table(|sym| {
+                        let tok_text = self.get_next(tok.len as usize);
+                        sym.get_index_of(tok_text)
+                            .unwrap_or(sym.insert_full(String::from(tok_text), line_num).0)
+                    });
+                    Some(Token {
+                        kind: TokenKind::Label(Symbol::from(idx)),
+                        span: Span::new(ByteOffs(self.pos), tok.len as usize),
+                    })
+                }
+                // Create literal of correct value
+                LTokenKind::Lit(_) => todo!(),
+                // Match on directive, check next value for number of lines skipped
+                LTokenKind::Direc => todo!(),
+                // TODO: Add registers to lexer
+                LTokenKind::Reg => todo!(),
+                LTokenKind::Whitespace | LTokenKind::Comment => None,
+                // TODO: Should return list of errors eventually
+                LTokenKind::Unknown => todo!(),
+                LTokenKind::Eof => break,
+            } {
+                toks_final.push(tok_final);
+            }
+        }
+        toks_final
+    }
 }
 
 /// Transforms token stream into 'AST'
@@ -51,7 +110,7 @@ pub struct AsmParser<'a> {
 
 impl<'a> From<&'a str> for AsmParser<'a> {
     fn from(src: &'a str) -> Self {
-        let tok: Vec<Token> = proc_tokens(src);
+        let tok: Vec<Token> = StrParser::new(src).proc_tokens();
         AsmParser {
             src,
             tok,
