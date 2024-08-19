@@ -5,8 +5,8 @@ use miette::{miette, Result};
 use crate::{
     lexer::{cursor::Cursor, tokenize, LToken, LTokenKind, LiteralKind},
     symbol::{
-        with_symbol_table, ByteOffs, DirKind, InstrKind, Register, Span, Symbol, TrapKind,
-        SYMBOL_TABLE,
+        with_symbol_table, DirKind, DirectiveKind, InstrKind, LineOffs, Register, Span, SrcOffset,
+        Symbol, TrapKind, SYMBOL_TABLE,
     },
 };
 
@@ -55,46 +55,96 @@ impl<'a> StrParser<'a> {
         &self.src[self.pos..=(self.pos + n)]
     }
 
+    fn peek_next(&self) -> LToken {
+        self.cur.clone().advance_token()
+    }
+
     pub fn proc_tokens(&mut self) -> Vec<Token> {
         // Iterate through, +1 to symbol count per inst
         // +len(str) for every string literal
         // +number of lines for BLKW (need to process cringe inconsistent literals)
         // Also need to do matching to process register and instruction tokens into the correct contents
         let mut toks_final: Vec<Token> = Vec::new();
-        let mut line_num = 1;
         loop {
             let tok = self.cur.advance_token();
             if let Some(tok_final) = match tok.kind {
+                LTokenKind::Eof => break,
                 // Add identifier to symbol table at with correct line number
                 LTokenKind::Ident => {
                     // Process possibility of it being a trap
-                    todo!();
-                    // Add to symbol table as identifier
-                    let idx = with_symbol_table(|sym| {
-                        let tok_text = self.get_next(tok.len as usize);
-                        sym.get_index_of(tok_text)
-                            .unwrap_or(sym.insert_full(String::from(tok_text), line_num).0)
-                    });
-                    Some(Token {
-                        kind: TokenKind::Label(Symbol::from(idx)),
-                        span: Span::new(ByteOffs(self.pos), tok.len as usize),
-                    })
+                    if let Some(trap) = StrParser::trap(self.get_next(tok.len as usize)) {
+                        self.line_num += 1;
+                        Some(Token {
+                            kind: TokenKind::Trap(trap),
+                            span: Span::new(SrcOffset(self.pos), tok.len as usize),
+                        })
+                    } else {
+                        // Add to symbol table as identifier
+                        let idx = with_symbol_table(|sym| {
+                            let tok_text = self.get_next(tok.len as usize);
+                            sym.get_index_of(tok_text).unwrap_or(
+                                sym.insert_full(String::from(tok_text), self.line_num as u16)
+                                    .0,
+                            )
+                        });
+                        Some(Token {
+                            kind: TokenKind::Label(Symbol::from(idx)),
+                            span: Span::new(SrcOffset(self.pos), tok.len as usize),
+                        })
+                    }
                 }
                 // Create literal of correct value
                 LTokenKind::Lit(_) => todo!(),
                 // Match on directive, check next value for number of lines skipped
-                LTokenKind::Direc => todo!(),
+                LTokenKind::Direc => {
+                    if let Some(direc) = StrParser::direc(self.get_next(tok.len as usize)) {
+                        Some(Token {
+                            kind: TokenKind::Dir(direc),
+                            span: Span::new(SrcOffset(self.pos), tok.len as usize),
+                        })
+                    } else {
+                        // TODO: Error handling in a list
+                        todo!()
+                    }
+                }
                 // TODO: Add registers to lexer
                 LTokenKind::Reg => todo!(),
                 LTokenKind::Whitespace | LTokenKind::Comment => None,
                 // TODO: Should return list of errors eventually
                 LTokenKind::Unknown => todo!(),
-                LTokenKind::Eof => break,
             } {
                 toks_final.push(tok_final);
+                self.pos += tok.len as usize;
             }
         }
         toks_final
+    }
+
+    fn trap(s: &str) -> Option<TrapKind> {
+        match s.to_ascii_lowercase().as_str() {
+            "getc" => Some(TrapKind::Getc),
+            "out" => Some(TrapKind::Out),
+            "puts" => Some(TrapKind::Puts),
+            "in" => Some(TrapKind::In),
+            "putsp" => Some(TrapKind::Putsp),
+            "halt" => Some(TrapKind::Halt),
+            "trap" => Some(TrapKind::Generic),
+            _ => None,
+        }
+    }
+    pub fn direc(s: &str) -> Option<DirectiveKind> {
+        match s.to_ascii_lowercase().as_str() {
+            ".alias" => Some(DirectiveKind::Alias),
+            ".macro" => Some(DirectiveKind::Macro),
+            ".orig" => Some(DirectiveKind::Orig),
+            ".end" => Some(DirectiveKind::End),
+            ".stringz" => Some(DirectiveKind::Stringz),
+            ".blkw" => Some(DirectiveKind::Blkw),
+            ".fill" => Some(DirectiveKind::Fill),
+            ".export" => Some(DirectiveKind::Export),
+            ".import" => Some(DirectiveKind::Import),
+            _ => None,
+        }
     }
 }
 

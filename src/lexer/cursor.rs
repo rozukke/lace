@@ -3,6 +3,7 @@
 
 use std::str::Chars;
 
+#[derive(Clone)]
 /// Peekable iterator over a char sequence.
 pub struct Cursor<'a> {
     len_remaining: usize,

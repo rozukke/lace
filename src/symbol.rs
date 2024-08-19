@@ -30,12 +30,12 @@ impl From<usize> for Symbol {
 /// Location within source
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Span {
-    offs: ByteOffs,
+    offs: SrcOffset,
     len: usize,
 }
 
 impl Span {
-    pub fn new(offs: ByteOffs, len: usize) -> Self {
+    pub fn new(offs: SrcOffset, len: usize) -> Self {
         Span { offs, len }
     }
 }
@@ -80,12 +80,26 @@ pub enum InstrKind {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum TrapKind {
-    Trap(u16),
+    Generic,
+    Halt,
+    Putsp,
+    In,
+    Puts,
+    Out,
+    Getc,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum DirKind {
+pub enum DirectiveKind {
+    Alias,
+    Macro,
     Orig,
+    End,
+    Stringz,
+    Blkw,
+    Fill,
+    Export,
+    Import,
 }
 
 /// Newtype representing an address inside the LC3 memory.
@@ -94,9 +108,13 @@ pub struct Addr(u16);
 
 /// Newtype representing an offset from a particular address.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
-pub struct ByteOffs(u16);
+pub struct LineOffs(u16);
 
 /// Label used to refer to specific memory addresses
 /// TODO: optimize later
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Label(String);
+
+/// Used to refer to offsets from the start of a source file.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub struct SrcOffset(pub usize);
