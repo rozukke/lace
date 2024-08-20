@@ -1,12 +1,12 @@
-use std::{borrow::BorrowMut, error::Error};
+use std::{borrow::BorrowMut, error::Error, usize};
 
 use miette::{miette, Result};
 
 use crate::{
     lexer::{cursor::Cursor, tokenize, LToken, LTokenKind, LiteralKind},
     symbol::{
-        with_symbol_table, DirKind, DirectiveKind, InstrKind, LineOffs, Register, Span, SrcOffset,
-        Symbol, TrapKind, SYMBOL_TABLE,
+        with_symbol_table, DirKind, InstrKind, LineOffs, Register, Span, SrcOffset, Symbol,
+        TrapKind, SYMBOL_TABLE,
     },
 };
 
@@ -51,19 +51,23 @@ impl<'a> StrParser<'a> {
         }
     }
 
-    fn get_next(&self, n: usize) -> &str {
+    fn get_next_chars(&self, n: usize) -> &str {
         &self.src[self.pos..=(self.pos + n)]
     }
 
+    // TODO: bad bad bad bad bad
     fn peek_next(&self) -> LToken {
-        self.cur.clone().advance_token()
+        let mut cur = self.cur.clone();
+        let mut tok = cur.advance_token();
+        if tok.kind != LTokenKind::Whitespace {
+            return tok;
+        }
+        cur.advance_token()
     }
 
     pub fn proc_tokens(&mut self) -> Vec<Token> {
         // Iterate through, +1 to symbol count per inst
         // +len(str) for every string literal
-        // +number of lines for BLKW (need to process cringe inconsistent literals)
-        // Also need to do matching to process register and instruction tokens into the correct contents
         let mut toks_final: Vec<Token> = Vec::new();
         loop {
             let tok = self.cur.advance_token();
@@ -72,16 +76,17 @@ impl<'a> StrParser<'a> {
                 // Add identifier to symbol table at with correct line number
                 LTokenKind::Ident => {
                     // Process possibility of it being a trap
-                    if let Some(trap) = StrParser::trap(self.get_next(tok.len as usize)) {
+                    if let Some(trap_kind) = StrParser::trap(self.get_next_chars(tok.len as usize))
+                    {
                         self.line_num += 1;
                         Some(Token {
-                            kind: TokenKind::Trap(trap),
+                            kind: TokenKind::Trap(trap_kind),
                             span: Span::new(SrcOffset(self.pos), tok.len as usize),
                         })
                     } else {
                         // Add to symbol table as identifier
                         let idx = with_symbol_table(|sym| {
-                            let tok_text = self.get_next(tok.len as usize);
+                            let tok_text = self.get_next_chars(tok.len as usize);
                             sym.get_index_of(tok_text).unwrap_or(
                                 sym.insert_full(String::from(tok_text), self.line_num as u16)
                                     .0,
@@ -97,9 +102,25 @@ impl<'a> StrParser<'a> {
                 LTokenKind::Lit(_) => todo!(),
                 // Match on directive, check next value for number of lines skipped
                 LTokenKind::Direc => {
-                    if let Some(direc) = StrParser::direc(self.get_next(tok.len as usize)) {
+                    if let Some(dir_kind) = StrParser::direc(self.get_next_chars(tok.len as usize))
+                    {
+                        self.line_num += match dir_kind {
+                            // Blkw should increment line count by the following int literal
+                            // TODO: Check if not int literal
+                            DirKind::Blkw => self
+                                .get_next_chars(self.peek_next().len as usize)
+                                .parse::<usize>()
+                                .unwrap(),
+                            // Stringz should increment line count by the number of characters
+                            // in the string literal + null byte
+                            DirKind::Stringz => {
+                                // TODO: Check if not str literal
+                                (self.peek_next().len - 2) as usize
+                            }
+                            _ => 1,
+                        };
                         Some(Token {
-                            kind: TokenKind::Dir(direc),
+                            kind: TokenKind::Dir(dir_kind),
                             span: Span::new(SrcOffset(self.pos), tok.len as usize),
                         })
                     } else {
@@ -132,17 +153,18 @@ impl<'a> StrParser<'a> {
             _ => None,
         }
     }
-    pub fn direc(s: &str) -> Option<DirectiveKind> {
+
+    pub fn direc(s: &str) -> Option<DirKind> {
         match s.to_ascii_lowercase().as_str() {
-            ".alias" => Some(DirectiveKind::Alias),
-            ".macro" => Some(DirectiveKind::Macro),
-            ".orig" => Some(DirectiveKind::Orig),
-            ".end" => Some(DirectiveKind::End),
-            ".stringz" => Some(DirectiveKind::Stringz),
-            ".blkw" => Some(DirectiveKind::Blkw),
-            ".fill" => Some(DirectiveKind::Fill),
-            ".export" => Some(DirectiveKind::Export),
-            ".import" => Some(DirectiveKind::Import),
+            ".alias" => Some(DirKind::Alias),
+            ".macro" => Some(DirKind::Macro),
+            ".orig" => Some(DirKind::Orig),
+            ".end" => Some(DirKind::End),
+            ".stringz" => Some(DirKind::Stringz),
+            ".blkw" => Some(DirKind::Blkw),
+            ".fill" => Some(DirKind::Fill),
+            ".export" => Some(DirKind::Export),
+            ".import" => Some(DirKind::Import),
             _ => None,
         }
     }

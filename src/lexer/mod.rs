@@ -58,6 +58,11 @@ pub(crate) fn is_whitespace(c: char) -> bool {
     matches!(c, ' ' | '\n' | '\t' | '\r' | ',')
 }
 
+pub(crate) fn is_reg_num(c: char) -> bool {
+    // Valid only between 0-7
+    matches!(c, '0'..='7')
+}
+
 /// Test if a character is considered an LC3 identifier character.
 pub(crate) fn is_id(c: char) -> bool {
     // Non-prefixed numerical literals are considered identifiers.
@@ -81,25 +86,25 @@ impl Cursor<'_> {
                 LTokenKind::Whitespace
             }
             // Hex literals
-            'x' | 'X' => {
-                self.take_while(|c| char::is_ascii_hexdigit(&c));
-                LTokenKind::Lit(LiteralKind::Hex)
-            }
+            'x' | 'X' => self.hex(),
             '0' => match self.first() {
-                'x' | 'X' => {
-                    self.take_while(|c| char::is_ascii_hexdigit(&c));
-                    LTokenKind::Lit(LiteralKind::Hex)
+                'x' | 'X' => self.hex(),
+                _ => self.ident(),
+            },
+            'r' | 'R' => match self.first() {
+                c if is_reg_num(c) => {
+                    self.take_while(is_reg_num);
+                    // Registers are 2 tokens long and followed by whitespace/comma
+                    if self.pos_in_token() == 2 && is_whitespace(self.first()) {
+                        LTokenKind::Reg
+                    } else {
+                        self.ident()
+                    }
                 }
-                _ => {
-                    self.take_while(is_id);
-                    LTokenKind::Ident
-                }
+                _ => self.ident(),
             },
             // Identifiers should be checked after everything else that overlaps.
-            c if is_id(c) => {
-                self.take_while(is_id);
-                LTokenKind::Ident
-            }
+            c if is_id(c) => self.ident(),
             // Decimal literal
             '#' => {
                 if self.first() == '-' {
@@ -129,5 +134,15 @@ impl Cursor<'_> {
         let res = LToken::new(token_kind, self.pos_in_token());
         self.reset_pos();
         res
+    }
+
+    fn ident(&mut self) -> LTokenKind {
+        self.take_while(|c| char::is_ascii_hexdigit(&c));
+        LTokenKind::Ident
+    }
+
+    fn hex(&mut self) -> LTokenKind {
+        self.take_while(|c| char::is_ascii_hexdigit(&c));
+        LTokenKind::Lit(LiteralKind::Hex)
     }
 }

@@ -90,7 +90,7 @@ pub enum TrapKind {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum DirectiveKind {
+pub enum DirKind {
     Alias,
     Macro,
     Orig,
