@@ -1,5 +1,5 @@
 use crate::{
-    lexer::LToken,
+    lexer::Token,
     symbol::{Flag, Label, LineOffs, Register},
 };
 
@@ -69,7 +69,7 @@ pub enum Op {
         pc_offset9: u16,
     },
     Dir {
-        args: Option<Vec<LToken>>,
+        args: Option<Vec<Token>>,
     },
 }
 

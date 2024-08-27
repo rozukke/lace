@@ -55,6 +55,7 @@
           name = "rust-dev";
           buildInputs = with pkgs; [
             _rustToolchain
+            rust-analyzer
           ];
 
           RUST_SRC_PATH = "${_rustToolchain}/lib/rustlib/src/rust/library";

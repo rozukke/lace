@@ -1,53 +1,62 @@
-use lazy_static::lazy_static;
-use regex::Regex;
+use std::str::FromStr;
+
+use miette::{Result, bail, miette, LabeledSpan, Severity};
 
 use crate::lexer::cursor::Cursor;
-use crate::symbol::Register;
+use crate::symbol::{DirKind, InstrKind, Register, Span, SrcOffset, TrapKind};
 
 pub mod cursor;
 
-/// A 'light' token that only carries basic and easily derivable info
+/// A 'light' token that carries basic info and span
 #[derive(Debug)]
-pub struct LToken {
-    pub kind: LTokenKind,
-    pub len: u32,
+pub struct Token {
+    pub kind: TokenKind,
+    pub span: Span,
 }
 
-impl LToken {
-    pub fn new(kind: LTokenKind, len: u32) -> Self {
-        LToken { kind, len }
+impl Token {
+    pub fn new(kind: TokenKind, span: Span) -> Self {
+        Token { kind, span }
     }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum LiteralKind {
-    Hex,
-    Dec,
-    Str { terminated: bool },
+    Hex(u16),
+    Dec(i16),
+    Str,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum LTokenKind {
-    Ident,
+pub enum TokenKind {
+    Label,
+    Instr(InstrKind),
+    Trap(TrapKind),
     Lit(LiteralKind),
-    Comment,
-    Direc,
-    Reg,
+    Dir(DirKind),
+    Reg(Register),
     /// Also includes commas
     Whitespace,
     Unknown,
+    Comment,
     Eof,
 }
 
 /// Not actually used in parsing, more for debug purposes.
-pub fn tokenize(input: &str) -> impl Iterator<Item = LToken> + '_ {
+pub fn tokenize(input: &str) -> impl Iterator<Item = Result<Token>> + '_ {
     let mut cursor = Cursor::new(input);
     std::iter::from_fn(move || {
-        let token = cursor.advance_token();
-        if token.kind != LTokenKind::Eof {
-            Some(token)
-        } else {
-            None
+        loop {
+            let token = cursor.advance_token();
+            if let Ok(inner) = &token {
+                if inner.kind == TokenKind::Whitespace {
+                    continue;
+                }
+                if inner.kind == TokenKind::Eof {
+                    return None;
+                }
+            }
+            return Some(token);
         }
     })
 }
@@ -71,24 +80,28 @@ pub(crate) fn is_id(c: char) -> bool {
 }
 
 impl Cursor<'_> {
-    pub fn advance_token(&mut self) -> LToken {
+    pub fn advance_token(&mut self) -> Result<Token> {
+        let start_pos = self.abs_pos();
         let first_char = match self.bump() {
             Some(c) => c,
-            None => return LToken::new(LTokenKind::Eof, 0),
+            None => return Ok(Token::new(TokenKind::Eof, Span::dummy())),
         };
         let token_kind = match first_char {
             ';' => {
                 self.take_while(|c| c != '\n');
-                LTokenKind::Comment
+                TokenKind::Comment
             }
             c if is_whitespace(c) => {
                 self.take_while(is_whitespace);
-                LTokenKind::Whitespace
+                TokenKind::Whitespace
             }
             // Hex literals
-            'x' | 'X' => self.hex(),
+            'x' | 'X' => self.hex()?,
             '0' => match self.first() {
-                'x' | 'X' => self.hex(),
+                'x' | 'X' => {
+                    self.bump();
+                    self.hex()?
+                    },
                 _ => self.ident(),
             },
             'r' | 'R' => match self.first() {
@@ -96,7 +109,8 @@ impl Cursor<'_> {
                     self.take_while(is_reg_num);
                     // Registers are 2 tokens long and followed by whitespace/comma
                     if self.pos_in_token() == 2 && is_whitespace(self.first()) {
-                        LTokenKind::Reg
+                        // Unwrap is safe as c is always valid.
+                        TokenKind::Reg(Register::from_str(&c.to_string()).unwrap())
                     } else {
                         self.ident()
                     }
@@ -106,43 +120,110 @@ impl Cursor<'_> {
             // Identifiers should be checked after everything else that overlaps.
             c if is_id(c) => self.ident(),
             // Decimal literal
-            '#' => {
-                if self.first() == '-' {
-                    self.bump();
-                }
-                self.take_while(|c| char::is_ascii_digit(&c));
-                LTokenKind::Lit(LiteralKind::Dec)
-            }
+            '#' => self.dec()?,
             // Directive
-            '.' => {
-                let check = self.take_n(3).to_ascii_lowercase();
-                self.take_while(is_id);
-                // Need to check for .end directive to avoid unnecessary parsing and errors
-                match (self.pos_in_token(), check.as_str()) {
-                    (3, "end") => LTokenKind::Eof,
-                    _ => LTokenKind::Direc,
-                }
-            }
+            // '.' => {
+            //     let check = self.take_n(3).to_ascii_lowercase();
+            //     self.take_while(is_id);
+            //     // Need to check for .end directive to avoid unnecessary parsing and errors
+            //     match (self.pos_in_token(), check.as_str()) {
+            //         (3, "end") => TokenKind::Eof,
+            //         _ => TokenKind::Dir,
+            //     }
+            // }
             // String literal
-            // TODO: Allow for escaped characters and the terminated thing
-            '"' => {
-                self.take_while(|c| c != '"');
-                LTokenKind::Lit(LiteralKind::Str { terminated: true })
-            }
-            _ => LTokenKind::Unknown,
+            '"' => self.string_literal()?,
+            _ => {
+                self.take_while(|c| !is_whitespace(c));
+                TokenKind::Unknown
+            },
         };
-        let res = LToken::new(token_kind, self.pos_in_token());
+        let res = Token::new(token_kind, Span::new(SrcOffset(start_pos), self.pos_in_token()));
         self.reset_pos();
-        res
+        Ok(res)
     }
 
-    fn ident(&mut self) -> LTokenKind {
-        self.take_while(|c| char::is_ascii_hexdigit(&c));
-        LTokenKind::Ident
+    fn ident(&mut self) -> TokenKind {
+        self.take_while(is_id);
+        TokenKind::Label
     }
 
-    fn hex(&mut self) -> LTokenKind {
-        self.take_while(|c| char::is_ascii_hexdigit(&c));
-        LTokenKind::Lit(LiteralKind::Hex)
+    fn hex(&mut self) -> Result<TokenKind> {
+        let start = self.abs_pos();
+        let prefix = self.pos_in_token();
+        self.take_while(|c| !is_whitespace(c));
+        let str_val = self.get_range(start..self.abs_pos());
+        let value = match u16::from_str_radix(str_val, 16) {
+            Ok(value) => value,
+            Err(e) => {
+                return Err(miette!(
+                    severity = Severity::Error,
+                    code = "parse::hex_lit",
+                    help = "only use characters 0-9 and a-F.",
+                    labels = vec![LabeledSpan::at(start - prefix..self.abs_pos(), "incorrect literal")],
+                    "Encountered an invalid hex literal: {e}",
+                ))
+            }
+        };
+
+        Ok(TokenKind::Lit(LiteralKind::Hex(value)))
+    }
+
+    fn dec(&mut self) -> Result<TokenKind> {
+        let start = self.abs_pos();
+        let prefix = self.pos_in_token();
+        // Check for negative sign
+        let is_negative = if self.first() == '-' {
+            self.bump(); // Skip the negative sign
+            true
+        } else {
+            false
+        };
+        // Take the numeric part
+        self.take_while(|c| char::is_ascii_digit(&c));
+        let str_val = self.get_range(start..self.abs_pos());
+
+        // Parse the string as an i16 to handle negative values
+        let value = match i16::from_str_radix(&str_val, 10) {
+            Ok(value) => value,
+            Err(e) => {
+                bail!(
+                    severity = Severity::Error,
+                    code = "parse::dec_lit",
+                    help = "LC3 supports 16 bits of space, from -32,768 to 32,767.",
+                    labels = vec![LabeledSpan::at(start - prefix..self.abs_pos(), "incorrect literal")],
+                    "Encountered an invalid decimal literal: {e}",
+                )
+            }
+        };
+
+        Ok(TokenKind::Lit(LiteralKind::Dec(value)))
+    }
+
+    fn string_literal(&mut self) -> Result<TokenKind> {
+        let start = self.abs_pos() - 1;
+        let mut terminated = false;
+        while let Some(c) = self.bump() {
+            if c == '\n' {break};
+            if c == '"' {
+                terminated = true;
+                break;
+            }
+            // Skip escaped
+            if c == '\\' {
+                self.bump();
+            }
+        }
+        if !terminated {
+            bail!(
+                severity = Severity::Error,
+                code = "parse::str_lit",
+                help = "hint: make sure to close string literals with a \" character.",
+                labels = vec![LabeledSpan::at(start..self.abs_pos(), "incorrect literal")],
+                "Encountered an unterminated string literal.",
+
+        )
+        }
+        Ok(TokenKind::Lit(LiteralKind::Str))
     }
 }
