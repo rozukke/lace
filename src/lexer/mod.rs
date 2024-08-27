@@ -3,7 +3,7 @@ use std::str::FromStr;
 use miette::{Result, bail, miette, LabeledSpan, Severity};
 
 use crate::lexer::cursor::Cursor;
-use crate::symbol::{DirKind, InstrKind, Register, Span, SrcOffset, TrapKind};
+use crate::symbol::{DirKind, Flag, InstrKind, Register, Span, SrcOffset, TrapKind};
 
 pub mod cursor;
 
@@ -143,11 +143,6 @@ impl Cursor<'_> {
         Ok(res)
     }
 
-    fn ident(&mut self) -> TokenKind {
-        self.take_while(is_id);
-        TokenKind::Label
-    }
-
     fn hex(&mut self) -> Result<TokenKind> {
         let start = self.abs_pos();
         let prefix = self.pos_in_token();
@@ -221,9 +216,100 @@ impl Cursor<'_> {
                 help = "hint: make sure to close string literals with a \" character.",
                 labels = vec![LabeledSpan::at(start..self.abs_pos(), "incorrect literal")],
                 "Encountered an unterminated string literal.",
-
-        )
+            )
         }
         Ok(TokenKind::Lit(LiteralKind::Str))
+    }
+
+    fn directive(&mut self) -> Result<TokenKind> {
+        // Account for starting .
+        let start = self.abs_pos() - 1;
+        self.take_while(is_id);
+        let dir = self.get_range(start..self.abs_pos()).to_ascii_lowercase();
+    }
+
+    fn ident(&mut self) -> Result<TokenKind> {
+        let mut token_kind = TokenKind::Label;
+        let ident_start = self.abs_pos();
+        self.take_while(is_id);
+        let ident = self.get_range(ident_start..self.abs_pos()).to_ascii_lowercase();
+
+        // This actually needs to be in its own function :/
+        if ident.starts_with('.') {
+            token_kind = self.check_directive(&ident[1..]);
+            if token_kind == TokenKind::Unknown {
+                bail!(
+                    severity = Severity::Error,
+                    code = "parse::dir",
+                    help = "hint: check the list of available directives in the documentation.",
+                    labels = vec![LabeledSpan::at(ident_start..self.abs_pos(), "incorrect literal")],
+                    "Encountered an invalid directive.",
+                )
+            }
+        } else {
+            token_kind = self.check_instruction(&ident); 
+
+            // If not an instruction, check if it's a trap
+            if token_kind == TokenKind::Label { 
+                token_kind = self.check_trap(&ident);
+            }
+        }
+
+        Ok(token_kind)
+    }
+
+    fn check_directive(&self, dir_str: &str) -> TokenKind {
+        match dir_str {
+            "orig" => TokenKind::Dir(DirKind::Orig),
+            "end" => TokenKind::Dir(DirKind::End),
+            "stringz" => TokenKind::Dir(DirKind::Stringz),
+            "blkw" => TokenKind::Dir(DirKind::Blkw),
+            "fill" => TokenKind::Dir(DirKind::Fill),
+            // Not a directive
+            _ => TokenKind::Unknown,
+        }
+    }
+
+    // Should learn how to write macros tbh :)
+    fn check_instruction(&self, ident: &str) -> TokenKind {
+        match ident {
+            "add" => TokenKind::Instr(InstrKind::Add),
+            "and" => TokenKind::Instr(InstrKind::And),
+            "brnzp" => TokenKind::Instr(InstrKind::Br(Flag::Nzp)),
+            "brnz" => TokenKind::Instr(InstrKind::Br(Flag::Nz)),
+            "brzp" => TokenKind::Instr(InstrKind::Br(Flag::Zp)),
+            "brnp" => TokenKind::Instr(InstrKind::Br(Flag::Np)),
+            "brn" => TokenKind::Instr(InstrKind::Br(Flag::N)),
+            "brz" => TokenKind::Instr(InstrKind::Br(Flag::Z)),
+            "brp" => TokenKind::Instr(InstrKind::Br(Flag::P)),
+            "jmp" => TokenKind::Instr(InstrKind::Jmp),
+            "jsr" => TokenKind::Instr(InstrKind::Jsr),
+            "jsrr" => TokenKind::Instr(InstrKind::Jsrr),
+            "ld" => TokenKind::Instr(InstrKind::Ld),
+            "ldi" => TokenKind::Instr(InstrKind::Ldi),
+            "ldr" => TokenKind::Instr(InstrKind::Ldr),
+            "lea" => TokenKind::Instr(InstrKind::Lea),
+            "not" => TokenKind::Instr(InstrKind::Not),
+            "ret" => TokenKind::Instr(InstrKind::Ret),
+            "rti" => TokenKind::Instr(InstrKind::Rti),
+            "st" => TokenKind::Instr(InstrKind::St),
+            "sti" => TokenKind::Instr(InstrKind::Sti),
+            // Not an instruction
+            _ => TokenKind::Label,
+        }
+    }
+
+    fn check_trap(&self, ident: &str) -> TokenKind {
+        match ident {
+            "getc" => TokenKind::Trap(TrapKind::Getc),
+            "out" => TokenKind::Trap(TrapKind::Out),
+            "puts" => TokenKind::Trap(TrapKind::Puts),
+            "in" => TokenKind::Trap(TrapKind::In),
+            "putsp" => TokenKind::Trap(TrapKind::Putsp),
+            "halt" => TokenKind::Trap(TrapKind::Halt),
+            "trap" => TokenKind::Trap(TrapKind::Generic),
+            // Not a trap
+            _ => TokenKind::Label,
+        }
     }
 }

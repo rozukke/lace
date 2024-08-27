@@ -115,6 +115,20 @@ pub enum Flag {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum InstrKind {
     Add,
+    And,
+    Br(Flag),
+    Jmp,
+    Jsr,
+    Jsrr,
+    Ld,
+    Ldi,
+    Ldr,
+    Lea,
+    Not,
+    Ret,
+    Rti,
+    St,
+    Sti,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
