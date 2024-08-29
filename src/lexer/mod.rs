@@ -1,3 +1,4 @@
+use std::fmt::{Display, Write};
 use std::str::FromStr;
 
 use miette::{Result, bail, miette, LabeledSpan, Severity};
@@ -53,9 +54,27 @@ pub enum TokenKind {
     Byte(u16),
     /// Also includes commas
     Whitespace,
-    Unknown,
     Comment,
     Eof,
+}
+
+impl Display for TokenKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let lit = match self {
+            TokenKind::Label => "label",
+            TokenKind::Instr(_) => "instruction",
+            TokenKind::Trap(_) => "trap",
+            TokenKind::Lit(_) => "literal",
+            TokenKind::Dir(_) => "preprocessor directive",
+            TokenKind::Reg(_) => "register",
+            // Should never be displayed as part of an error
+            TokenKind::Whitespace |
+            TokenKind::Comment |
+            TokenKind::Eof |
+            TokenKind::Byte(_) => unreachable!(),
+        };
+        f.write_str(lit)
+    }
 }
 
 /// Not actually used in parsing, more for debug purposes.
@@ -147,7 +166,13 @@ impl Cursor<'_> {
             // Unknown starting characters
             _ => {
                 self.take_while(|c| !is_whitespace(c));
-                TokenKind::Unknown
+                bail!(
+                    severity = Severity::Error,
+                    code = "lex::unknown",
+                    help = "Check the manual or something...",
+                    labels = vec![LabeledSpan::at_offset(start_pos, "unknown token")],
+                    "Encounetered an unknown token",
+                )
             },
         };
         let res = Token::new(token_kind, Span::new(SrcOffset(start_pos), self.pos_in_token()));

@@ -32,21 +32,20 @@ impl From<usize> for Symbol {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Span {
     offs: SrcOffset,
-    end: SrcOffset,
     len: usize,
 }
 
 impl Span {
     pub fn new(offs: SrcOffset, len: usize) -> Self {
-        Span { offs, len, end: SrcOffset(offs.0 + len) }
+        Span { offs, len }
     }
 
     pub fn dummy() -> Self {
-        Span { offs: SrcOffset(0), len: 0, end: SrcOffset(0) }
+        Span { offs: SrcOffset(0), len: 0 }
     }
 
     pub fn range(&self) -> Range<usize> {
-        self.offs.0..self.end.0
+        self.offs.0..self.offs.0 + self.len
     }
 
     pub fn len(&self) -> usize {
@@ -55,6 +54,10 @@ impl Span {
 
     pub fn offs(&self) -> usize {
         self.offs.0
+    }
+
+    pub fn end(&self) -> usize {
+        self.offs.0 + self.len
     }
 }
 
@@ -70,17 +73,6 @@ impl From<Span> for Range<usize> {
     fn from(value: Span) -> Self {
         value.offs()..value.offs() + value.len()
     }
-}
-
-impl RangeBounds<usize> for Span {
-    fn start_bound(&self) -> Bound<&usize> {
-        Bound::Included(&self.offs.0)
-    }
-
-    fn end_bound(&self) -> Bound<&usize> {
-        Bound::Excluded(&self.end.0)
-    }
-
 }
 
 /// Represents the CPU registers.
