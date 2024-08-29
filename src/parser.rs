@@ -1,146 +1,145 @@
-use std::{borrow::BorrowMut, error::Error, usize};
+use std::borrow::{Borrow, Cow};
 
-use miette::{miette, Result};
+use miette::{bail, miette, LabeledSpan, Result, Severity};
 
 use crate::{
-    lexer::{cursor::Cursor, Token, TokenKind},
-    symbol::{
-        with_symbol_table, DirKind, Span, SrcOffset, Symbol,
-        TrapKind,
-    },
-};
+    lexer::{cursor::Cursor, LiteralKind, Token, TokenKind}, symbol::{DirKind, Span}}
+;
 
-/// Used to parse symbols and process exact instructions
-pub struct StrParser<'a> {
-    src: &'a str,
-    cur: Cursor<'a>,
-    pos: usize,
-    line_num: usize,
+// TODO: Kind of ugly, see if improvable
+fn unescape(s: &str) -> Cow<str> {
+    if s.find('\\').is_none() {
+        return Cow::Borrowed(s);
+    }
+    let mut result = String::new();
+    let mut chars = s.chars().peekable();
+    let mut needs_allocation = false;
+
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some('n') => result.push('\n'),
+                Some('t') => result.push('\t'),
+                Some('r') => result.push('\r'),
+                Some('\\') => result.push('\\'),
+                Some('"') => result.push('"'),
+                Some(c) => {
+                    result.push('\\');
+                    result.push(c);
+                },
+                None => {
+                    // Trailing backslash; include it as is
+                    result.push('\\');
+                },
+            }
+            needs_allocation = true;
+        } else {
+            result.push(c);
+        }
+    }
+    Cow::Owned(result)
 }
 
-impl<'a> StrParser<'a> {
-    pub fn new(src: &'a str) -> Self {
-        StrParser {
-            src,
-            cur: Cursor::new(src),
-            pos: 0,
-            line_num: 1,
+// TODO: figure out how to handle .orig
+// Might require a wrapper struct to pass into this that then gets filled out over several passes
+
+/// Replaces raw value directives .fill, .blkw, .stringz with equivalent raw bytes
+/// Returns a 'final' vector of tokens. This is easier than working with an iterator that can
+/// either return a single token or a Vec of tokens.
+pub fn preprocess(src: &str) -> Result<Vec<Token>> {
+    let mut res: Vec<Token> = Vec::new();
+    let mut cur = Cursor::new(src);
+
+    loop {
+        let dir = cur.advance_token()?;
+        // TODO: Whitespace... really need to get rid of it earlier
+        cur.advance_token()?;
+        match dir.kind {
+            // Preprocess .fill into a raw byte with the next literal as value
+            TokenKind::Dir(DirKind::Fill) => {
+                // Must be inside to avoid skipping tokens
+                let val = cur.advance_token()?;
+                // Maybe fix code duplication here?
+                match val.kind {
+                    TokenKind::Lit(LiteralKind::Hex(lit)) => {
+                        res.push(Token::byte(lit));
+                    }
+                    TokenKind::Lit(LiteralKind::Dec(lit)) => {
+                        res.push(Token::byte(lit as u16));
+                    }
+                    _ => bail!(
+                        severity = Severity::Error,
+                        code = "preproc::fill",
+                        help = "The .fill directive requires an integer or hex literal value.",
+                        labels = vec![LabeledSpan::at(val.span, "incorrect literal")],
+                        "Expected an integer or hex literal.",
+                    )
+                }
+            }
+            // Preprocess .blkw into a series of raw null bytes
+            TokenKind::Dir(DirKind::Blkw) => {
+                let val = cur.advance_token()?;
+                match val.kind {
+                    TokenKind::Lit(LiteralKind::Hex(lit)) => {
+                        // Empty bytes
+                        for _ in 0..lit {
+                            res.push(Token::nullbyte());
+                        }
+                    }
+                    TokenKind::Lit(LiteralKind::Dec(lit)) => {
+                        if lit < 0 {
+                            bail!(
+                                severity = Severity::Error,
+                                code = "preproc::blkw",
+                                help = "try a positive literal like #1",
+                                labels = vec![LabeledSpan::at(val.span, "negative literal")],
+                                "Integer values for .blkw cannot be negative.",
+                            )
+                        }
+                        // Empty bytes
+                        for _ in 0..lit {
+                            res.push(Token::nullbyte());
+                        }
+                    }
+                    _ => bail!(
+                        severity = Severity::Error,
+                        code = "preproc::blkw",
+                        help = ".blkw requires a non-negative integer or hex literal value.",
+                        labels = vec![LabeledSpan::at(val.span, "not a literal")],
+                        "Expected an non-negative integer or hex literal.",
+                    )
+                }
+            },
+            // Preprocess string literal into a sequence of bytes corresponding to a literal with a
+            // null terminator.
+            TokenKind::Dir(DirKind::Stringz) => {
+                let val = cur.advance_token()?;
+                match val.kind {
+                    TokenKind::Lit(LiteralKind::Str) => {
+                        let str_raw = cur.get_range(val.span.into());
+                        // Get rid of start and end \"
+                        for c in unescape(&str_raw[1..str_raw.len() - 1]).chars() {
+                            res.push(Token::byte(c as u16));
+                        }
+                        // Terminating null byte
+                        res.push(Token::nullbyte());
+                    }
+                    _ => bail!(
+                        severity = Severity::Error,
+                        code = "preproc::stringz",
+                        help = ".stringz requires a valid string literal like \"hello\n\"",
+                        labels = vec![LabeledSpan::at(val.span, "not a string literal")],
+                        "Expected a valid string literal.",
+                    )
+
+                }
+            },
+            TokenKind::Eof => break,
+            _ => res.push(dir),
         }
     }
 
-    fn get_next_chars(&self, n: usize) -> &str {
-        &self.src[self.pos..=(self.pos + n)]
-    }
-
-    // TODO: bad bad bad bad bad
-    // fn peek_next(&self) -> Token {
-    //     let mut cur = self.cur.clone();
-    //     let mut tok = cur.advance_token();
-    //     if tok.kind != TokenKind::Whitespace {
-    //         return tok;
-    //     }
-    //     cur.advance_token()
-    // }
-
-    // pub fn proc_tokens(&mut self) -> Vec<Token> {
-    //     // Iterate through, +1 to symbol count per inst
-    //     // +len(str) for every string literal
-    //     let mut toks_final: Vec<Token> = Vec::new();
-    //     loop {
-    //         let tok = self.cur.advance_token();
-    //         if let Some(tok_final) = match tok.kind {
-    //             TokenKind::Eof => break,
-    //             // Add identifier to symbol table at with correct line number
-    //             TokenKind::Ident => {
-    //                 // Process possibility of it being a trap
-    //                 if let Some(trap_kind) = StrParser::trap(self.get_next_chars(tok.len as usize))
-    //                 {
-    //                     self.line_num += 1;
-    //                     Some(Token {
-    //                         kind: TokenKind::Trap(trap_kind),
-    //                         span: Span::new(SrcOffset(self.pos), tok.len as usize),
-    //                     })
-    //                 } else {
-    //                     // Add to symbol table as identifier
-    //                     let idx = with_symbol_table(|sym| {
-    //                         let tok_text = self.get_next_chars(tok.len as usize);
-    //                         sym.get_index_of(tok_text).unwrap_or(
-    //                             sym.insert_full(String::from(tok_text), self.line_num as u16)
-    //                                 .0,
-    //                         )
-    //                     });
-    //                     Some(Token {
-    //                         kind: TokenKind::Label(Symbol::from(idx)),
-    //                         span: Span::new(SrcOffset(self.pos), tok.len as usize),
-    //                     })
-    //                 }
-    //             }
-    //             // Create literal of correct value
-    //             TokenKind::Lit(_) => todo!(),
-    //             // Match on directive, check next value for number of lines skipped
-    //             TokenKind::Direc => {
-    //                 if let Some(dir_kind) = StrParser::direc(self.get_next_chars(tok.len as usize))
-    //                 {
-    //                     self.line_num += match dir_kind {
-    //                         // Blkw should increment line count by the following int literal
-    //                         // TODO: Check if not int literal
-    //                         DirKind::Blkw => self
-    //                             .get_next_chars(self.peek_next().len as usize)
-    //                             .parse::<usize>()
-    //                             .unwrap(),
-    //                         // Stringz should increment line count by the number of characters
-    //                         // in the string literal + null byte
-    //                         DirKind::Stringz => {
-    //                             // TODO: Check if not str literal
-    //                             (self.peek_next().len - 2) as usize
-    //                         }
-    //                         _ => 1,
-    //                     };
-    //                     Some(Token {
-    //                         kind: TokenKind::Dir(dir_kind),
-    //                         span: Span::new(SrcOffset(self.pos), tok.len as usize),
-    //                     })
-    //                 } else {
-    //                     // TODO: Error handling in a list
-    //                     todo!()
-    //                 }
-    //             }
-    //             // TODO: Add registers to lexer
-    //             TokenKind::Reg => todo!(),
-    //             TokenKind::Whitespace | TokenKind::Comment => None,
-    //             // TODO: Should return list of errors eventually
-    //             TokenKind::Unknown => todo!(),
-    //         } {
-    //             toks_final.push(tok_final);
-    //             self.pos += tok.len as usize;
-    //         }
-    //     }
-    //     toks_final
-    // }
-
-    fn trap(s: &str) -> Option<TrapKind> {
-        match s.to_ascii_lowercase().as_str() {
-            "getc" => Some(TrapKind::Getc),
-            "out" => Some(TrapKind::Out),
-            "puts" => Some(TrapKind::Puts),
-            "in" => Some(TrapKind::In),
-            "putsp" => Some(TrapKind::Putsp),
-            "halt" => Some(TrapKind::Halt),
-            "trap" => Some(TrapKind::Generic),
-            _ => None,
-        }
-    }
-
-    pub fn direc(s: &str) -> Option<DirKind> {
-        match s.to_ascii_lowercase().as_str() {
-            ".orig" => Some(DirKind::Orig),
-            ".end" => Some(DirKind::End),
-            ".stringz" => Some(DirKind::Stringz),
-            ".blkw" => Some(DirKind::Blkw),
-            ".fill" => Some(DirKind::Fill),
-            _ => None,
-        }
-    }
+    Ok(res)
 }
 
 // /// Transforms token stream into 'AST'
@@ -219,3 +218,87 @@ impl<'a> StrParser<'a> {
 //         todo!()
 //     }
 // }
+
+mod tests {
+    use std::collections::VecDeque;
+
+    use crate::lexer::{Token, TokenKind};
+
+    use super::preprocess;
+
+    // .FILL TEST
+    #[test]
+    fn preproc_fill() {
+        let res = preprocess(".fill x3000").unwrap();
+        assert!(res[0].kind == TokenKind::Byte(0x3000))
+    }
+
+    #[test]
+    fn preproc_fill_neg() {
+        let res = preprocess(".fill #-35").unwrap();
+        assert!(res[0].kind == TokenKind::Byte(-35i16 as u16))
+    }
+
+    #[test]
+    fn preproc_fill_dec() {
+        let res = preprocess(".fill #3500").unwrap();
+        assert!(res[0].kind == TokenKind::Byte(3500))
+    }
+
+    #[test]
+    fn preproc_fill_invalid() {
+        assert!(preprocess(".fill add").is_err())
+    }
+
+    // .BLKW TEST
+    #[test]
+    fn preproc_blkw_basic() {
+        let res = preprocess(".blkw x2").unwrap()
+            .iter()
+            .map(|tok| tok.kind.clone())
+            .collect::<Vec<TokenKind>>();
+        assert!(res == vec![TokenKind::Byte(0), TokenKind::Byte(0)]);
+
+        let res = preprocess(".blkw #3").unwrap()
+            .iter()
+            .map(|tok| tok.kind.clone())
+            .collect::<Vec<TokenKind>>();
+        assert!(res == vec![TokenKind::Byte(0), TokenKind::Byte(0), TokenKind::Byte(0)])
+    }
+
+    #[test]
+    fn preproc_blkw_neg() {
+        assert!(preprocess(".blkw #-3").is_err())
+    }
+
+    #[test]
+    fn preproc_blkw_invalid() {
+        assert!(preprocess(".blkw add").is_err())
+    }
+
+    // .STRINGZ TEST
+    #[test]
+    fn preproc_stringz_escaped() {
+        // .blkw "\"hello\"\n" => "hello"
+        let res = preprocess(r#".stringz "\"hello\n\"""#).unwrap();
+        let expected = "\"hello\n\"\0".chars()
+            .map(|c| Token::byte(c as u16))
+            .collect::<Vec<Token>>();
+        assert!(res == expected)
+    }
+
+    #[test]
+    fn preproc_stringz_standard() {
+        // .blkw "hello" => hello
+        let res = preprocess(r#".stringz "hello""#).unwrap();
+        let expected = "hello\0".chars()
+            .map(|c| Token::byte(c as u16))
+            .collect::<Vec<Token>>();
+        assert!(res == expected)
+    }
+
+    #[test]
+    fn preproc_stringz_invalid() {
+        assert!(preprocess(r#".stringz error"#).is_err())
+    }
+}

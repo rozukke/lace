@@ -8,7 +8,7 @@ use crate::symbol::{DirKind, Flag, InstrKind, Register, Span, SrcOffset, TrapKin
 pub mod cursor;
 
 /// Carries all literal info alongside span location inside source code.
-#[derive(Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Token {
     /// Lexed token kind, with literal values contained as part of the enum.
     pub kind: TokenKind,
@@ -19,6 +19,15 @@ pub struct Token {
 impl Token {
     pub fn new(kind: TokenKind, span: Span) -> Self {
         Token { kind, span }
+    }
+    pub fn byte(val: u16) -> Self {
+        Token {
+            kind: TokenKind::Byte(val),
+            span: Span::dummy(),
+        }
+    }
+    pub fn nullbyte() -> Self {
+        Token::byte(0)
     }
 }
 
@@ -40,6 +49,8 @@ pub enum TokenKind {
     Lit(LiteralKind),
     Dir(DirKind),
     Reg(Register),
+    /// Used to represent preprocessor raw values
+    Byte(u16),
     /// Also includes commas
     Whitespace,
     Unknown,
@@ -152,13 +163,13 @@ impl Cursor<'_> {
         let value = match u16::from_str_radix(str_val, 16) {
             Ok(value) => value,
             Err(e) => {
-                return Err(miette!(
+                bail!(
                     severity = Severity::Error,
                     code = "parse::hex_lit",
                     help = "only use characters 0-9 and a-F.",
                     labels = vec![LabeledSpan::at(start - prefix..self.abs_pos(), "incorrect literal")],
                     "Encountered an invalid hex literal: {e}",
-                ))
+                )
             }
         };
 
