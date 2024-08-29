@@ -3,42 +3,9 @@ use std::{borrow::{Borrow, Cow}, iter::{Filter, Peekable}, ops::RangeBounds, vec
 use miette::{bail, miette, LabeledSpan, Result, Severity};
 
 use crate::{
-    lexer::{cursor::Cursor, LiteralKind, Token, TokenKind}, ops::Air, symbol::{DirKind, Span}
+    lexer::{cursor::Cursor, LiteralKind, Token, TokenKind}, ops::Air, symbol::{with_symbol_table, DirKind, Span}
 };
 
-// TODO: Kind of ugly, see if improvable
-fn unescape(s: &str) -> Cow<str> {
-    if s.find('\\').is_none() {
-        return Cow::Borrowed(s);
-    }
-    let mut result = String::new();
-    let mut chars = s.chars().peekable();
-    let mut needs_allocation = false;
-
-    while let Some(c) = chars.next() {
-        if c == '\\' {
-            match chars.next() {
-                Some('n') => result.push('\n'),
-                Some('t') => result.push('\t'),
-                Some('r') => result.push('\r'),
-                Some('\\') => result.push('\\'),
-                Some('"') => result.push('"'),
-                Some(c) => {
-                    result.push('\\');
-                    result.push(c);
-                },
-                None => {
-                    // Trailing backslash; include it as is
-                    result.push('\\');
-                },
-            }
-            needs_allocation = true;
-        } else {
-            result.push(c);
-        }
-    }
-    Cow::Owned(result)
-}
 
 /// Replaces raw value directives .fill, .blkw, .stringz with equivalent raw bytes
 /// Returns a 'final' vector of tokens. This is easier than working with an iterator that can
@@ -139,6 +106,40 @@ pub fn preprocess(src: &str) -> Result<Vec<Token>> {
     Ok(res)
 }
 
+// TODO: Kind of ugly, see if improvable
+fn unescape(s: &str) -> Cow<str> {
+    if s.find('\\').is_none() {
+        return Cow::Borrowed(s);
+    }
+    let mut result = String::new();
+    let mut chars = s.chars().peekable();
+    let mut needs_allocation = false;
+
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some('n') => result.push('\n'),
+                Some('t') => result.push('\t'),
+                Some('r') => result.push('\r'),
+                Some('\\') => result.push('\\'),
+                Some('"') => result.push('"'),
+                Some(c) => {
+                    result.push('\\');
+                    result.push(c);
+                },
+                None => {
+                    // Trailing backslash; include it as is
+                    result.push('\\');
+                },
+            }
+            needs_allocation = true;
+        } else {
+            result.push(c);
+        }
+    }
+    Cow::Owned(result)
+}
+
 /// Transforms token stream into AIR
 pub struct AsmParser<'a> {
     /// Reference to the source file
@@ -147,6 +148,8 @@ pub struct AsmParser<'a> {
     toks: Peekable<IntoIter<Token>>,
     /// Assembly intermediate representation
     air: Air,
+    /// Tracker for current line
+    line: u16,
 }
 
 impl<'a> AsmParser<'a> {
@@ -157,7 +160,12 @@ impl<'a> AsmParser<'a> {
             src,
             toks: toks.into_iter().peekable(),
             air: Air::new(),
+            line: 1,
         }
+    }
+
+    fn get_span(&self, span: Span) -> &str {
+        &self.src[span.offs()..span.end()]
     }
 
     /// Create AIR out of token stream
@@ -167,6 +175,7 @@ impl<'a> AsmParser<'a> {
         // Can take label => inst, trap
 
         loop {
+            self.line += 1;
             // Might be a better pattern for this
             if self.toks.peek().is_none() {
                 break;
@@ -174,11 +183,15 @@ impl<'a> AsmParser<'a> {
             // Can/has to take label: bytes, instr, trap
             if let Some(label) = self.get_label() {
                 // Add prefix label to symbol table
+                with_symbol_table(|sym| {
+                    sym.insert(self.get_span(label.span).to_string(), self.line)
+                });
+
                 if let Some(tok) = self.toks.next() {
                     match tok.kind {
                         // Invalid after label
-                        TokenKind::Label 
-                        | TokenKind::Lit(_) 
+                        TokenKind::Label
+                        | TokenKind::Lit(_)
                         | TokenKind::Reg(_)
                         // This is actually only .orig at this stage
                         | TokenKind::Dir(_) => bail!(

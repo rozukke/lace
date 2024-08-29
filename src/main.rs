@@ -78,7 +78,7 @@ fn main() -> miette::Result<()> {
                         }
                     };
                     print!("{:?} ", ok.kind);
-                    println!("{}", &file[ok.span.range()]);
+                    println!("{}", &file[ok.span.as_range()]);
                 }
                 Ok(())
             }

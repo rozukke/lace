@@ -1,3 +1,4 @@
+use core::panic;
 use std::fmt::{Display, Write};
 use std::str::FromStr;
 
@@ -21,12 +22,14 @@ impl Token {
     pub fn new(kind: TokenKind, span: Span) -> Self {
         Token { kind, span }
     }
+
     pub fn byte(val: u16) -> Self {
         Token {
             kind: TokenKind::Byte(val),
             span: Span::dummy(),
         }
     }
+
     pub fn nullbyte() -> Self {
         Token::byte(0)
     }

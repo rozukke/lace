@@ -2,7 +2,7 @@ use std::{cell::RefCell, ops::{Bound, Range, RangeBounds}, slice::SliceIndex, st
 
 use fxhash::FxBuildHasher;
 use indexmap::IndexMap;
-use miette::SourceSpan;
+use miette::{SourceSpan, Result};
 
 // Symbol table of symbol -> memory address (line number)
 type FxMap<K, V> = IndexMap<K, V, FxBuildHasher>;
@@ -11,6 +11,7 @@ thread_local! {
     pub static SYMBOL_TABLE: RefCell<FxMap<String, u16>> = RefCell::new(IndexMap::with_hasher(FxBuildHasher::default()));
 }
 
+/// Access to symbol table via closure
 pub fn with_symbol_table<R, F>(f: F) -> R
 where
     F: FnOnce(&mut FxMap<String, u16>) -> R,
@@ -18,17 +19,36 @@ where
     SYMBOL_TABLE.with_borrow_mut(f)
 }
 
-/// Reference to symbol table index
+/// Line number of referenced label
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
-pub struct Symbol(usize);
+pub struct Label(Option<u16>);
 
-impl From<usize> for Symbol {
-    fn from(value: usize) -> Self {
-        Symbol { 0: value }
+impl Label {
+    /// Called on prefix labels. Errors on duplicates.
+    pub fn insert(label: &str) -> Result<Self> {
+        with_symbol_table(|sym| {
+            // Try get existing index, Err if exists and insert if not.
+            todo!()
+        })
+    }
+
+    /// Used on non-prefix labels to give them a discrete line number reference
+    pub fn try_fill(label: &str) -> Result<Self> {
+        with_symbol_table(|sym| {
+            // Check if not None, Err otherwise
+            todo!()
+        })
+    }
+
+    pub fn is_unfilled(&self) -> bool {
+        match self.0 {
+            Some(_) => false,
+            None => true,
+        }
     }
 }
 
-/// Location within source
+/// Location within source str
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Span {
     offs: SrcOffset,
@@ -40,12 +60,14 @@ impl Span {
         Span { offs, len }
     }
 
+    /// Non-source span
     pub fn dummy() -> Self {
         Span { offs: SrcOffset(0), len: 0 }
     }
 
-    pub fn range(&self) -> Range<usize> {
-        self.offs.0..self.offs.0 + self.len
+    /// Returns a range that can be used to index the source
+    pub fn as_range(&self) -> Range<usize> {
+        self.offs()..self.end()
     }
 
     pub fn len(&self) -> usize {
@@ -61,6 +83,7 @@ impl Span {
     }
 }
 
+// Used for miette conversion
 impl From<Span> for SourceSpan {
     fn from(value: Span) -> Self {
         SourceSpan::new(
@@ -69,9 +92,10 @@ impl From<Span> for SourceSpan {
         )
     }
 }
+
 impl From<Span> for Range<usize> {
     fn from(value: Span) -> Self {
-        value.offs()..value.offs() + value.len()
+        value.offs()..value.end()
     }
 }
 
@@ -166,18 +190,9 @@ pub enum DirKind {
     Fill,
 }
 
-/// Newtype representing an address inside the LC3 memory.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
-pub struct Addr(u16);
-
 /// Newtype representing an offset from a particular address.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct LineOffs(u16);
-
-/// Label used to refer to specific memory addresses
-/// TODO: optimize later
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct Label(String);
 
 /// Used to refer to offsets from the start of a source file.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
