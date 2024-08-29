@@ -1,7 +1,8 @@
-use std::{cell::RefCell, ops::{Bound, Range, RangeBounds}, slice::SliceIndex, str::FromStr};
+use std::{cell::RefCell, ops::{Bound, Range, RangeBounds}, slice::SliceIndex, str::FromStr, usize};
 
 use fxhash::FxBuildHasher;
 use indexmap::IndexMap;
+use miette::SourceSpan;
 
 // Symbol table of symbol -> memory address (line number)
 type FxMap<K, V> = IndexMap<K, V, FxBuildHasher>;
@@ -46,6 +47,28 @@ impl Span {
 
     pub fn range(&self) -> Range<usize> {
         self.offs.0..self.end.0
+    }
+
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    pub fn offs(&self) -> usize {
+        self.offs.0
+    }
+}
+
+impl From<Span> for SourceSpan {
+    fn from(value: Span) -> Self {
+        SourceSpan::new(
+            value.offs().into(),
+            value.len(),
+        )
+    }
+}
+impl From<Span> for Range<usize> {
+    fn from(value: Span) -> Self {
+        value.offs()..value.offs() + value.len()
     }
 }
 
