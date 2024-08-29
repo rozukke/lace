@@ -1,16 +1,19 @@
 #![allow(unused)] // Remove later
 
 use std::fs;
+use std::ops::RangeBounds;
+use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use colored::Colorize;
-use lexer::{tokenize, TokenKind};
+use lexer::{tokenize};
+use lexer::TokenKind;
+use miette::{Result, IntoDiagnostic};
 
 mod lexer;
 mod ops;
 mod parser;
 mod runtime;
-mod span;
 mod symbol;
 
 /// Lace is a complete & convenient assembler toolchain for the LC3 assembly language.
@@ -33,43 +36,51 @@ enum Command {
         #[arg(short, long)]
         os: bool,
         /// .asm file to run
-        name: String,
+        name: PathBuf,
     },
     /// Create binary `.lc3` file to run later or view compiled data
     Compile {
         /// `.asm` file to compile
-        name: String,
+        name: PathBuf,
         /// Destination to output .lc3 file
         dest: Option<String>,
     },
     /// Remove compilation artifacts for specified source
     Clean {
         /// `.asm` file to try remove artifacts for
-        name: String,
+        name: PathBuf,
     },
     /// Place a watch on a `.asm` file to receive constant assembler updates
     Watch {
         /// `.asm` file to watch
-        name: String,
+        name: PathBuf,
     },
     /// Format `.asm` file to adhere to recommended style
     Fmt {
         /// `.asm` file to format
-        name: String,
+        name: PathBuf,
     },
 }
 
-fn main() {
+fn main() -> miette::Result<()> {
     let args = Args::parse();
 
     if let Some(command) = args.command {
         match command {
             Command::Run { os, name } => todo!(),
             Command::Compile { name, dest } => {
-                let file = fs::read_to_string(name).unwrap();
-                for tok in tokenize(&file).filter(|tok| tok.kind != TokenKind::Junk) {
-                    println!("{:?} {}", tok, &file[tok.span.as_range()]);
+                let file = fs::read_to_string(name).into_diagnostic()?;
+                for tok in tokenize(&file) {
+                    let ok = match tok {
+                        Ok(ok) => ok,
+                        Err(err) => {
+                            return Err(err.with_source_code(file.clone()));
+                        }
+                    };
+                    print!("{:?} ", ok.kind);
+                    println!("{}", &file[ok.span.range()]);
                 }
+                Ok(())
             }
             Command::Clean { name } => todo!(),
             Command::Watch { name } => todo!(),
@@ -83,7 +94,8 @@ fn main() {
     }
 }
 
-const LOGO: &str = r#"      ..                                  
+const LOGO: &str = r#"
+      ..                                  
 x .d88"                                   
  5888R                                    
  '888R         u           .        .u    

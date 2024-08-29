@@ -1,13 +1,7 @@
 use crate::{
     lexer::Token,
-    symbol::{ByteOffs, Flag, Label, Register},
+    symbol::{Flag, Label, LineOffs, Register},
 };
-
-pub struct Stmt {
-    line: u32,
-    label: Label,
-    op: Op,
-}
 
 /// Basically the entire 'AST' when it comes to LC3.
 /// TODO: Convert to labels instead of offsets at this stage.
@@ -28,7 +22,7 @@ pub enum Op {
     /// Branch based on flag by adding ByteOffs to PC (program counter)
     BR {
         cc: Flag,
-        pc_offset9: ByteOffs,
+        pc_offset9: LineOffs,
     },
     /// Set PC to BR to perform a jump on the next cycle
     JMP {

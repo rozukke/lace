@@ -1,48 +1,80 @@
-//! Taken from the lexer in https://github.com/rozukke/mimi
-// Heavily instpired and referenced from `rustc_lexer` and adapted to suit the project.
-// See https://doc.rust-lang.org/beta/nightly-rustc/src/rustc_lexer/cursor.rs.html
+//! Heavily instpired and referenced from `rustc_lexer` and adapted to suit the project.
+//! See https://doc.rust-lang.org/beta/nightly-rustc/src/rustc_lexer/cursor.rs.html
 
+use std::{ops::Range, str::Chars};
+
+#[derive(Clone)]
 /// Peekable iterator over a char sequence.
 pub struct Cursor<'a> {
     len_remaining: usize,
-    /// Index that the cursor is pointing to in the source
-    curr_pt: usize,
+    orig_size: usize,
     /// Iterator over chars in a &str
-    chars: &'a str,
+    chars: Chars<'a>,
+    input: &'a str,
 }
+
+pub(crate) const NULL_CHAR: char = '\0';
 
 impl<'a> Cursor<'a> {
     pub fn new(input: &'a str) -> Cursor<'a> {
         Cursor {
             len_remaining: input.len(),
-            curr_pt: 0,
-            chars: input,
+            orig_size: input.len(),
+            chars: input.chars(),
+            input,
         }
+    }
+
+    pub fn as_str(&self) -> &'a str {
+        self.chars.as_str()
+    }
+
+    /// Returns next character without consuming it.
+    pub fn first(&self) -> char {
+        self.chars.clone().next().unwrap_or(NULL_CHAR)
     }
 
     /// File is finished parsing
     pub fn is_eof(&self) -> bool {
-        self.len_remaining == 0
-    }
-
-    /// Return slice of input starting at the current point of the cursor
-    pub fn at_curr_pt(&self) -> &'a str {
-        &self.chars[self.curr_pt..]
-    }
-
-    /// Move cursor ahead in the input by given amount
-    pub fn advance(&mut self, amt: usize) {
-        self.curr_pt += amt;
-        self.len_remaining -= amt;
+        self.chars.as_str().is_empty()
     }
 
     /// Advance by one character
-    pub fn bump(&mut self) {
-        self.advance(1)
+    pub fn bump(&mut self) -> Option<char> {
+        let c = self.chars.next()?;
+        Some(c)
     }
 
-    /// Returns current cursor position
-    pub fn curr_pt(&self) -> usize {
-        self.curr_pt
+    /// Return number of consumed tokens
+    pub(crate) fn pos_in_token(&self) -> usize {
+        self.len_remaining - self.chars.as_str().len()
+    }
+
+    /// Resets the number of consumed chars
+    pub(crate) fn reset_pos(&mut self) {
+        self.len_remaining = self.chars.as_str().len();
+    }
+
+    /// Consume until given function returns false
+    pub(crate) fn take_while(&mut self, mut predicate: impl FnMut(char) -> bool) {
+        while predicate(self.first()) && !self.is_eof() {
+            self.bump();
+        }
+    }
+
+    pub(crate) fn take_n(&self, n: usize) -> String {
+        self.chars.clone().take(n).collect()
+    }
+
+    pub(crate) fn remaining(&self) -> usize {
+        self.chars.as_str().len()
+    }
+
+    pub(crate) fn abs_pos(&self) -> usize {
+        self.orig_size - self.len_remaining + self.pos_in_token()
+    }
+
+    pub(crate) fn get_range(&self, range: Range<usize>) -> &str {
+        &self.input[range]
     }
 }
