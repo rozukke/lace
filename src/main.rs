@@ -77,8 +77,8 @@ fn main() -> miette::Result<()> {
                             return Err(err.with_source_code(file.clone()));
                         }
                     };
-                    println!("{:?}", ok);
-                    println!("{:?}", &file[ok.span.range()]);
+                    print!("{:?} ", ok.kind);
+                    println!("{}", &file[ok.span.range()]);
                 }
                 Ok(())
             }

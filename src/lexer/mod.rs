@@ -7,10 +7,12 @@ use crate::symbol::{DirKind, Flag, InstrKind, Register, Span, SrcOffset, TrapKin
 
 pub mod cursor;
 
-/// A 'light' token that carries basic info and span
+/// Carries all literal info alongside span location inside source code.
 #[derive(Debug)]
 pub struct Token {
+    /// Lexed token kind, with literal values contained as part of the enum.
     pub kind: TokenKind,
+    /// Span pointing at the location of the token in the source.
     pub span: Span,
 }
 
@@ -22,8 +24,11 @@ impl Token {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum LiteralKind {
+    /// 0x3000, xFFFF, x123
     Hex(u16),
+    /// #-1, #32456
     Dec(i16),
+    /// "str with \" escaped chars"
     Str,
 }
 
@@ -87,10 +92,12 @@ impl Cursor<'_> {
             None => return Ok(Token::new(TokenKind::Eof, Span::dummy())),
         };
         let token_kind = match first_char {
+            // Comment
             ';' => {
                 self.take_while(|c| c != '\n');
                 TokenKind::Comment
             }
+            // Whitespace
             c if is_whitespace(c) => {
                 self.take_while(is_whitespace);
                 TokenKind::Whitespace
@@ -104,6 +111,7 @@ impl Cursor<'_> {
                     },
                 _ => self.ident(),
             },
+            // Register literal
             'r' | 'R' => match self.first() {
                 c if is_reg_num(c) => {
                     self.take_while(is_reg_num);
@@ -122,17 +130,10 @@ impl Cursor<'_> {
             // Decimal literal
             '#' => self.dec()?,
             // Directive
-            // '.' => {
-            //     let check = self.take_n(3).to_ascii_lowercase();
-            //     self.take_while(is_id);
-            //     // Need to check for .end directive to avoid unnecessary parsing and errors
-            //     match (self.pos_in_token(), check.as_str()) {
-            //         (3, "end") => TokenKind::Eof,
-            //         _ => TokenKind::Dir,
-            //     }
-            // }
+            '.' => self.dir()?,
             // String literal
-            '"' => self.string_literal()?,
+            '"' => self.str()?,
+            // Unknown starting characters
             _ => {
                 self.take_while(|c| !is_whitespace(c));
                 TokenKind::Unknown
@@ -195,7 +196,7 @@ impl Cursor<'_> {
         Ok(TokenKind::Lit(LiteralKind::Dec(value)))
     }
 
-    fn string_literal(&mut self) -> Result<TokenKind> {
+    fn str(&mut self) -> Result<TokenKind> {
         let start = self.abs_pos() - 1;
         let mut terminated = false;
         while let Some(c) = self.bump() {
@@ -221,56 +222,55 @@ impl Cursor<'_> {
         Ok(TokenKind::Lit(LiteralKind::Str))
     }
 
-    fn directive(&mut self) -> Result<TokenKind> {
+    fn dir(&mut self) -> Result<TokenKind> {
         // Account for starting .
         let start = self.abs_pos() - 1;
         self.take_while(is_id);
         let dir = self.get_range(start..self.abs_pos()).to_ascii_lowercase();
+
+        if let Some(token_kind) = self.check_directive(&dir) {
+            Ok(token_kind)
+        } else {
+            bail!(
+                severity = Severity::Error,
+                code = "parse::dir",
+                help = "hint: check the list of available directives in the documentation.",
+                labels = vec![LabeledSpan::at(start..self.abs_pos(), "incorrect literal")],
+                "Encountered an invalid directive.",
+            )
+        }
     }
 
-    fn ident(&mut self) -> Result<TokenKind> {
+    fn ident(&mut self) -> TokenKind {
         let mut token_kind = TokenKind::Label;
-        let ident_start = self.abs_pos();
+        let ident_start = self.abs_pos() - 1;
         self.take_while(is_id);
         let ident = self.get_range(ident_start..self.abs_pos()).to_ascii_lowercase();
 
-        // This actually needs to be in its own function :/
-        if ident.starts_with('.') {
-            token_kind = self.check_directive(&ident[1..]);
-            if token_kind == TokenKind::Unknown {
-                bail!(
-                    severity = Severity::Error,
-                    code = "parse::dir",
-                    help = "hint: check the list of available directives in the documentation.",
-                    labels = vec![LabeledSpan::at(ident_start..self.abs_pos(), "incorrect literal")],
-                    "Encountered an invalid directive.",
-                )
-            }
-        } else {
-            token_kind = self.check_instruction(&ident); 
-
-            // If not an instruction, check if it's a trap
-            if token_kind == TokenKind::Label { 
-                token_kind = self.check_trap(&ident);
-            }
+        token_kind = self.check_instruction(&ident);
+        // If not an instruction, check if it's a trap
+        if token_kind == TokenKind::Label { 
+            token_kind = self.check_trap(&ident);
         }
 
-        Ok(token_kind)
+        token_kind
     }
 
-    fn check_directive(&self, dir_str: &str) -> TokenKind {
+    /// Expects lowercase
+    fn check_directive(&self, dir_str: &str) -> Option<TokenKind> {
         match dir_str {
-            "orig" => TokenKind::Dir(DirKind::Orig),
-            "end" => TokenKind::Dir(DirKind::End),
-            "stringz" => TokenKind::Dir(DirKind::Stringz),
-            "blkw" => TokenKind::Dir(DirKind::Blkw),
-            "fill" => TokenKind::Dir(DirKind::Fill),
+            ".orig" => Some(TokenKind::Dir(DirKind::Orig)),
+            ".end" => Some(TokenKind::Dir(DirKind::End)),
+            ".stringz" => Some(TokenKind::Dir(DirKind::Stringz)),
+            ".blkw" => Some(TokenKind::Dir(DirKind::Blkw)),
+            ".fill" => Some(TokenKind::Dir(DirKind::Fill)),
             // Not a directive
-            _ => TokenKind::Unknown,
+            _ => None,
         }
     }
 
     // Should learn how to write macros tbh :)
+    /// Expects lowercase
     fn check_instruction(&self, ident: &str) -> TokenKind {
         match ident {
             "add" => TokenKind::Instr(InstrKind::Add),
@@ -299,6 +299,7 @@ impl Cursor<'_> {
         }
     }
 
+    /// Expects lowercase
     fn check_trap(&self, ident: &str) -> TokenKind {
         match ident {
             "getc" => TokenKind::Trap(TrapKind::Getc),
@@ -311,5 +312,87 @@ impl Cursor<'_> {
             // Not a trap
             _ => TokenKind::Label,
         }
+    }
+}
+
+mod tests {
+    use crate::lexer::{LiteralKind, TokenKind};
+
+    use super::cursor::Cursor;
+
+    // HEX LIT TESTS
+
+    #[test]
+    fn hex_correct_value() {
+        let mut lex = Cursor::new("0x1234");
+        let res = lex.advance_token().unwrap();
+        assert!(res.kind == TokenKind::Lit(LiteralKind::Hex(0x1234)))
+    }
+
+    #[test]
+    fn hex_too_large() {
+        let mut lex = Cursor::new("xFFFF x10000");
+        let res = lex.advance_token().unwrap();
+        assert!(res.kind == TokenKind::Lit(LiteralKind::Hex(0xFFFF)));
+        // Whitespace
+        let res = lex.advance_token().unwrap();
+        assert!(lex.advance_token().is_err());
+    }
+
+    #[test]
+    fn hex_leading_0() {
+        let mut lex = Cursor::new("0x3000");
+        let res = lex.advance_token().unwrap();
+        assert!(res.kind == TokenKind::Lit(LiteralKind::Hex(0x3000)))
+    }
+
+    // DEC LIT TESTS
+
+    #[test]
+    fn dec_correct_value() {
+        let mut lex = Cursor::new("#32412");
+        let res = lex.advance_token().unwrap();
+        assert!(res.kind == TokenKind::Lit(LiteralKind::Dec(32412)))
+    }
+
+    #[test]
+    fn dec_negative_value () {
+        let mut lex = Cursor::new("#-300");
+        let res = lex.advance_token().unwrap();
+        assert!(res.kind == TokenKind::Lit(LiteralKind::Dec(-300)))
+    }
+
+    #[test]
+    fn dec_too_small () {
+        let mut lex = Cursor::new("#-32768 #-32769");
+        let res = lex.advance_token().unwrap();
+        assert!(res.kind == TokenKind::Lit(LiteralKind::Dec(-32768)));
+        // Whitespace
+        let res = lex.advance_token().unwrap();
+        assert!(lex.advance_token().is_err());
+    }
+
+    #[test]
+    fn dec_too_large () {
+        let mut lex = Cursor::new("#32767 #32768");
+        let res = lex.advance_token().unwrap();
+        assert!(res.kind == TokenKind::Lit(LiteralKind::Dec(32767)));
+        // Whitespace
+        let res = lex.advance_token().unwrap();
+        assert!(lex.advance_token().is_err());
+    }
+
+    // STR LIT TESTS
+
+    #[test]
+    fn str_unterminated() {
+        let mut lex = Cursor::new(r#""unterminated"#);
+        assert!(lex.advance_token().is_err())
+    }
+
+    #[test]
+    fn str_escaped() {
+        let mut lex = Cursor::new(r#"there is an escaped \" in this str\n"#);
+        assert!(lex.advance_token().is_ok())
     }
 }
