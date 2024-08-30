@@ -2,7 +2,7 @@ use core::panic;
 use std::fmt::{Display, Write};
 use std::str::FromStr;
 
-use miette::{Result, bail, miette, LabeledSpan, Severity};
+use miette::{bail, miette, LabeledSpan, Result, Severity};
 
 use crate::lexer::cursor::Cursor;
 use crate::symbol::{DirKind, Flag, InstrKind, Register, Span, SrcOffset, TrapKind};
@@ -71,10 +71,9 @@ impl Display for TokenKind {
             TokenKind::Dir(_) => "preprocessor directive",
             TokenKind::Reg(_) => "register",
             // Should never be displayed as part of an error
-            TokenKind::Whitespace |
-            TokenKind::Comment |
-            TokenKind::Eof |
-            TokenKind::Byte(_) => unreachable!(),
+            TokenKind::Whitespace | TokenKind::Comment | TokenKind::Eof | TokenKind::Byte(_) => {
+                unreachable!()
+            }
         };
         f.write_str(lit)
     }
@@ -83,19 +82,17 @@ impl Display for TokenKind {
 /// Not actually used in parsing, more for debug purposes.
 pub fn tokenize(input: &str) -> impl Iterator<Item = Result<Token>> + '_ {
     let mut cursor = Cursor::new(input);
-    std::iter::from_fn(move || {
-        loop {
-            let token = cursor.advance_token();
-            if let Ok(inner) = &token {
-                if inner.kind == TokenKind::Whitespace {
-                    continue;
-                }
-                if inner.kind == TokenKind::Eof {
-                    return None;
-                }
+    std::iter::from_fn(move || loop {
+        let token = cursor.advance_token();
+        if let Ok(inner) = &token {
+            if inner.kind == TokenKind::Whitespace {
+                continue;
             }
-            return Some(token);
+            if inner.kind == TokenKind::Eof {
+                return None;
+            }
         }
+        return Some(token);
     })
 }
 
@@ -141,7 +138,7 @@ impl Cursor<'_> {
                 'x' | 'X' => {
                     self.bump();
                     self.hex()?
-                    },
+                }
                 _ => self.ident(),
             },
             // Register literal
@@ -176,9 +173,12 @@ impl Cursor<'_> {
                     labels = vec![LabeledSpan::at_offset(start_pos, "unknown token")],
                     "Encounetered an unknown token",
                 )
-            },
+            }
         };
-        let res = Token::new(token_kind, Span::new(SrcOffset(start_pos), self.pos_in_token()));
+        let res = Token::new(
+            token_kind,
+            Span::new(SrcOffset(start_pos), self.pos_in_token()),
+        );
         self.reset_pos();
         Ok(res)
     }
@@ -195,7 +195,10 @@ impl Cursor<'_> {
                     severity = Severity::Error,
                     code = "parse::hex_lit",
                     help = "only use characters 0-9 and a-F.",
-                    labels = vec![LabeledSpan::at(start - prefix..self.abs_pos(), "incorrect literal")],
+                    labels = vec![LabeledSpan::at(
+                        start - prefix..self.abs_pos(),
+                        "incorrect literal"
+                    )],
                     "Encountered an invalid hex literal: {e}",
                 )
             }
@@ -226,7 +229,10 @@ impl Cursor<'_> {
                     severity = Severity::Error,
                     code = "parse::dec_lit",
                     help = "LC3 supports 16 bits of space, from -32,768 to 32,767.",
-                    labels = vec![LabeledSpan::at(start - prefix..self.abs_pos(), "incorrect literal")],
+                    labels = vec![LabeledSpan::at(
+                        start - prefix..self.abs_pos(),
+                        "incorrect literal"
+                    )],
                     "Encountered an invalid decimal literal: {e}",
                 )
             }
@@ -239,7 +245,9 @@ impl Cursor<'_> {
         let start = self.abs_pos() - 1;
         let mut terminated = false;
         while let Some(c) = self.bump() {
-            if c == '\n' {break};
+            if c == '\n' {
+                break;
+            };
             if c == '"' {
                 terminated = true;
                 break;
@@ -284,11 +292,13 @@ impl Cursor<'_> {
         let mut token_kind = TokenKind::Label;
         let ident_start = self.abs_pos() - 1;
         self.take_while(is_id);
-        let ident = self.get_range(ident_start..self.abs_pos()).to_ascii_lowercase();
+        let ident = self
+            .get_range(ident_start..self.abs_pos())
+            .to_ascii_lowercase();
 
         token_kind = self.check_instruction(&ident);
         // If not an instruction, check if it's a trap
-        if token_kind == TokenKind::Label { 
+        if token_kind == TokenKind::Label {
             token_kind = self.check_trap(&ident);
         }
 
@@ -311,28 +321,29 @@ impl Cursor<'_> {
     // Should learn how to write macros tbh :)
     /// Expects lowercase
     fn check_instruction(&self, ident: &str) -> TokenKind {
+        use TokenKind::Instr;
         match ident {
-            "add" => TokenKind::Instr(InstrKind::Add),
-            "and" => TokenKind::Instr(InstrKind::And),
-            "brnzp" => TokenKind::Instr(InstrKind::Br(Flag::Nzp)),
-            "brnz" => TokenKind::Instr(InstrKind::Br(Flag::Nz)),
-            "brzp" => TokenKind::Instr(InstrKind::Br(Flag::Zp)),
-            "brnp" => TokenKind::Instr(InstrKind::Br(Flag::Np)),
-            "brn" => TokenKind::Instr(InstrKind::Br(Flag::N)),
-            "brz" => TokenKind::Instr(InstrKind::Br(Flag::Z)),
-            "brp" => TokenKind::Instr(InstrKind::Br(Flag::P)),
-            "jmp" => TokenKind::Instr(InstrKind::Jmp),
-            "jsr" => TokenKind::Instr(InstrKind::Jsr),
-            "jsrr" => TokenKind::Instr(InstrKind::Jsrr),
-            "ld" => TokenKind::Instr(InstrKind::Ld),
-            "ldi" => TokenKind::Instr(InstrKind::Ldi),
-            "ldr" => TokenKind::Instr(InstrKind::Ldr),
-            "lea" => TokenKind::Instr(InstrKind::Lea),
-            "not" => TokenKind::Instr(InstrKind::Not),
-            "ret" => TokenKind::Instr(InstrKind::Ret),
-            "rti" => TokenKind::Instr(InstrKind::Rti),
-            "st" => TokenKind::Instr(InstrKind::St),
-            "sti" => TokenKind::Instr(InstrKind::Sti),
+            "add" => Instr(InstrKind::Add),
+            "and" => Instr(InstrKind::And),
+            "brnzp" => Instr(InstrKind::Br(Flag::Nzp)),
+            "brnz" => Instr(InstrKind::Br(Flag::Nz)),
+            "brzp" => Instr(InstrKind::Br(Flag::Zp)),
+            "brnp" => Instr(InstrKind::Br(Flag::Np)),
+            "brn" => Instr(InstrKind::Br(Flag::N)),
+            "brz" => Instr(InstrKind::Br(Flag::Z)),
+            "brp" => Instr(InstrKind::Br(Flag::P)),
+            "jmp" => Instr(InstrKind::Jmp),
+            "jsr" => Instr(InstrKind::Jsr),
+            "jsrr" => Instr(InstrKind::Jsrr),
+            "ld" => Instr(InstrKind::Ld),
+            "ldi" => Instr(InstrKind::Ldi),
+            "ldr" => Instr(InstrKind::Ldr),
+            "lea" => Instr(InstrKind::Lea),
+            "not" => Instr(InstrKind::Not),
+            "ret" => Instr(InstrKind::Ret),
+            "rti" => Instr(InstrKind::Rti),
+            "st" => Instr(InstrKind::St),
+            "sti" => Instr(InstrKind::Sti),
             // Not an instruction
             _ => TokenKind::Label,
         }
@@ -395,14 +406,14 @@ mod tests {
     }
 
     #[test]
-    fn dec_negative_value () {
+    fn dec_negative_value() {
         let mut lex = Cursor::new("#-300");
         let res = lex.advance_token().unwrap();
         assert!(res.kind == TokenKind::Lit(LiteralKind::Dec(-300)))
     }
 
     #[test]
-    fn dec_too_small () {
+    fn dec_too_small() {
         let mut lex = Cursor::new("#-32768 #-32769");
         let res = lex.advance_token().unwrap();
         assert!(res.kind == TokenKind::Lit(LiteralKind::Dec(-32768)));
@@ -412,7 +423,7 @@ mod tests {
     }
 
     #[test]
-    fn dec_too_large () {
+    fn dec_too_large() {
         let mut lex = Cursor::new("#32767 #32768");
         let res = lex.advance_token().unwrap();
         assert!(res.kind == TokenKind::Lit(LiteralKind::Dec(32767)));

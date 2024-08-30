@@ -1,8 +1,14 @@
-use std::{cell::RefCell, ops::{Bound, Range, RangeBounds}, slice::SliceIndex, str::FromStr, usize};
+use std::{
+    cell::RefCell,
+    ops::{Bound, Range, RangeBounds},
+    slice::SliceIndex,
+    str::FromStr,
+    usize,
+};
 
 use fxhash::FxBuildHasher;
 use indexmap::IndexMap;
-use miette::{SourceSpan, Result};
+use miette::{bail, miette, Result, Severity, SourceSpan};
 
 // Symbol table of symbol -> memory address (line number)
 type FxMap<K, V> = IndexMap<K, V, FxBuildHasher>;
@@ -25,18 +31,38 @@ pub struct Label(Option<u16>);
 
 impl Label {
     /// Called on prefix labels. Errors on duplicates.
-    pub fn insert(label: &str) -> Result<Self> {
+    pub fn insert(label: &str, line: u16) -> Result<Self> {
         with_symbol_table(|sym| {
-            // Try get existing index, Err if exists and insert if not.
-            todo!()
+            // Some is returned if the label already exists
+            if let Some(_) = sym.insert(label.to_string(), line) {
+                Err(miette!("Label exists"))
+            } else {
+                Ok(Label { 0: Some(line) })
+            }
         })
     }
 
     /// Used on non-prefix labels to give them a discrete line number reference
-    pub fn try_fill(label: &str) -> Result<Self> {
+    pub fn try_fill(label: &str) -> Option<Self> {
+        with_symbol_table(|sym| {
+            // Fill with existing label value
+            if let Some(val) = sym.get(label) {
+                Some(Label { 0: Some(*val) })
+            } else {
+                None
+            }
+        })
+    }
+
+    /// Used when all prefix labels are guaranteed to exist in table
+    pub fn fill(label: &str) -> Result<Self> {
         with_symbol_table(|sym| {
             // Check if not None, Err otherwise
-            todo!()
+            if let Some(val) = sym.get(label) {
+                Ok(Label { 0: Some(*val) })
+            } else {
+                Err(miette!("Label not found"))
+            }
         })
     }
 
@@ -62,7 +88,10 @@ impl Span {
 
     /// Non-source span
     pub fn dummy() -> Self {
-        Span { offs: SrcOffset(0), len: 0 }
+        Span {
+            offs: SrcOffset(0),
+            len: 0,
+        }
     }
 
     /// Returns a range that can be used to index the source
@@ -86,10 +115,7 @@ impl Span {
 // Used for miette conversion
 impl From<Span> for SourceSpan {
     fn from(value: Span) -> Self {
-        SourceSpan::new(
-            value.offs().into(),
-            value.len(),
-        )
+        SourceSpan::new(value.offs().into(), value.len())
     }
 }
 

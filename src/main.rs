@@ -6,12 +6,12 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use colored::Colorize;
-use lexer::{tokenize};
+use lexer::tokenize;
 use lexer::TokenKind;
-use miette::{Result, IntoDiagnostic};
+use miette::{IntoDiagnostic, Result};
 
+mod air;
 mod lexer;
-mod ops;
 mod parser;
 mod runtime;
 mod symbol;

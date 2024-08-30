@@ -1,3 +1,5 @@
+use miette::{bail, LabeledSpan, Result, Severity};
+
 use crate::{
     lexer::{Token, TokenKind},
     symbol::{Flag, Label, LineOffs, Register},
@@ -18,6 +20,19 @@ impl Air {
             ast: Vec::new(),
         }
     }
+
+    pub fn set_orig(&mut self, val: u16) -> Result<()> {
+        if let Some(_) = self.orig {
+            bail!("Origin set twice.")
+        } else {
+            self.orig = Some(val);
+            Ok(())
+        }
+    }
+
+    pub fn add_stmt(&mut self, stmt: AirStmt) {
+        self.ast.push(stmt)
+    }
 }
 
 /// Single LC3 statement. Has optional labels.
@@ -37,65 +52,65 @@ pub enum AirStmt {
         src_r_2: ImmediateOrReg,
     },
     /// Branch based on flag by adding ByteOffs to PC (program counter)
-    BR {
+    Branch {
         label: Option<Label>,
         cc: Flag,
         pc_offset9: LineOffs,
     },
     /// Set PC to BR to perform a jump on the next cycle
-    JMP {
+    Jump {
         label: Option<Label>,
         base_r: Register,
     },
     /// Store current instruction at R7 and jump to provided label
-    JSR {
+    JumbSub {
         label: Option<Label>,
         pc_offset11: u16,
     },
     /// Jump to subroutine stored at BR
-    JSRR {
+    JumpSubR {
         label: Option<Label>,
         base_r: Register,
     },
     /// Load value directly from a memory address into DR
-    LD {
+    Load {
         label: Option<Label>,
         dest_r: Register,
         pc_offset9: u16,
     },
-    LDI {
+    LoadInd {
         label: Option<Label>,
         dest_r: Register,
         pc_offset9: u16,
     },
-    LDR {
+    LoadR {
         label: Option<Label>,
         dest_r: Register,
         base_r: Register,
         pc_offset6: u16,
     },
-    LEA {
+    LoadAddr {
         label: Option<Label>,
         dest_r: Register,
         pc_offset9: u16,
     },
-    NOT {
+    Not {
         label: Option<Label>,
         dest_r: Register,
         src_r: Register,
     },
-    RET {
+    Return {
         label: Option<Label>,
     },
-    RTI {
+    Interrupt {
         label: Option<Label>,
     },
-    ST {
+    Store {
         label: Option<Label>,
         src_r: Register,
         pc_offset9: u16,
     },
-    STI {
+    StoreInd {
         label: Option<Label>,
         src_r: Register,
         pc_offset9: u16,
@@ -103,12 +118,12 @@ pub enum AirStmt {
     RawBytes {
         // Label is not optional for bytes as a sanity check.
         label: Label,
-        bytes: Vec<TokenKind>
+        bytes: Vec<TokenKind>,
     },
     Trap {
         label: Option<Label>,
         trap_val: u16,
-    }
+    },
 }
 
 // add and and commands support immediate value

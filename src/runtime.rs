@@ -1,5 +1,4 @@
 use crate::symbol::Flag;
-use std::collections::HashMap;
 
 /// LC3 can address 128KB of memory.
 const MEMORY_MAX: usize = 0x10000;
