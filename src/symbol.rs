@@ -26,8 +26,11 @@ where
 }
 
 /// Line number of referenced label
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
-pub struct Label(Option<u16>);
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum Label {
+    Filled(u16),
+    Unfilled(String),
+}
 
 impl Label {
     /// Called on prefix labels. Errors on duplicates.
@@ -37,7 +40,7 @@ impl Label {
             if let Some(_) = sym.insert(label.to_string(), line) {
                 Err(miette!("Label exists"))
             } else {
-                Ok(Label { 0: Some(line) })
+                Ok(Label::Filled(line))
             }
         })
     }
@@ -47,43 +50,43 @@ impl Label {
         with_symbol_table(|sym| {
             // Fill with existing label value
             if let Some(val) = sym.get(label) {
-                Label { 0: Some(*val) }
+                Label::Filled(*val)
             } else {
-                Label { 0: None }
+                Label::Unfilled(label.to_string())
             }
         })
     }
 
     /// Used when all prefix labels are guaranteed to exist in table
-    pub fn fill(label: &str) -> Result<Self> {
+    pub fn filled(self) -> Result<Self> {
         with_symbol_table(|sym| {
-            // Check if not None, Err otherwise
-            if let Some(val) = sym.get(label) {
-                Ok(Label { 0: Some(*val) })
-            } else {
-                Err(miette!("Label not found"))
+            match &self {
+                Self::Unfilled(label) => {
+                    if let Some(line) = sym.get(label.as_str()) {
+                        Ok(Self::Filled(*line))
+                    } else { 
+                        Err(miette!("Label not found")) 
+                    }
+                },
+                Self::Filled(_) => Ok(self),
             }
         })
     }
 
     /// For comparison in tests
-    pub fn empty() -> Self {
-        Label {
-            0: None,
-        }
+    pub fn empty(val: &str) -> Self {
+        Label::Unfilled(val.to_string())
     }
 
     /// Function for testing purposes only
     pub fn dummy(val: u16) -> Self {
-        Label {
-            0: Some(val),
-        }
+        Label::Filled(val)
     }
 
     pub fn is_unfilled(&self) -> bool {
-        match self.0 {
-            Some(_) => false,
-            None => true,
+        match self {
+            Label::Unfilled(_) => false,
+            Label::Filled(_) => true,
         }
     }
 }
