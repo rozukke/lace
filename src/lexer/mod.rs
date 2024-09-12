@@ -115,6 +115,17 @@ pub(crate) fn is_id(c: char) -> bool {
 }
 
 impl Cursor<'_> {
+    // TODO: ugly
+    pub fn advance_real(&mut self) -> Result<Token> {
+        match self.advance_token() {
+            Ok(tok) if tok.kind == TokenKind::Whitespace => {
+                self.advance_token()
+            },
+            Ok(tok) => Ok(tok),
+            Err(err) => Err(err),
+        }
+    }
+
     pub fn advance_token(&mut self) -> Result<Token> {
         let start_pos = self.abs_pos();
         let first_char = match self.bump() {
@@ -146,7 +157,11 @@ impl Cursor<'_> {
                 c if is_reg_num(c) => {
                     self.take_while(is_reg_num);
                     // Registers are 2 tokens long and followed by whitespace/comma
-                    if self.pos_in_token() == 2 && is_whitespace(self.first()) {
+                    if self.pos_in_token() == 2 && match self.first() {
+                        c if is_whitespace(c) => true,
+                        '\0' => true,
+                        _ => false,
+                    } {
                         // Unwrap is safe as c is always valid.
                         TokenKind::Reg(Register::from_str(&c.to_string()).unwrap())
                     } else {
@@ -325,6 +340,7 @@ impl Cursor<'_> {
         match ident {
             "add" => Instr(InstrKind::Add),
             "and" => Instr(InstrKind::And),
+            "br" => Instr(InstrKind::Br(Flag::Nzp)),
             "brnzp" => Instr(InstrKind::Br(Flag::Nzp)),
             "brnz" => Instr(InstrKind::Br(Flag::Nz)),
             "brzp" => Instr(InstrKind::Br(Flag::Zp)),
@@ -366,7 +382,7 @@ impl Cursor<'_> {
 }
 
 mod tests {
-    use crate::lexer::{LiteralKind, TokenKind};
+    use crate::{lexer::{self, LiteralKind, TokenKind}, symbol::Register};
 
     use super::cursor::Cursor;
 
@@ -444,5 +460,36 @@ mod tests {
     fn str_escaped() {
         let mut lex = Cursor::new(r#"there is an escaped \" in this str\n"#);
         assert!(lex.advance_token().is_ok())
+    }
+
+    // Regression
+    #[test]
+    fn registers() {
+        let mut lex = Cursor::new("r0 r1 r7 R0 R1 R7");
+        assert_eq!(lex.advance_token().unwrap().kind, TokenKind::Reg(Register::R0));
+        lex.advance_token();
+        assert_eq!(lex.advance_token().unwrap().kind, TokenKind::Reg(Register::R1));
+        lex.advance_token();
+        assert_eq!(lex.advance_token().unwrap().kind, TokenKind::Reg(Register::R7));
+        lex.advance_token();
+        assert_eq!(lex.advance_token().unwrap().kind, TokenKind::Reg(Register::R0));
+        lex.advance_token();
+        assert_eq!(lex.advance_token().unwrap().kind, TokenKind::Reg(Register::R1));
+        lex.advance_token();
+        assert_eq!(lex.advance_token().unwrap().kind, TokenKind::Reg(Register::R7));
+    }
+
+    #[test]
+    fn empty_line() {
+        let mut lex = Cursor::new(r#"
+        r0
+
+        r1
+        "#);
+        assert_eq!(lex.advance_token().unwrap().kind, TokenKind::Whitespace);
+        assert_eq!(lex.advance_token().unwrap().kind, TokenKind::Reg(Register::R0));
+        assert_eq!(lex.advance_token().unwrap().kind, TokenKind::Whitespace);
+        assert_eq!(lex.advance_token().unwrap().kind, TokenKind::Reg(Register::R1));
+        assert_eq!(lex.advance_token().unwrap().kind, TokenKind::Whitespace);
     }
 }

@@ -43,13 +43,13 @@ impl Label {
     }
 
     /// Used on non-prefix labels to give them a discrete line number reference
-    pub fn try_fill(label: &str) -> Option<Self> {
+    pub fn try_fill(label: &str) -> Self {
         with_symbol_table(|sym| {
             // Fill with existing label value
             if let Some(val) = sym.get(label) {
-                Some(Label { 0: Some(*val) })
+                Label { 0: Some(*val) }
             } else {
-                None
+                Label { 0: None }
             }
         })
     }
@@ -64,6 +64,20 @@ impl Label {
                 Err(miette!("Label not found"))
             }
         })
+    }
+
+    /// For comparison in tests
+    pub fn empty() -> Self {
+        Label {
+            0: None,
+        }
+    }
+
+    /// Function for testing purposes only
+    pub fn dummy(val: u16) -> Self {
+        Label {
+            0: Some(val),
+        }
     }
 
     pub fn is_unfilled(&self) -> bool {
