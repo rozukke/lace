@@ -522,6 +522,8 @@ impl<'a> AsmParser<'a> {
             _ => unreachable!(),
         }
     }
+
+
 }
 
 // Convenient way to pass around bit limits
@@ -541,7 +543,9 @@ impl Display for Bits {
 }
 
 mod tests {
-    use crate::{air::{AirStmt, ImmediateOrReg}, lexer::{Token, TokenKind}, symbol::{Flag, Label, Register}};
+    use std::u16;
+
+    use crate::{air::{AirStmt, ImmediateOrReg, RawWord}, lexer::{Token, TokenKind}, symbol::{Flag, Label, Register}};
 
     use super::{preprocess, AsmParser};
 
@@ -709,7 +713,49 @@ mod tests {
         let air = AsmParser::new("br label").unwrap().parse().unwrap();
         assert_eq!(
             air.get(0),
-            &AirStmt::Branch { label: None, flag: Flag::Nzp, dest_label: Label::empty() }
+            &AirStmt::Branch {
+                label: None,
+                flag: Flag::Nzp,
+                dest_label: Label::empty("label")
+            }
+        )
+    }
+
+    #[test]
+    fn parse_fill() {
+        let air = AsmParser::new("label .fill x30").unwrap().parse().unwrap();
+        assert_eq!(
+            air.get(0),
+            &AirStmt::RawWord { 
+                label: Some(Label::Filled(1)),
+                bytes: RawWord(0x30)
+            }
+        )
+    }
+
+    #[test]
+    fn parse_stringz() {
+        let air = AsmParser::new("label .stringz \"ab\"").unwrap().parse().unwrap();
+        assert_eq!(
+            air.get(0),
+            &AirStmt::RawWord {
+                label: Some(Label::Filled(1)),
+                bytes: RawWord('a' as u16)
+            }
+        );
+        assert_eq!(
+            air.get(1),
+            &AirStmt::RawWord {
+                label: None,
+                bytes: RawWord('b' as u16)
+            }
+        );
+        assert_eq!(
+            air.get(2),
+            &AirStmt::RawWord {
+                label: None,
+                bytes: RawWord('\0' as u16)
+            }
         )
     }
 
@@ -731,11 +777,19 @@ mod tests {
         );
         assert_eq!(
             air.get(1),
-            &AirStmt::Branch { label: None, flag: Flag::Nzp, dest_label: Label::dummy(1) }
+            &AirStmt::Branch {
+                label: None,
+                flag: Flag::Nzp,
+                dest_label: Label::dummy(1)
+            }
         );
         assert_eq!(
             air.get(2),
-            &AirStmt::Branch { label: None, flag: Flag::Nzp, dest_label: Label::empty() }
+            &AirStmt::Branch {
+                label: None,
+                flag: Flag::Nzp,
+                dest_label: Label::empty("not_existing")
+            }
         );
     }
 }

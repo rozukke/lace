@@ -1,3 +1,5 @@
+use std::mem::{replace, swap};
+
 use miette::{bail, LabeledSpan, Result, Severity};
 
 use crate::{
@@ -35,13 +37,6 @@ impl Air {
         self.ast.push(stmt)
     }
 
-    pub fn backpatch(&mut self) {
-        // Use labels filled during parsing to resolve unfilled labels
-        for stmt in &self.ast {
-            todo!()
-        }
-    }
-
     pub fn get(&self, idx: usize) -> &AirStmt {
         &self.ast[idx]
     }
@@ -49,6 +44,25 @@ impl Air {
     pub fn len(&self) -> usize {
         self.ast.len()
     }
+
+    // TODO: This is pretty bad but the semantics are hard
+    /// Use labels filled during parsing to resolve unfilled labels
+    pub fn backpatch(&mut self) -> Result<()> {
+        for stmt in self.ast.iter_mut() {
+            match stmt {
+                AirStmt::Branch { ref mut dest_label, .. } => replace::<Label>(dest_label, dest_label.clone().filled()?),
+                AirStmt::JumbSub { ref mut dest_label, .. } => replace::<Label>(dest_label, dest_label.clone().filled()?),
+                AirStmt::Load { ref mut src_label, .. } => replace::<Label>(src_label, src_label.clone().filled()?),
+                AirStmt::LoadInd { ref mut src_label, .. } => replace::<Label>(src_label, src_label.clone().filled()?),
+                AirStmt::LoadEAddr { ref mut src_label, .. } => replace::<Label>(src_label, src_label.clone().filled()?),
+                AirStmt::Store { ref mut dest_label, .. } => replace::<Label>(dest_label, dest_label.clone().filled()?),
+                AirStmt::StoreInd { ref mut dest_label, .. } => replace::<Label>(dest_label, dest_label.clone().filled()?),
+                _ => continue
+            };
+        }
+        Ok(())
+    }
+
 }
 
 /// Single LC3 statement. Has optional labels.
@@ -153,3 +167,32 @@ pub(crate) enum ImmediateOrReg {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct RawWord(pub u16);
+
+mod tests {
+    use crate::{air::AirStmt, parser::AsmParser, symbol::Flag};
+    use super::*;
+
+    #[test]
+    fn backpatch() {
+        let mut air = AsmParser::new(r#"
+        br label
+        label jmp r0
+        "#).unwrap().parse().unwrap();
+        air.backpatch().unwrap();
+        assert_eq!(air.len(), 2);
+
+        assert_eq!(
+            air.get(0),
+            &AirStmt::Branch {
+                label: None,
+                flag: Flag::Nzp,
+                dest_label: Label::Filled(2)
+            }
+        );
+    }
+
+    fn backpatch_missing() {
+        let mut air = AsmParser::new("br label").unwrap().parse().unwrap();
+        assert!(air.backpatch().is_err());
+    }
+}
