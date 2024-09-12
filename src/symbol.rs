@@ -1,8 +1,14 @@
-use std::{cell::RefCell, ops::{Bound, Range, RangeBounds}, slice::SliceIndex, str::FromStr, usize};
+use std::{
+    cell::RefCell,
+    ops::{Bound, Range, RangeBounds},
+    slice::SliceIndex,
+    str::FromStr,
+    usize,
+};
 
 use fxhash::FxBuildHasher;
 use indexmap::IndexMap;
-use miette::SourceSpan;
+use miette::{bail, miette, Result, Severity, SourceSpan};
 
 // Symbol table of symbol -> memory address (line number)
 type FxMap<K, V> = IndexMap<K, V, FxBuildHasher>;
@@ -11,6 +17,7 @@ thread_local! {
     pub static SYMBOL_TABLE: RefCell<FxMap<String, u16>> = RefCell::new(IndexMap::with_hasher(FxBuildHasher::default()));
 }
 
+/// Access to symbol table via closure
 pub fn with_symbol_table<R, F>(f: F) -> R
 where
     F: FnOnce(&mut FxMap<String, u16>) -> R,
@@ -18,35 +25,92 @@ where
     SYMBOL_TABLE.with_borrow_mut(f)
 }
 
-/// Reference to symbol table index
+/// Line number of referenced label
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
-pub struct Symbol(usize);
+pub struct Label(Option<u16>);
 
-impl From<usize> for Symbol {
-    fn from(value: usize) -> Self {
-        Symbol { 0: value }
+impl Label {
+    /// Called on prefix labels. Errors on duplicates.
+    pub fn insert(label: &str, line: u16) -> Result<Self> {
+        with_symbol_table(|sym| {
+            // Some is returned if the label already exists
+            if let Some(_) = sym.insert(label.to_string(), line) {
+                Err(miette!("Label exists"))
+            } else {
+                Ok(Label { 0: Some(line) })
+            }
+        })
+    }
+
+    /// Used on non-prefix labels to give them a discrete line number reference
+    pub fn try_fill(label: &str) -> Self {
+        with_symbol_table(|sym| {
+            // Fill with existing label value
+            if let Some(val) = sym.get(label) {
+                Label { 0: Some(*val) }
+            } else {
+                Label { 0: None }
+            }
+        })
+    }
+
+    /// Used when all prefix labels are guaranteed to exist in table
+    pub fn fill(label: &str) -> Result<Self> {
+        with_symbol_table(|sym| {
+            // Check if not None, Err otherwise
+            if let Some(val) = sym.get(label) {
+                Ok(Label { 0: Some(*val) })
+            } else {
+                Err(miette!("Label not found"))
+            }
+        })
+    }
+
+    /// For comparison in tests
+    pub fn empty() -> Self {
+        Label {
+            0: None,
+        }
+    }
+
+    /// Function for testing purposes only
+    pub fn dummy(val: u16) -> Self {
+        Label {
+            0: Some(val),
+        }
+    }
+
+    pub fn is_unfilled(&self) -> bool {
+        match self.0 {
+            Some(_) => false,
+            None => true,
+        }
     }
 }
 
-/// Location within source
+/// Location within source str
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Span {
     offs: SrcOffset,
-    end: SrcOffset,
     len: usize,
 }
 
 impl Span {
     pub fn new(offs: SrcOffset, len: usize) -> Self {
-        Span { offs, len, end: SrcOffset(offs.0 + len) }
+        Span { offs, len }
     }
 
+    /// Non-source span
     pub fn dummy() -> Self {
-        Span { offs: SrcOffset(0), len: 0, end: SrcOffset(0) }
+        Span {
+            offs: SrcOffset(0),
+            len: 0,
+        }
     }
 
-    pub fn range(&self) -> Range<usize> {
-        self.offs.0..self.end.0
+    /// Returns a range that can be used to index the source
+    pub fn as_range(&self) -> Range<usize> {
+        self.offs()..self.end()
     }
 
     pub fn len(&self) -> usize {
@@ -56,31 +120,23 @@ impl Span {
     pub fn offs(&self) -> usize {
         self.offs.0
     }
+
+    pub fn end(&self) -> usize {
+        self.offs.0 + self.len
+    }
 }
 
+// Used for miette conversion
 impl From<Span> for SourceSpan {
     fn from(value: Span) -> Self {
-        SourceSpan::new(
-            value.offs().into(),
-            value.len(),
-        )
+        SourceSpan::new(value.offs().into(), value.len())
     }
 }
+
 impl From<Span> for Range<usize> {
     fn from(value: Span) -> Self {
-        value.offs()..value.offs() + value.len()
+        value.offs()..value.end()
     }
-}
-
-impl RangeBounds<usize> for Span {
-    fn start_bound(&self) -> Bound<&usize> {
-        Bound::Included(&self.offs.0)
-    }
-
-    fn end_bound(&self) -> Bound<&usize> {
-        Bound::Excluded(&self.end.0)
-    }
-
 }
 
 /// Represents the CPU registers.
@@ -174,18 +230,9 @@ pub enum DirKind {
     Fill,
 }
 
-/// Newtype representing an address inside the LC3 memory.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
-pub struct Addr(u16);
-
 /// Newtype representing an offset from a particular address.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct LineOffs(u16);
-
-/// Label used to refer to specific memory addresses
-/// TODO: optimize later
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct Label(String);
 
 /// Used to refer to offsets from the start of a source file.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
