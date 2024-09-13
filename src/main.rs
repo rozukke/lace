@@ -71,14 +71,16 @@ fn main() -> miette::Result<()> {
                 air.backpatch()?;
                 // Write to file
                 let mut file = File::create(dest.unwrap_or(
-                    format!("{}.obj", name.file_stem().unwrap().to_str().unwrap()).into(),
+                    format!("{}.lc3", name.file_stem().unwrap().to_str().unwrap()).into(),
                 ))
                 .unwrap();
+                // Deal with .orig
                 if let Some(orig) = air.orig() {
                     file.write(&orig.to_be_bytes());
                 } else {
                     file.write(&0x3000u16.to_be_bytes());
                 }
+                // Write lines
                 for i in 0..air.len() {
                     file.write(&air.get(i).emit()?.to_be_bytes());
                 }
