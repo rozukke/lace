@@ -1,3 +1,4 @@
+#![allow(unused)]
 use crate::symbol::Flag;
 
 /// LC3 can address 128KB of memory.

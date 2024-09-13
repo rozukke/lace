@@ -1,14 +1,8 @@
-use std::{
-    cell::RefCell,
-    ops::{Bound, Range, RangeBounds},
-    slice::SliceIndex,
-    str::FromStr,
-    usize,
-};
+use std::{cell::RefCell, ops::Range, str::FromStr};
 
 use fxhash::FxBuildHasher;
 use indexmap::IndexMap;
-use miette::{bail, miette, Result, Severity, SourceSpan};
+use miette::{miette, Result, SourceSpan};
 
 // Symbol table of symbol -> memory address (line number)
 type FxMap<K, V> = IndexMap<K, V, FxBuildHasher>;
@@ -59,17 +53,15 @@ impl Label {
 
     /// Used when all prefix labels are guaranteed to exist in table
     pub fn filled(self) -> Result<Self> {
-        with_symbol_table(|sym| {
-            match &self {
-                Self::Unfilled(label) => {
-                    if let Some(line) = sym.get(label.as_str()) {
-                        Ok(Self::Ref(*line))
-                    } else { 
-                        Err(miette!("Label not found")) 
-                    }
-                },
-                Self::Ref(_) => Ok(self),
+        with_symbol_table(|sym| match &self {
+            Self::Unfilled(label) => {
+                if let Some(line) = sym.get(label.as_str()) {
+                    Ok(Self::Ref(*line))
+                } else {
+                    Err(miette!("Label not found"))
+                }
             }
+            Self::Ref(_) => Ok(self),
         })
     }
 
@@ -193,6 +185,20 @@ pub enum Flag {
     Np,
     /// Unconditional
     Nzp,
+}
+
+impl Flag {
+    pub fn bits(&self) -> u16 {
+        match self {
+            Flag::N => 0b100,
+            Flag::Z => 0b010,
+            Flag::P => 0b001,
+            Flag::Nz => 0b110,
+            Flag::Zp => 0b011,
+            Flag::Np => 0b101,
+            Flag::Nzp => 0b111,
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
