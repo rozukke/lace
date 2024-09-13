@@ -28,19 +28,19 @@ where
 /// Line number of referenced label
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Label {
-    Filled(u16),
+    Ref(u16),
     Unfilled(String),
 }
 
 impl Label {
     /// Called on prefix labels. Errors on duplicates.
-    pub fn insert(label: &str, line: u16) -> Result<Self> {
+    pub fn insert(label: &str, line: u16) -> Result<()> {
         with_symbol_table(|sym| {
             // Some is returned if the label already exists
             if let Some(_) = sym.insert(label.to_string(), line) {
                 Err(miette!("Label exists"))
             } else {
-                Ok(Label::Filled(line))
+                Ok(())
             }
         })
     }
@@ -50,7 +50,7 @@ impl Label {
         with_symbol_table(|sym| {
             // Fill with existing label value
             if let Some(val) = sym.get(label) {
-                Label::Filled(*val)
+                Label::Ref(*val)
             } else {
                 Label::Unfilled(label.to_string())
             }
@@ -63,12 +63,12 @@ impl Label {
             match &self {
                 Self::Unfilled(label) => {
                     if let Some(line) = sym.get(label.as_str()) {
-                        Ok(Self::Filled(*line))
+                        Ok(Self::Ref(*line))
                     } else { 
                         Err(miette!("Label not found")) 
                     }
                 },
-                Self::Filled(_) => Ok(self),
+                Self::Ref(_) => Ok(self),
             }
         })
     }
@@ -80,13 +80,14 @@ impl Label {
 
     /// Function for testing purposes only
     pub fn dummy(val: u16) -> Self {
-        Label::Filled(val)
+        Label::Ref(val)
     }
 
+    /// Check if label is filled
     pub fn is_unfilled(&self) -> bool {
         match self {
             Label::Unfilled(_) => false,
-            Label::Filled(_) => true,
+            Label::Ref(_) => true,
         }
     }
 }
@@ -215,7 +216,7 @@ pub enum InstrKind {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum TrapKind {
-    Generic,
+    Trap,
     Halt,
     Putsp,
     In,

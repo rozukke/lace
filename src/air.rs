@@ -1,4 +1,4 @@
-use std::mem::{replace, swap};
+use std::{mem::{replace, swap}, u16};
 
 use miette::{bail, LabeledSpan, Result, Severity};
 
@@ -12,7 +12,7 @@ pub struct Air {
     /// Memory address to start program at
     orig: Option<u16>,
     /// AIR
-    ast: Vec<AirStmt>,
+    ast: Vec<AsmLine>,
 }
 
 impl Air {
@@ -34,10 +34,10 @@ impl Air {
     }
 
     pub fn add_stmt(&mut self, stmt: AirStmt) {
-        self.ast.push(stmt)
+        self.ast.push(AsmLine::new((self.ast.len() + 1) as u16, stmt))
     }
 
-    pub fn get(&self, idx: usize) -> &AirStmt {
+    pub fn get(&self, idx: usize) -> &AsmLine {
         &self.ast[idx]
     }
 
@@ -45,128 +45,136 @@ impl Air {
         self.ast.len()
     }
 
-    // TODO: This is pretty bad but the semantics are hard
-    /// Use labels filled during parsing to resolve unfilled labels
     pub fn backpatch(&mut self) -> Result<()> {
         for stmt in self.ast.iter_mut() {
-            match stmt {
-                AirStmt::Branch { ref mut dest_label, .. } => replace::<Label>(dest_label, dest_label.clone().filled()?),
-                AirStmt::JumbSub { ref mut dest_label, .. } => replace::<Label>(dest_label, dest_label.clone().filled()?),
-                AirStmt::Load { ref mut src_label, .. } => replace::<Label>(src_label, src_label.clone().filled()?),
-                AirStmt::LoadInd { ref mut src_label, .. } => replace::<Label>(src_label, src_label.clone().filled()?),
-                AirStmt::LoadEAddr { ref mut src_label, .. } => replace::<Label>(src_label, src_label.clone().filled()?),
-                AirStmt::Store { ref mut dest_label, .. } => replace::<Label>(dest_label, dest_label.clone().filled()?),
-                AirStmt::StoreInd { ref mut dest_label, .. } => replace::<Label>(dest_label, dest_label.clone().filled()?),
-                _ => continue
-            };
+            stmt.backpatch()?;
         }
         Ok(())
     }
-
 }
 
 /// Single LC3 statement. Has optional labels.
 #[derive(PartialEq, Eq, Debug)]
 pub enum AirStmt {
-    /// Add SR1 (source register 1) with SR2 and store in DR (destination register)
+    /// Add src_reg with src_reg_imm and store in dest
     Add {
-        label: Option<Label>,
         dest: Register,
         src_reg: Register,
         src_reg_imm: ImmediateOrReg,
     },
-    /// Bitwise-and SR1 with SR2 and store in DR
+    /// Bitwise-and src_reg with src_reg_imm and store in dest
     And {
-        label: Option<Label>,
         dest: Register,
         src_reg: Register,
         src_reg_imm: ImmediateOrReg,
     },
-    /// Branch based on flag by adding ByteOffs to PC (program counter)
+    /// Branch based on flag by jumping to dest_label
     Branch {
-        label: Option<Label>,
         flag: Flag,
         dest_label: Label,
     },
-    /// Set PC to BR to perform a jump on the next cycle
+    /// Jump to address stored in src_reg
     Jump {
-        label: Option<Label>,
         src_reg: Register,
     },
-    /// Store current instruction at R7 and jump to provided label
+    /// Store current instruction address in R7 and jump to dest_label
     JumbSub {
-        label: Option<Label>,
         dest_label: Label,
     },
-    /// Jump to subroutine stored at BR
+    /// Jump to subroutine address stored at src_reg
     JumpSubReg {
-        label: Option<Label>,
         src_reg: Register,
     },
-    /// Load value directly from a memory address into DR
+    /// Load value directly from src_label into dest
     Load {
-        label: Option<Label>,
         dest: Register,
         src_label: Label,
     },
+    /// Load to dest from src_label by dereferencing address stored there
     LoadInd {
-        label: Option<Label>,
         dest: Register,
         src_label: Label,
     },
+    /// Load value stored at address(src_reg + offset) to dest
     LoadOffs {
-        label: Option<Label>,
         dest: Register,
         src_reg: Register,
-        offset: u16,
+        offset: u8,
     },
+    /// Load address identified by src_label into dest
     LoadEAddr {
-        label: Option<Label>,
         dest: Register,
         src_label: Label,
     },
+    /// Bitwise-not value at src_reg and store in dest
     Not {
-        label: Option<Label>,
         dest: Register,
         src_reg: Register,
     },
-    Return {
-        label: Option<Label>,
-    },
-    Interrupt {
-        label: Option<Label>,
-    },
+    /// Jump to address stored in R7
+    Return,
+    /// Idk
+    Interrupt,
+    /// Store value in src_reg at address identified by dest_label
     Store {
-        label: Option<Label>,
         src_reg: Register,
         dest_label: Label,
     },
+    /// Store value in src_reg at address dereferenced from dest_label
     StoreInd {
-        label: Option<Label>,
         src_reg: Register,
         dest_label: Label,
     },
+    /// A raw value created during preprocessing
     RawWord {
-        // Label is optional as each byte is its own line, checking needs to be done during
-        // preprocessing.
-        label: Option<Label>,
         bytes: RawWord,
     },
+    /// Jump to address at index trap_vect of the trap table
     Trap {
-        label: Option<Label>,
         trap_vect: u8,
     },
 }
 
-// add and and commands support immediate value
+/// Used for ADD and AND commands as they support either 5-bit immediate values or registers as the
+/// last operand.
 #[derive(PartialEq, Eq, Debug)]
 pub(crate) enum ImmediateOrReg {
     Reg(Register),
     Imm5(u8),
 }
 
+/// Newtype to represent 16 bits (word size of LC3) as a raw value.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct RawWord(pub u16);
+
+/// A line (16 bits) of assembly.
+#[derive(PartialEq, Eq, Debug)]
+pub struct AsmLine {
+    pub line: u16,
+    pub stmt: AirStmt,
+}
+
+impl AsmLine {
+    pub fn new(line: u16, stmt: AirStmt) -> Self {
+        AsmLine { line, stmt }
+    }
+
+    /// Fill label references using values from symbol table
+    pub fn backpatch(&mut self) -> Result<()> {
+        let inner_label = match self.stmt {
+            AirStmt::Branch { ref mut dest_label, .. } => dest_label,
+            AirStmt::JumbSub { ref mut dest_label } => dest_label,
+            AirStmt::Load { ref mut src_label, .. } => src_label,
+            AirStmt::LoadInd { ref mut src_label, .. } => src_label,
+            AirStmt::LoadEAddr { ref mut src_label, .. } => src_label,
+            AirStmt::Store { ref mut dest_label, .. } => dest_label,
+            AirStmt::StoreInd { ref mut dest_label, .. } => dest_label,
+            _ => return Ok(()),
+        };
+        *inner_label = inner_label.clone().filled()?;
+        Ok(())
+    }
+}
 
 mod tests {
     use crate::{air::AirStmt, parser::AsmParser, symbol::Flag};
@@ -183,10 +191,12 @@ mod tests {
 
         assert_eq!(
             air.get(0),
-            &AirStmt::Branch {
-                label: None,
-                flag: Flag::Nzp,
-                dest_label: Label::Filled(2)
+            &AsmLine {
+                line: 1,
+                stmt: AirStmt::Branch {
+                    flag: Flag::Nzp,
+                    dest_label: Label::Ref(2)
+                }
             }
         );
     }

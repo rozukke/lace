@@ -374,7 +374,7 @@ impl Cursor<'_> {
             "in" => TokenKind::Trap(TrapKind::In),
             "putsp" => TokenKind::Trap(TrapKind::Putsp),
             "halt" => TokenKind::Trap(TrapKind::Halt),
-            "trap" => TokenKind::Trap(TrapKind::Generic),
+            "trap" => TokenKind::Trap(TrapKind::Trap),
             // Not a trap
             _ => TokenKind::Label,
         }

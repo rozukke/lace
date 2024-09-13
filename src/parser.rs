@@ -207,10 +207,12 @@ impl<'a> AsmParser<'a> {
     /// Create AIR out of token stream
     pub fn parse(mut self) -> Result<Air> {
         loop {
+            let mut labeled_line = false;
             // Add prefix label to symbol table if exists
-            let label_sym = if let Some(label) = self.optional_label() {
+            if let Some(label) = self.optional_label() {
+                labeled_line = true;
                 match Label::insert(self.get_span(label.span), self.line) {
-                    Ok(sym) => Some(sym),
+                    Ok(_) => (),
                     Err(_) => bail!(
                         severity = Severity::Error,
                         code = "parse::duplicate_label",
@@ -219,13 +221,11 @@ impl<'a> AsmParser<'a> {
                         "Duplicate prefix label"
                     ),
                 }
-            } else {
-                None
-            };
+            }
 
             // Parse line
             if let Some(tok) = self.toks.next() {
-                match tok.kind {
+                let stmt = match tok.kind {
                     // Lines should not start with these tokens
                     TokenKind::Label
                     | TokenKind::Lit(_)
@@ -245,25 +245,27 @@ impl<'a> AsmParser<'a> {
                         assert!(dir == DirKind::Orig);
                         todo!()
                     }
-                    TokenKind::Instr(instr_kind) => self.parse_instr(instr_kind, label_sym)?,
-                    TokenKind::Trap(trap_kind) => self.parse_trap(trap_kind, label_sym)?,
-                    TokenKind::Byte(val) => self.parse_byte(val, label_sym),
+                    TokenKind::Instr(instr_kind) => self.parse_instr(instr_kind)?,
+                    TokenKind::Trap(trap_kind) => self.parse_trap(trap_kind)?,
+                    TokenKind::Byte(val) => self.parse_byte(val),
                     // Does not exist in preprocessed token stream
                     TokenKind::Whitespace
                     | TokenKind::Comment
                     | TokenKind::Eof => unreachable!(),
-                }
+                };
+                self.air.add_stmt(stmt);
             } else {
-                if label_sym.is_none() {
+                if !labeled_line {
                     break;
                 }
                 bail!(
                     severity = Severity::Error,
                     code = "parse::unexpected_eof",
                     help = "Check the number of arguments for the last instruction.",
-                    "Unexpected end of file"
+                    "Unexpected end of file while parsing"
                 )
             }
+
             self.line += 1;
         }
         // Consume self to return AIR
@@ -280,143 +282,90 @@ impl<'a> AsmParser<'a> {
         }
     }
 
-    // TODO: Pretty ugly and lots of code duplication
-    /// Process several tokens to form valid instruction AIR
-    fn parse_instr(&mut self, kind: InstrKind, label: Option<Label>) -> Result<()> {
+    /// Process several tokens to form valid AIR statement
+    fn parse_instr(&mut self, kind: InstrKind) -> Result<AirStmt> {
         use crate::symbol::InstrKind;
-        let stmt = match kind {
-            // Ahhhhhhh... add and and are the same but idk what abstraction to make ;-;
+        match kind {
             InstrKind::Add => {
                 let dest = self.expect_reg()?;
                 let src_reg = self.expect_reg()?;
-                match self.toks.peek() {
-                    Some(tok) => match tok.kind {
-                        TokenKind::Reg(_) => {
-                            let reg = self.expect_reg()?;
-                            AirStmt::Add { label, dest, src_reg, src_reg_imm: ImmediateOrReg::Reg(reg) }
-                        },
-                        TokenKind::Lit(_) => {
-                            let val = self.expect_lit(Bits::Signed(5))?;
-                            AirStmt::Add { label, dest, src_reg, src_reg_imm: ImmediateOrReg::Imm5(val as u8) }
-                        },
-                        unexpected => bail!(
-                            severity = Severity::Error,
-                            code = "parse::unexpected_token",
-                            help = "check the type of operands allowed for this instruction.",
-                            labels = vec![LabeledSpan::at(tok.span, "unexpected token")],
-                            "Expected token of type register or numeric literal, found {}",
-                            unexpected
-                        )
-                    },
-                    None => bail!(
-                        severity = Severity::Error,
-                        code = "parse::unexpected_eof",
-                        help = "You may be missing some instrutions for your last statement.",
-                        "Unexpected end of file",
-                    )
-                }
+                let src_reg_imm = self.expect_lit_or_reg()?;
+                Ok(AirStmt::Add { dest, src_reg, src_reg_imm })
             },
             InstrKind::And => {
                 let dest = self.expect_reg()?;
                 let src_reg = self.expect_reg()?;
-                match self.toks.peek() {
-                    Some(tok) => match tok.kind {
-                        TokenKind::Reg(_) => {
-                            let reg = self.expect_reg()?;
-                            AirStmt::And { label, dest, src_reg, src_reg_imm: ImmediateOrReg::Reg(reg) }
-                        },
-                        TokenKind::Lit(_) => {
-                            let val = self.expect_lit(Bits::Signed(5))?;
-                            AirStmt::And { label, dest, src_reg, src_reg_imm: ImmediateOrReg::Imm5(val as u8) }
-                        },
-                        unexpected => bail!(
-                            severity = Severity::Error,
-                            code = "parse::unexpected_token",
-                            help = "check the type of operands allowed for this instruction.",
-                            labels = vec![LabeledSpan::at(tok.span, "unexpected token")],
-                            "Expected token of type register or numeric literal, found {}",
-                            unexpected
-                        )
-                    },
-                    None => bail!(
-                        severity = Severity::Error,
-                        code = "parse::unexpected_eof",
-                        help = "You may be missing some instrutions for your last statement.",
-                        "Unexpected end of file",
-                    )
-                }
+                let src_reg_imm = self.expect_lit_or_reg()?;
+                Ok(AirStmt::And { dest, src_reg, src_reg_imm })
             },
             InstrKind::Br(flag) => {
                 let label_tok = self.expect(TokenKind::Label)?;
                 let dest_label = Label::try_fill(self.get_span(label_tok.span));
-                AirStmt::Branch { label, flag, dest_label }
+                Ok(AirStmt::Branch { flag, dest_label })
             },
             InstrKind::Jmp => {
                 let src_reg = self.expect_reg()?;
-                AirStmt::Jump { label, src_reg }
+                Ok(AirStmt::Jump { src_reg })
             }
             InstrKind::Jsr => {
                 let label_tok = self.expect(TokenKind::Label)?;
                 let dest_label = Label::try_fill(self.get_span(label_tok.span));
-                AirStmt::JumbSub { label, dest_label }
+                Ok(AirStmt::JumbSub { dest_label })
             },
             InstrKind::Jsrr => {
                 let src_reg = self.expect_reg()?;
-                AirStmt::JumpSubReg { label, src_reg }
+                Ok(AirStmt::JumpSubReg { src_reg })
             },
             InstrKind::Ld => {
                 let dest = self.expect_reg()?;
                 let label_tok = self.expect(TokenKind::Label)?;
                 let src_label = Label::try_fill(self.get_span(label_tok.span));
-                AirStmt::Load { label, dest, src_label }
+                Ok(AirStmt::Load { dest, src_label })
             },
             InstrKind::Ldi => {
                 let dest = self.expect_reg()?;
                 let label_tok = self.expect(TokenKind::Label)?;
                 let src_label = Label::try_fill(self.get_span(label_tok.span));
-                AirStmt::LoadInd { label, dest, src_label }
+                Ok(AirStmt::LoadInd { dest, src_label })
             },
             InstrKind::Ldr => {
                 let dest = self.expect_reg()?;
                 let src_reg = self.expect_reg()?;
-                let offset = self.expect_lit(Bits::Signed(6))?;
-                AirStmt::LoadOffs { label, dest, src_reg, offset }
+                let offset = self.expect_lit(Bits::Signed(6))? as u8;
+                Ok(AirStmt::LoadOffs { dest, src_reg, offset })
             },
             InstrKind::Lea => {
                 let dest = self.expect_reg()?;
                 let label_tok = self.expect(TokenKind::Label)?;
                 let src_label = Label::try_fill(self.get_span(label_tok.span));
-                AirStmt::LoadEAddr { label, dest, src_label }
+                Ok(AirStmt::LoadEAddr { dest, src_label })
             },
             InstrKind::Not => {
                 let dest = self.expect_reg()?;
                 let src_reg = self.expect_reg()?;
-                AirStmt::Not { label, dest, src_reg }
+                Ok(AirStmt::Not { dest, src_reg })
             },
-            InstrKind::Ret => AirStmt::Return { label },
-            InstrKind::Rti => AirStmt::Interrupt { label },
+            InstrKind::Ret => Ok(AirStmt::Return),
+            InstrKind::Rti => Ok(AirStmt::Interrupt),
             InstrKind::St => {
                 let src_reg = self.expect_reg()?;
                 let label_tok = self.expect(TokenKind::Label)?;
                 let dest_label = Label::try_fill(self.get_span(label_tok.span));
-                AirStmt::Store { label, src_reg, dest_label }
+                Ok(AirStmt::Store { src_reg, dest_label })
             },
             InstrKind::Sti => {
                 let src_reg = self.expect_reg()?;
                 let label_tok = self.expect(TokenKind::Label)?;
                 let dest_label = Label::try_fill(self.get_span(label_tok.span));
-                AirStmt::StoreInd { label, src_reg, dest_label }
+                Ok(AirStmt::StoreInd { src_reg, dest_label })
             },
-        };
-
-        self.air.add_stmt(stmt);
-        Ok(())
+        }
     }
 
-    fn parse_trap(&mut self, kind: TrapKind, label: Option<Label>) -> Result<()> {
+    fn parse_trap(&mut self, kind: TrapKind) -> Result<AirStmt> {
         // Convert keyword trap to trap vector
         let trap_vect = match kind {
-            TrapKind::Generic => self.expect_lit(Bits::Unsigned(8))?,
+            TrapKind::Trap => self.expect_lit(Bits::Unsigned(8))?,
             TrapKind::Getc => 0x20,
             TrapKind::Out => 0x21,
             TrapKind::Puts => 0x22,
@@ -425,12 +374,11 @@ impl<'a> AsmParser<'a> {
             TrapKind::Halt => 0x25,
         } as u8;
 
-        self.air.add_stmt(AirStmt::Trap { label, trap_vect });
-        Ok(())
+        Ok(AirStmt::Trap { trap_vect })
     }
 
-    fn parse_byte(&mut self, val: u16, label: Option<Label>) {
-        self.air.add_stmt(AirStmt::RawWord { label, bytes: RawWord(val) })
+    fn parse_byte(&mut self, val: u16) -> AirStmt {
+        AirStmt::RawWord { bytes: RawWord(val) }
     }
 
     fn expect(&mut self, expected: TokenKind) -> Result<Token> {
@@ -523,6 +471,35 @@ impl<'a> AsmParser<'a> {
         }
     }
 
+    fn expect_lit_or_reg(&mut self) -> Result<ImmediateOrReg> {
+        match self.toks.peek() {
+            Some(tok) => match tok.kind {
+                TokenKind::Reg(_) => {
+                    let reg = self.expect_reg()?;
+                    Ok(ImmediateOrReg::Reg(reg))
+                },
+                TokenKind::Lit(_) => {
+                    let val = self.expect_lit(Bits::Signed(5))?;
+                    Ok(ImmediateOrReg::Imm5(val as u8))
+                },
+                unexpected => bail!(
+                    severity = Severity::Error,
+                    code = "parse::unexpected_token",
+                    help = "check the type of operands allowed for this instruction.",
+                    labels = vec![LabeledSpan::at(tok.span, "unexpected token")],
+                    "Expected token of type literal or register, found {}",
+                    unexpected
+                )
+            },
+            None => bail!(
+                severity = Severity::Error,
+                code = "parse::unexpected_eof",
+                help = "You may be missing some instrutions for your last statement.",
+                "Unexpected end of file",
+            )
+        }
+    }
+
 
 }
 
@@ -545,7 +522,7 @@ impl Display for Bits {
 mod tests {
     use std::u16;
 
-    use crate::{air::{AirStmt, ImmediateOrReg, RawWord}, lexer::{Token, TokenKind}, symbol::{Flag, Label, Register}};
+    use crate::{air::{AirStmt, AsmLine, ImmediateOrReg, RawWord}, lexer::{Token, TokenKind}, symbol::{Flag, Label, Register}};
 
     use super::{preprocess, AsmParser};
 
@@ -663,11 +640,13 @@ mod tests {
         let air = parser.parse().unwrap();
         assert_eq!(
             air.get(0),
-            &AirStmt::Add {
-                label: None,
-                dest: Register::R0,
-                src_reg: Register::R1,
-                src_reg_imm: ImmediateOrReg::Reg(Register::R2),
+            &AsmLine {
+                line: 1,
+                stmt: AirStmt::Add {
+                    dest: Register::R0,
+                    src_reg: Register::R1,
+                    src_reg_imm: ImmediateOrReg::Reg(Register::R2),
+                }
             }
         )
     }
@@ -682,20 +661,24 @@ mod tests {
         assert_eq!(air.len(), 2);
         assert_eq!(
             air.get(0),
-            &AirStmt::Add {
-                label: None,
-                dest: Register::R0,
-                src_reg: Register::R1,
-                src_reg_imm: ImmediateOrReg::Imm5(15),
+            &AsmLine {
+                line: 1,
+                stmt: AirStmt::Add {
+                    dest: Register::R0,
+                    src_reg: Register::R1,
+                    src_reg_imm: ImmediateOrReg::Imm5(15),
+                }
             }
         );
         assert_eq!(
             air.get(1),
-            &AirStmt::Add {
-                label: None,
-                dest: Register::R0,
-                src_reg: Register::R1,
-                src_reg_imm: ImmediateOrReg::Imm5((-16i8) as u8),
+            &AsmLine {
+                line: 2,
+                stmt: AirStmt::Add {
+                    dest: Register::R0,
+                    src_reg: Register::R1,
+                    src_reg_imm: ImmediateOrReg::Imm5((-16i8) as u8),
+                }
             }
         );
     }
@@ -713,10 +696,12 @@ mod tests {
         let air = AsmParser::new("br label").unwrap().parse().unwrap();
         assert_eq!(
             air.get(0),
-            &AirStmt::Branch {
-                label: None,
-                flag: Flag::Nzp,
-                dest_label: Label::empty("label")
+            &AsmLine {
+                line: 1,
+                stmt: AirStmt::Branch {
+                    flag: Flag::Nzp,
+                    dest_label: Label::empty("label")
+                }
             }
         )
     }
@@ -726,9 +711,11 @@ mod tests {
         let air = AsmParser::new("label .fill x30").unwrap().parse().unwrap();
         assert_eq!(
             air.get(0),
-            &AirStmt::RawWord { 
-                label: Some(Label::Filled(1)),
-                bytes: RawWord(0x30)
+            &AsmLine {
+                line: 1,
+                stmt: AirStmt::RawWord {
+                    bytes: RawWord(0x30)
+                }
             }
         )
     }
@@ -738,25 +725,31 @@ mod tests {
         let air = AsmParser::new("label .stringz \"ab\"").unwrap().parse().unwrap();
         assert_eq!(
             air.get(0),
-            &AirStmt::RawWord {
-                label: Some(Label::Filled(1)),
-                bytes: RawWord('a' as u16)
+            &AsmLine {
+                line: 1,
+                stmt: AirStmt::RawWord {
+                    bytes: RawWord('a' as u16)
+                }
             }
         );
         assert_eq!(
             air.get(1),
-            &AirStmt::RawWord {
-                label: None,
-                bytes: RawWord('b' as u16)
+            &AsmLine {
+                line: 2,
+                stmt: AirStmt::RawWord {
+                    bytes: RawWord('b' as u16)
+                }
             }
         );
         assert_eq!(
             air.get(2),
-            &AirStmt::RawWord {
-                label: None,
-                bytes: RawWord('\0' as u16)
+            &AsmLine {
+                line: 3,
+                stmt: AirStmt::RawWord {
+                    bytes: RawWord('\0' as u16)
+                }
             }
-        )
+        );
     }
 
     #[test]
@@ -768,27 +761,33 @@ mod tests {
         "#).unwrap().parse().unwrap();
         assert_eq!(
             air.get(0),
-            &AirStmt::Add { 
-                label: Some(Label::dummy(1)),
-                dest: Register::R0,
-                src_reg: Register::R0,
-                src_reg_imm: ImmediateOrReg::Reg(Register::R0)
+            &AsmLine {
+                line: 1,
+                stmt: AirStmt::Add { 
+                    dest: Register::R0,
+                    src_reg: Register::R0,
+                    src_reg_imm: ImmediateOrReg::Reg(Register::R0)
+                }
             }
         );
         assert_eq!(
             air.get(1),
-            &AirStmt::Branch {
-                label: None,
-                flag: Flag::Nzp,
-                dest_label: Label::dummy(1)
+            &AsmLine {
+                line: 2,
+                stmt: AirStmt::Branch {
+                    flag: Flag::Nzp,
+                    dest_label: Label::dummy(1)
+                }
             }
         );
         assert_eq!(
             air.get(2),
-            &AirStmt::Branch {
-                label: None,
-                flag: Flag::Nzp,
-                dest_label: Label::empty("not_existing")
+            &AsmLine {
+                line: 3,
+                stmt: AirStmt::Branch {
+                    flag: Flag::Nzp,
+                    dest_label: Label::empty("not_existing")
+                }
             }
         );
     }
