@@ -125,7 +125,7 @@ impl ImmediateOrReg {
         match self {
             Self::Reg(reg) => *reg as u16,
             // Bit to show that the value is not a register
-            Self::Imm5(val) => (*val as u16) | 0b100000,
+            Self::Imm5(val) => (*val as u16) & 0b11111 | 0b100000,
         }
     }
 }
@@ -416,5 +416,19 @@ mod test {
             },
         };
         assert!(asm.emit().is_err())
+    }
+
+    // Regression
+    #[test]
+    fn emit_neg_imm() {
+        let asm = AsmLine {
+            line: 1,
+            stmt: AirStmt::Add {
+                dest: Register::R4,
+                src_reg: Register::R4,
+                src_reg_imm: ImmediateOrReg::Imm5((-1i8) as u8),
+            },
+        };
+        assert_eq!(asm.emit().unwrap(), 0x193f);
     }
 }
