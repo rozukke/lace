@@ -25,10 +25,6 @@ impl<'a> Cursor<'a> {
         }
     }
 
-    pub fn as_str(&self) -> &'a str {
-        self.chars.as_str()
-    }
-
     /// Returns next character without consuming it.
     pub fn first(&self) -> char {
         self.chars.clone().next().unwrap_or(NULL_CHAR)
@@ -60,10 +56,6 @@ impl<'a> Cursor<'a> {
         while predicate(self.first()) && !self.is_eof() {
             self.bump();
         }
-    }
-
-    pub(crate) fn remaining(&self) -> usize {
-        self.chars.as_str().len()
     }
 
     pub(crate) fn abs_pos(&self) -> usize {

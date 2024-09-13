@@ -1,14 +1,8 @@
-use std::{
-    cell::RefCell,
-    ops::{Bound, Range, RangeBounds},
-    slice::SliceIndex,
-    str::FromStr,
-    usize,
-};
+use std::{cell::RefCell, ops::Range, str::FromStr};
 
 use fxhash::FxBuildHasher;
 use indexmap::IndexMap;
-use miette::{bail, miette, Result, Severity, SourceSpan};
+use miette::{miette, Result, SourceSpan};
 
 // Symbol table of symbol -> memory address (line number)
 type FxMap<K, V> = IndexMap<K, V, FxBuildHasher>;
@@ -28,19 +22,19 @@ where
 /// Line number of referenced label
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Label {
-    Filled(u16),
+    Ref(u16),
     Unfilled(String),
 }
 
 impl Label {
     /// Called on prefix labels. Errors on duplicates.
-    pub fn insert(label: &str, line: u16) -> Result<Self> {
+    pub fn insert(label: &str, line: u16) -> Result<()> {
         with_symbol_table(|sym| {
             // Some is returned if the label already exists
             if let Some(_) = sym.insert(label.to_string(), line) {
                 Err(miette!("Label exists"))
             } else {
-                Ok(Label::Filled(line))
+                Ok(())
             }
         })
     }
@@ -50,7 +44,7 @@ impl Label {
         with_symbol_table(|sym| {
             // Fill with existing label value
             if let Some(val) = sym.get(label) {
-                Label::Filled(*val)
+                Label::Ref(*val)
             } else {
                 Label::Unfilled(label.to_string())
             }
@@ -59,17 +53,15 @@ impl Label {
 
     /// Used when all prefix labels are guaranteed to exist in table
     pub fn filled(self) -> Result<Self> {
-        with_symbol_table(|sym| {
-            match &self {
-                Self::Unfilled(label) => {
-                    if let Some(line) = sym.get(label.as_str()) {
-                        Ok(Self::Filled(*line))
-                    } else { 
-                        Err(miette!("Label not found")) 
-                    }
-                },
-                Self::Filled(_) => Ok(self),
+        with_symbol_table(|sym| match &self {
+            Self::Unfilled(label) => {
+                if let Some(line) = sym.get(label.as_str()) {
+                    Ok(Self::Ref(*line))
+                } else {
+                    Err(miette!("Label not found"))
+                }
             }
+            Self::Ref(_) => Ok(self),
         })
     }
 
@@ -80,13 +72,14 @@ impl Label {
 
     /// Function for testing purposes only
     pub fn dummy(val: u16) -> Self {
-        Label::Filled(val)
+        Label::Ref(val)
     }
 
+    /// Check if label is filled
     pub fn is_unfilled(&self) -> bool {
         match self {
             Label::Unfilled(_) => false,
-            Label::Filled(_) => true,
+            Label::Ref(_) => true,
         }
     }
 }
@@ -194,6 +187,20 @@ pub enum Flag {
     Nzp,
 }
 
+impl Flag {
+    pub fn bits(&self) -> u16 {
+        match self {
+            Flag::N => 0b100,
+            Flag::Z => 0b010,
+            Flag::P => 0b001,
+            Flag::Nz => 0b110,
+            Flag::Zp => 0b011,
+            Flag::Np => 0b101,
+            Flag::Nzp => 0b111,
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum InstrKind {
     Add,
@@ -215,7 +222,7 @@ pub enum InstrKind {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum TrapKind {
-    Generic,
+    Trap,
     Halt,
     Putsp,
     In,

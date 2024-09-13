@@ -18,7 +18,7 @@
         pkgs = import nixpkgs {
           inherit system overlays;
         };
-        
+
         # Specify Rust version here
         _rustToolchain = (pkgs.rust-bin.stable.latest.default.override {
           extensions = ["rust-src" "cargo" "rustc"];
@@ -60,7 +60,7 @@
 
           RUST_SRC_PATH = "${_rustToolchain}/lib/rustlib/src/rust/library";
           CARGO_TERM_COLOR = "always";
-          RUST_BACKTRACE = "full";
+          # RUST_BACKTRACE = "full";
 
         };
       }

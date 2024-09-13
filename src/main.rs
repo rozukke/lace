@@ -1,20 +1,15 @@
 #![allow(unused)] // Remove later
 
-use std::fs;
+use std::fs::{self, File};
+use std::io::Write;
 use std::ops::RangeBounds;
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use colored::Colorize;
-use lexer::tokenize;
-use lexer::TokenKind;
 use miette::{IntoDiagnostic, Result};
 
-mod air;
-mod lexer;
-mod parser;
-mod runtime;
-mod symbol;
+use lace::AsmParser;
 
 /// Lace is a complete & convenient assembler toolchain for the LC3 assembly language.
 #[derive(Parser)]
@@ -43,7 +38,7 @@ enum Command {
         /// `.asm` file to compile
         name: PathBuf,
         /// Destination to output .lc3 file
-        dest: Option<String>,
+        dest: Option<PathBuf>,
     },
     /// Remove compilation artifacts for specified source
     Clean {
@@ -69,16 +64,25 @@ fn main() -> miette::Result<()> {
         match command {
             Command::Run { os, name } => todo!(),
             Command::Compile { name, dest } => {
-                let file = fs::read_to_string(name).into_diagnostic()?;
-                for tok in tokenize(&file) {
-                    let ok = match tok {
-                        Ok(ok) => ok,
-                        Err(err) => {
-                            return Err(err.with_source_code(file.clone()));
-                        }
-                    };
-                    print!("{:?} ", ok.kind);
-                    println!("{}", &file[ok.span.as_range()]);
+                let contents = fs::read_to_string(&name).into_diagnostic()?;
+                // Process asm
+                let parser = lace::AsmParser::new(&contents)?;
+                let mut air = parser.parse()?;
+                air.backpatch()?;
+                // Write to file
+                let mut file = File::create(dest.unwrap_or(
+                    format!("{}.lc3", name.file_stem().unwrap().to_str().unwrap()).into(),
+                ))
+                .unwrap();
+                // Deal with .orig
+                if let Some(orig) = air.orig() {
+                    file.write(&orig.to_be_bytes());
+                } else {
+                    file.write(&0x3000u16.to_be_bytes());
+                }
+                // Write lines
+                for i in 0..air.len() {
+                    file.write(&air.get(i).emit()?.to_be_bytes());
                 }
                 Ok(())
             }

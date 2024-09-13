@@ -1,8 +1,7 @@
-use core::panic;
-use std::fmt::{Display, Write};
+use std::fmt::Display;
 use std::str::FromStr;
 
-use miette::{bail, miette, LabeledSpan, Result, Severity};
+use miette::{bail, LabeledSpan, Result, Severity};
 
 use crate::lexer::cursor::Cursor;
 use crate::symbol::{DirKind, Flag, InstrKind, Register, Span, SrcOffset, TrapKind};
@@ -79,6 +78,7 @@ impl Display for TokenKind {
     }
 }
 
+#[allow(dead_code)]
 /// Not actually used in parsing, more for debug purposes.
 pub fn tokenize(input: &str) -> impl Iterator<Item = Result<Token>> + '_ {
     let mut cursor = Cursor::new(input);
@@ -118,9 +118,7 @@ impl Cursor<'_> {
     // TODO: ugly
     pub fn advance_real(&mut self) -> Result<Token> {
         match self.advance_token() {
-            Ok(tok) if tok.kind == TokenKind::Whitespace => {
-                self.advance_token()
-            },
+            Ok(tok) if tok.kind == TokenKind::Whitespace => self.advance_token(),
             Ok(tok) => Ok(tok),
             Err(err) => Err(err),
         }
@@ -157,11 +155,13 @@ impl Cursor<'_> {
                 c if is_reg_num(c) => {
                     self.take_while(is_reg_num);
                     // Registers are 2 tokens long and followed by whitespace/comma
-                    if self.pos_in_token() == 2 && match self.first() {
-                        c if is_whitespace(c) => true,
-                        '\0' => true,
-                        _ => false,
-                    } {
+                    if self.pos_in_token() == 2
+                        && match self.first() {
+                            c if is_whitespace(c) => true,
+                            '\0' => true,
+                            _ => false,
+                        }
+                    {
                         // Unwrap is safe as c is always valid.
                         TokenKind::Reg(Register::from_str(&c.to_string()).unwrap())
                     } else {
@@ -225,15 +225,8 @@ impl Cursor<'_> {
     fn dec(&mut self) -> Result<TokenKind> {
         let start = self.abs_pos();
         let prefix = self.pos_in_token();
-        // Check for negative sign
-        let is_negative = if self.first() == '-' {
-            self.bump(); // Skip the negative sign
-            true
-        } else {
-            false
-        };
         // Take the numeric part
-        self.take_while(|c| char::is_ascii_digit(&c));
+        self.take_while(|c| char::is_ascii_digit(&c) || c == '-');
         let str_val = self.get_range(start..self.abs_pos());
 
         // Parse the string as an i16 to handle negative values
@@ -304,14 +297,13 @@ impl Cursor<'_> {
     }
 
     fn ident(&mut self) -> TokenKind {
-        let mut token_kind = TokenKind::Label;
         let ident_start = self.abs_pos() - 1;
         self.take_while(is_id);
         let ident = self
             .get_range(ident_start..self.abs_pos())
             .to_ascii_lowercase();
 
-        token_kind = self.check_instruction(&ident);
+        let mut token_kind = self.check_instruction(&ident);
         // If not an instruction, check if it's a trap
         if token_kind == TokenKind::Label {
             token_kind = self.check_trap(&ident);
@@ -374,15 +366,19 @@ impl Cursor<'_> {
             "in" => TokenKind::Trap(TrapKind::In),
             "putsp" => TokenKind::Trap(TrapKind::Putsp),
             "halt" => TokenKind::Trap(TrapKind::Halt),
-            "trap" => TokenKind::Trap(TrapKind::Generic),
+            "trap" => TokenKind::Trap(TrapKind::Trap),
             // Not a trap
             _ => TokenKind::Label,
         }
     }
 }
 
-mod tests {
-    use crate::{lexer::{self, LiteralKind, TokenKind}, symbol::Register};
+#[cfg(test)]
+mod test {
+    use crate::{
+        lexer::{LiteralKind, TokenKind},
+        symbol::Register,
+    };
 
     use super::cursor::Cursor;
 
@@ -401,8 +397,7 @@ mod tests {
         let res = lex.advance_token().unwrap();
         assert!(res.kind == TokenKind::Lit(LiteralKind::Hex(0xFFFF)));
         // Whitespace
-        let res = lex.advance_token().unwrap();
-        assert!(lex.advance_token().is_err());
+        assert!(lex.advance_real().is_err());
     }
 
     #[test]
@@ -434,8 +429,7 @@ mod tests {
         let res = lex.advance_token().unwrap();
         assert!(res.kind == TokenKind::Lit(LiteralKind::Dec(-32768)));
         // Whitespace
-        let res = lex.advance_token().unwrap();
-        assert!(lex.advance_token().is_err());
+        assert!(lex.advance_real().is_err());
     }
 
     #[test]
@@ -444,8 +438,7 @@ mod tests {
         let res = lex.advance_token().unwrap();
         assert!(res.kind == TokenKind::Lit(LiteralKind::Dec(32767)));
         // Whitespace
-        let res = lex.advance_token().unwrap();
-        assert!(lex.advance_token().is_err());
+        assert!(lex.advance_real().is_err());
     }
 
     // STR LIT TESTS
@@ -466,30 +459,51 @@ mod tests {
     #[test]
     fn registers() {
         let mut lex = Cursor::new("r0 r1 r7 R0 R1 R7");
-        assert_eq!(lex.advance_token().unwrap().kind, TokenKind::Reg(Register::R0));
-        lex.advance_token();
-        assert_eq!(lex.advance_token().unwrap().kind, TokenKind::Reg(Register::R1));
-        lex.advance_token();
-        assert_eq!(lex.advance_token().unwrap().kind, TokenKind::Reg(Register::R7));
-        lex.advance_token();
-        assert_eq!(lex.advance_token().unwrap().kind, TokenKind::Reg(Register::R0));
-        lex.advance_token();
-        assert_eq!(lex.advance_token().unwrap().kind, TokenKind::Reg(Register::R1));
-        lex.advance_token();
-        assert_eq!(lex.advance_token().unwrap().kind, TokenKind::Reg(Register::R7));
+        assert_eq!(
+            lex.advance_token().unwrap().kind,
+            TokenKind::Reg(Register::R0)
+        );
+        assert_eq!(
+            lex.advance_real().unwrap().kind,
+            TokenKind::Reg(Register::R1)
+        );
+        assert_eq!(
+            lex.advance_real().unwrap().kind,
+            TokenKind::Reg(Register::R7)
+        );
+        assert_eq!(
+            lex.advance_real().unwrap().kind,
+            TokenKind::Reg(Register::R0)
+        );
+        assert_eq!(
+            lex.advance_real().unwrap().kind,
+            TokenKind::Reg(Register::R1)
+        );
+        assert_eq!(
+            lex.advance_real().unwrap().kind,
+            TokenKind::Reg(Register::R7)
+        );
     }
 
     #[test]
     fn empty_line() {
-        let mut lex = Cursor::new(r#"
+        let mut lex = Cursor::new(
+            r#"
         r0
 
         r1
-        "#);
+        "#,
+        );
         assert_eq!(lex.advance_token().unwrap().kind, TokenKind::Whitespace);
-        assert_eq!(lex.advance_token().unwrap().kind, TokenKind::Reg(Register::R0));
+        assert_eq!(
+            lex.advance_token().unwrap().kind,
+            TokenKind::Reg(Register::R0)
+        );
         assert_eq!(lex.advance_token().unwrap().kind, TokenKind::Whitespace);
-        assert_eq!(lex.advance_token().unwrap().kind, TokenKind::Reg(Register::R1));
+        assert_eq!(
+            lex.advance_token().unwrap().kind,
+            TokenKind::Reg(Register::R1)
+        );
         assert_eq!(lex.advance_token().unwrap().kind, TokenKind::Whitespace);
     }
 }
