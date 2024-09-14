@@ -14,8 +14,6 @@ use crate::{
 pub fn preprocess(src: &str) -> Result<Vec<Token>> {
     let mut res: Vec<Token> = Vec::new();
     let mut cur = Cursor::new(src);
-    // For keeping track of label presence
-    let mut last_token = cur.clone().advance_token()?;
 
     loop {
         let dir = cur.advance_real()?;
@@ -24,16 +22,6 @@ pub fn preprocess(src: &str) -> Result<Vec<Token>> {
             TokenKind::Dir(DirKind::Fill) => {
                 // Must be inside to avoid skipping tokens
                 let val = cur.advance_real()?;
-                // Check label presence
-                if last_token.kind != TokenKind::Label {
-                    bail!(
-                        severity = Severity::Error,
-                        code = "preproc::label",
-                        help = ".fill requires a label for sanitation purposes.",
-                        labels = vec![LabeledSpan::at(val.span, "unlabeled directive")],
-                        "Expected directive to be preceded by a label."
-                    )
-                }
                 // Maybe fix code duplication here?
                 match val.kind {
                     TokenKind::Lit(LiteralKind::Hex(lit)) => {
@@ -54,16 +42,6 @@ pub fn preprocess(src: &str) -> Result<Vec<Token>> {
             // Preprocess .blkw into a series of raw null bytes
             TokenKind::Dir(DirKind::Blkw) => {
                 let val = cur.advance_real()?;
-                // Check label presence
-                if last_token.kind != TokenKind::Label {
-                    bail!(
-                        severity = Severity::Error,
-                        code = "preproc::label",
-                        help = ".blkw requires a label for sanitation purposes.",
-                        labels = vec![LabeledSpan::at(val.span, "unlabeled directive")],
-                        "Expected directive to be preceded by a label."
-                    )
-                }
                 match val.kind {
                     TokenKind::Lit(LiteralKind::Hex(lit)) => {
                         // Empty bytes
@@ -99,16 +77,6 @@ pub fn preprocess(src: &str) -> Result<Vec<Token>> {
             // null terminator.
             TokenKind::Dir(DirKind::Stringz) => {
                 let val = cur.advance_real()?;
-                // Check label presence
-                if last_token.kind != TokenKind::Label {
-                    bail!(
-                        severity = Severity::Error,
-                        code = "preproc::label",
-                        help = ".stringz requires a label for sanitation purposes.",
-                        labels = vec![LabeledSpan::at(val.span, "unlabeled directive")],
-                        "Expected directive to be preceded by a label."
-                    )
-                }
                 match val.kind {
                     TokenKind::Lit(LiteralKind::Str) => {
                         let str_raw = cur.get_range(val.span.into());
@@ -133,7 +101,6 @@ pub fn preprocess(src: &str) -> Result<Vec<Token>> {
             TokenKind::Eof | TokenKind::Dir(DirKind::End) => break,
             _ => res.push(dir),
         }
-        last_token = dir;
     }
     Ok(res)
 }
@@ -573,7 +540,8 @@ mod test {
 
     #[test]
     fn preproc_fill_nolabel() {
-        assert!(preprocess(".fill x1").is_err())
+        let res = preprocess(".fill x1").unwrap();
+        assert!(res[0].kind == TokenKind::Byte(1))
     }
 
     // .BLKW TEST
@@ -606,7 +574,8 @@ mod test {
 
     #[test]
     fn preproc_blkw_nolabel() {
-        assert!(preprocess(".blkw #1").is_err())
+        let res = preprocess(".blkw #1").unwrap();
+        assert!(res[0].kind == TokenKind::Byte(0))
     }
 
     // .STRINGZ TEST
@@ -639,7 +608,9 @@ mod test {
 
     #[test]
     fn preproc_stringz_nolabel() {
-        assert!(preprocess(r#".stringz "error""#).is_err())
+        let res = preprocess(r#".stringz "ok""#).unwrap();
+        assert!(res[0].kind == TokenKind::Byte('o' as u16));
+        assert!(res[1].kind == TokenKind::Byte('k' as u16));
     }
 
     // Regression
@@ -777,6 +748,37 @@ mod test {
                 line: 3,
                 stmt: AirStmt::RawWord {
                     bytes: RawWord('\0' as u16)
+                }
+            }
+        );
+    }
+
+    #[test]
+    fn parse_stringz_mult() {
+        let air = AsmParser::new(
+            r#"
+        .stringz "a"
+        .stringz "b"
+        "#,
+        )
+        .unwrap()
+        .parse()
+        .unwrap();
+        assert_eq!(
+            air.get(0),
+            &AsmLine {
+                line: 1,
+                stmt: AirStmt::RawWord {
+                    bytes: RawWord('a' as u16)
+                }
+            }
+        );
+        assert_eq!(
+            air.get(2),
+            &AsmLine {
+                line: 3,
+                stmt: AirStmt::RawWord {
+                    bytes: RawWord('b' as u16)
                 }
             }
         );
