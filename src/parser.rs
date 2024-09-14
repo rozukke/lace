@@ -506,8 +506,6 @@ impl Display for Bits {
 
 #[cfg(test)]
 mod test {
-    use std::u16;
-
     use super::*;
 
     use crate::{
