@@ -1,9 +1,10 @@
 use std::{borrow::Cow, fmt::Display, iter::Peekable, vec::IntoIter};
 
-use miette::{bail, LabeledSpan, Result, Severity};
+use miette::Result;
 
 use crate::{
     air::{Air, AirStmt, ImmediateOrReg, RawWord},
+    error,
     lexer::{cursor::Cursor, LiteralKind, Token, TokenKind},
     symbol::{DirKind, InstrKind, Label, Register, Span, TrapKind},
 };
@@ -11,18 +12,16 @@ use crate::{
 /// Replaces raw value directives .fill, .blkw, .stringz with equivalent raw bytes
 /// Returns a 'final' vector of tokens. This is easier than working with an iterator that can
 /// either return a single token or a Vec of tokens.
-pub fn preprocess(src: &str) -> Result<Vec<Token>> {
+pub fn preprocess(src: &'static str) -> Result<Vec<Token>> {
     let mut res: Vec<Token> = Vec::new();
     let mut cur = Cursor::new(src);
 
     loop {
         let dir = cur.advance_real()?;
         match dir.kind {
-            // Preprocess .fill into a raw byte with the next literal as value
+            // Into raw word with the next literal as value
             TokenKind::Dir(DirKind::Fill) => {
-                // Must be inside to avoid skipping tokens
                 let val = cur.advance_real()?;
-                // Maybe fix code duplication here?
                 match val.kind {
                     TokenKind::Lit(LiteralKind::Hex(lit)) => {
                         res.push(Token::byte(lit));
@@ -30,73 +29,45 @@ pub fn preprocess(src: &str) -> Result<Vec<Token>> {
                     TokenKind::Lit(LiteralKind::Dec(lit)) => {
                         res.push(Token::byte(lit as u16));
                     }
-                    _ => bail!(
-                        severity = Severity::Error,
-                        code = "preproc::fill",
-                        help = "The .fill directive requires an integer or hex literal value.",
-                        labels = vec![LabeledSpan::at(val.span, "incorrect literal")],
-                        "Expected an integer or hex literal.",
-                    ),
+                    _ => return Err(error::preproc_bad_lit(val.span, src, false)),
                 }
             }
-            // Preprocess .blkw into a series of raw null bytes
+            // Into a series of raw null words
             TokenKind::Dir(DirKind::Blkw) => {
                 let val = cur.advance_real()?;
                 match val.kind {
                     TokenKind::Lit(LiteralKind::Hex(lit)) => {
-                        // Empty bytes
                         for _ in 0..lit {
                             res.push(Token::nullbyte());
                         }
                     }
                     TokenKind::Lit(LiteralKind::Dec(lit)) => {
                         if lit < 0 {
-                            bail!(
-                                severity = Severity::Error,
-                                code = "preproc::blkw",
-                                help = "try a positive literal like #1",
-                                labels = vec![LabeledSpan::at(val.span, "negative literal")],
-                                "Integer values for .blkw cannot be negative.",
-                            )
+                            return Err(error::preproc_bad_lit(val.span, src, true));
                         }
-                        // Empty bytes
                         for _ in 0..lit {
                             res.push(Token::nullbyte());
                         }
                     }
-                    _ => bail!(
-                        severity = Severity::Error,
-                        code = "preproc::blkw",
-                        help = ".blkw requires a non-negative integer or hex literal value.",
-                        labels = vec![LabeledSpan::at(val.span, "not a literal")],
-                        "Expected an non-negative integer or hex literal.",
-                    ),
+                    _ => return Err(error::preproc_bad_lit(val.span, src, false)),
                 }
             }
-            // Preprocess string literal into a sequence of bytes corresponding to a literal with a
-            // null terminator.
+            // str into a sequence of bytes corresponding to a literal + null terminator
             TokenKind::Dir(DirKind::Stringz) => {
                 let val = cur.advance_real()?;
                 match val.kind {
                     TokenKind::Lit(LiteralKind::Str) => {
                         let str_raw = cur.get_range(val.span.into());
-                        // Get rid of start and end \"
+                        // Get rid of quotation marks
                         for c in unescape(&str_raw[1..str_raw.len() - 1]).chars() {
                             res.push(Token::byte(c as u16));
                         }
-                        // Terminating null byte
                         res.push(Token::nullbyte());
                     }
-                    _ => bail!(
-                        severity = Severity::Error,
-                        code = "preproc::stringz",
-                        help = ".stringz requires a valid string literal like \"hello\n\"",
-                        labels = vec![LabeledSpan::at(val.span, "not a string literal")],
-                        "Expected a valid string literal.",
-                    ),
+                    _ => return Err(error::preproc_no_str(val.span, src)),
                 }
             }
-            // Can eliminate these from here
+            // Eliminated during preprocessing
             TokenKind::Comment | TokenKind::Whitespace => continue,
             TokenKind::Eof | TokenKind::Dir(DirKind::End) => break,
             _ => res.push(dir),
@@ -105,7 +76,6 @@ pub fn preprocess(src: &str) -> Result<Vec<Token>> {
     Ok(res)
 }
 
-// TODO: Kind of ugly, see if improvable
 fn unescape(s: &str) -> Cow<str> {
     if s.find('\\').is_none() {
         return Cow::Borrowed(s);
@@ -126,7 +96,7 @@ fn unescape(s: &str) -> Cow<str> {
                     result.push(c);
                 }
                 None => {
-                    // Trailing backslash; include it as is
+                    // Trailing \
                     result.push('\\');
                 }
             }
@@ -138,9 +108,9 @@ fn unescape(s: &str) -> Cow<str> {
 }
 
 /// Transforms token stream into AIR
-pub struct AsmParser<'a> {
+pub struct AsmParser {
     /// Reference to the source file
-    src: &'a str,
+    src: &'static str,
     /// Peekable iterator over preprocessed tokens
     toks: Peekable<IntoIter<Token>>,
     /// Assembly intermediate representation
@@ -149,10 +119,10 @@ pub struct AsmParser<'a> {
     line: u16,
 }
 
-impl<'a> AsmParser<'a> {
-    /// Takes in preprocessed tokens or will otherwise go into unreachable code. Input should
+impl AsmParser {
+    /// Preprocesses tokens, otherwise will go into unreachable code. Input should
     /// contain no whitespace or comments.
-    pub fn new(src: &'a str) -> Result<Self> {
+    pub fn new(src: &'static str) -> Result<Self> {
         let toks = preprocess(src)?;
         Ok(AsmParser {
             src,
@@ -175,13 +145,7 @@ impl<'a> AsmParser<'a> {
                 labeled_line = true;
                 match Label::insert(self.get_span(label.span), self.line) {
                     Ok(_) => (),
-                    Err(_) => bail!(
-                        severity = Severity::Error,
-                        code = "parse::duplicate_label",
-                        help = "prefix labels are only allowed once per file",
-                        labels = vec![LabeledSpan::at(label.span, "duplicate label")],
-                        "Duplicate prefix label"
-                    ),
+                    Err(_) => return Err(error::parse_duplicate_label(label.span, self.src)),
                 }
             }
 
@@ -190,17 +154,13 @@ impl<'a> AsmParser<'a> {
                 let stmt = match tok.kind {
                     // Lines should not start with these tokens
                     TokenKind::Label | TokenKind::Lit(_) | TokenKind::Reg(_) => {
-                        bail!(
-                            severity = Severity::Error,
-                            code = "parse::unexpected_token",
-                            help = "lines should start with an instruction, trap, or directive.",
-                            labels = vec![LabeledSpan::at(tok.span, "unexpected token")],
-                            "Unexpected token of type {}",
-                            tok.kind
-                        )
+                        return Err(error::parse_generic_unexpected(
+                            self.src,
+                            "directive/instrucion/trap",
+                            tok,
+                        ))
                     }
                     TokenKind::Dir(dir) => {
-                        // Process .orig as it should be only remaining directive
                         assert!(dir == DirKind::Orig);
                         let orig = self.expect_lit(Bits::Unsigned(16))?;
                         self.air.set_orig(orig)?;
@@ -210,24 +170,20 @@ impl<'a> AsmParser<'a> {
                     TokenKind::Trap(trap_kind) => self.parse_trap(trap_kind)?,
                     TokenKind::Byte(val) => self.parse_byte(val),
                     // Does not exist in preprocessed token stream
-                    TokenKind::Whitespace | TokenKind::Comment | TokenKind::Eof => unreachable!(),
+                    TokenKind::Whitespace | TokenKind::Comment | TokenKind::Eof => {
+                        unreachable!("Found whitespace/comment/eof in preprocessed stream")
+                    }
                 };
                 self.air.add_stmt(stmt);
             } else {
-                if !labeled_line {
-                    break;
+                if labeled_line {
+                    return Err(error::parse_eof(self.src));
                 }
-                bail!(
-                    severity = Severity::Error,
-                    code = "parse::unexpected_eof",
-                    help = "Check the number of arguments for the last instruction.",
-                    "Unexpected end of file while parsing"
-                )
+                break;
             }
 
             self.line += 1;
         }
-        // Consume self to return AIR
         Ok(self.air)
     }
 
@@ -337,10 +293,10 @@ impl<'a> AsmParser<'a> {
         }
     }
 
+    /// Convert keyword trap to predetermined trap vector
     fn parse_trap(&mut self, kind: TrapKind) -> Result<AirStmt> {
-        // Convert keyword trap to trap vector
         let trap_vect = match kind {
-            TrapKind::Trap => self.expect_lit(Bits::Unsigned(8))?,
+            TrapKind::Generic => self.expect_lit(Bits::Unsigned(8))?,
             TrapKind::Getc => 0x20,
             TrapKind::Out => 0x21,
             TrapKind::Puts => 0x22,
@@ -353,29 +309,20 @@ impl<'a> AsmParser<'a> {
     }
 
     fn parse_byte(&mut self, val: u16) -> AirStmt {
-        AirStmt::RawWord {
-            bytes: RawWord(val),
-        }
+        AirStmt::RawWord { val: RawWord(val) }
     }
 
     fn expect(&mut self, expected: TokenKind) -> Result<Token> {
         match self.toks.next() {
             Some(tok) if tok.kind == expected => Ok(tok),
-            Some(unexpected) => bail!(
-                severity = Severity::Error,
-                code = "parse::unexpected_token",
-                help = "check the type of operands allowed for this instruction.",
-                labels = vec![LabeledSpan::at(unexpected.span, "unexpected token")],
-                "Expected token of type {}, found {}",
-                expected,
-                unexpected.kind
-            ),
-            None => bail!(
-                severity = Severity::Error,
-                code = "parse::unexpected_eof",
-                help = "You may be missing some instrutions for your last statement.",
-                "Unexpected end of file",
-            ),
+            Some(unexpected) => {
+                return Err(error::parse_generic_unexpected(
+                    self.src,
+                    format!("{expected}").as_str(),
+                    unexpected,
+                ))
+            }
+            None => return Err(error::parse_eof(self.src)),
         }
     }
 
@@ -386,21 +333,12 @@ impl<'a> AsmParser<'a> {
     ) -> Result<Token> {
         match self.toks.next() {
             Some(tok) if check(&tok.kind) => Ok(tok),
-            Some(unexpected) => bail!(
-                severity = Severity::Error,
-                code = "parse::unexpected_token",
-                help = "check the type of operands allowed for this instruction.",
-                labels = vec![LabeledSpan::at(unexpected.span, "unexpected token")],
-                "Expected token of type {}, found {}",
-                expected,
-                unexpected.kind
-            ),
-            None => bail!(
-                severity = Severity::Error,
-                code = "parse::unexpected_eof",
-                help = "You may be missing some instrutions for your last statement.",
-                "Unexpected end of file",
-            ),
+            Some(unexpected) => {
+                return Err(error::parse_generic_unexpected(
+                    self.src, expected, unexpected,
+                ))
+            }
+            None => return Err(error::parse_eof(self.src)),
         }
     }
 
@@ -431,20 +369,11 @@ impl<'a> AsmParser<'a> {
         let val = match tok.kind {
             TokenKind::Lit(LiteralKind::Dec(val)) => val as u16,
             TokenKind::Lit(LiteralKind::Hex(val)) => val,
-            _ => unreachable!(),
+            _ => unreachable!("Found non-literal after checking for literal type"),
         };
         match check_range(val) {
             true => Ok(val),
-            false => {
-                bail!(
-                    severity = Severity::Error,
-                    help = format!(
-                        "this instruction expects literals that can be contained in {bits} bits",
-                    ),
-                    labels = vec![LabeledSpan::at(tok.span, "out-of-range literal")],
-                    "Found numeric literal {val} of incorrect size"
-                )
-            }
+            false => Err(error::parse_lit_range(tok.span, self.src, bits)),
         }
     }
 
@@ -454,7 +383,7 @@ impl<'a> AsmParser<'a> {
             .kind
         {
             TokenKind::Reg(reg) => Ok(reg),
-            _ => unreachable!(),
+            _ => unreachable!("Found non-reg after filtering for reg"),
         }
     }
 
@@ -469,21 +398,15 @@ impl<'a> AsmParser<'a> {
                     let val = self.expect_lit(Bits::Signed(5))?;
                     Ok(ImmediateOrReg::Imm5(val as u8))
                 }
-                unexpected => bail!(
-                    severity = Severity::Error,
-                    code = "parse::unexpected_token",
-                    help = "check the type of operands allowed for this instruction.",
-                    labels = vec![LabeledSpan::at(tok.span, "unexpected token")],
-                    "Expected token of type literal or register, found {}",
-                    unexpected
-                ),
+                _ => {
+                    return Err(error::parse_generic_unexpected(
+                        self.src,
+                        "literal or register",
+                        *tok,
+                    ))
+                }
             },
-            None => bail!(
-                severity = Severity::Error,
-                code = "parse::unexpected_eof",
-                help = "You may be missing some instrutions for your last statement.",
-                "Unexpected end of file",
-            ),
+            None => return Err(error::parse_eof(self.src)),
         }
     }
 }
@@ -711,9 +634,7 @@ mod test {
             air.get(0),
             &AsmLine {
                 line: 1,
-                stmt: AirStmt::RawWord {
-                    bytes: RawWord(0x30)
-                }
+                stmt: AirStmt::RawWord { val: RawWord(0x30) }
             }
         )
     }
@@ -729,7 +650,7 @@ mod test {
             &AsmLine {
                 line: 1,
                 stmt: AirStmt::RawWord {
-                    bytes: RawWord('a' as u16)
+                    val: RawWord('a' as u16)
                 }
             }
         );
@@ -738,7 +659,7 @@ mod test {
             &AsmLine {
                 line: 2,
                 stmt: AirStmt::RawWord {
-                    bytes: RawWord('b' as u16)
+                    val: RawWord('b' as u16)
                 }
             }
         );
@@ -747,7 +668,7 @@ mod test {
             &AsmLine {
                 line: 3,
                 stmt: AirStmt::RawWord {
-                    bytes: RawWord('\0' as u16)
+                    val: RawWord('\0' as u16)
                 }
             }
         );
@@ -769,7 +690,7 @@ mod test {
             &AsmLine {
                 line: 1,
                 stmt: AirStmt::RawWord {
-                    bytes: RawWord('a' as u16)
+                    val: RawWord('a' as u16)
                 }
             }
         );
@@ -778,7 +699,7 @@ mod test {
             &AsmLine {
                 line: 3,
                 stmt: AirStmt::RawWord {
-                    bytes: RawWord('b' as u16)
+                    val: RawWord('b' as u16)
                 }
             }
         );

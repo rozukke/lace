@@ -1,8 +1,9 @@
 use std::fmt::Display;
 use std::str::FromStr;
 
-use miette::{bail, LabeledSpan, Result, Severity};
+use miette::Result;
 
+use crate::error;
 use crate::lexer::cursor::Cursor;
 use crate::symbol::{DirKind, Flag, InstrKind, Register, Span, SrcOffset, TrapKind};
 
@@ -52,9 +53,8 @@ pub enum TokenKind {
     Lit(LiteralKind),
     Dir(DirKind),
     Reg(Register),
-    /// Used to represent preprocessor raw values
+    /// Preprocessor raw values
     Byte(u16),
-    /// Also includes commas
     Whitespace,
     Comment,
     Eof,
@@ -69,9 +69,8 @@ impl Display for TokenKind {
             TokenKind::Lit(_) => "literal",
             TokenKind::Dir(_) => "preprocessor directive",
             TokenKind::Reg(_) => "register",
-            // Should never be displayed as part of an error
             TokenKind::Whitespace | TokenKind::Comment | TokenKind::Eof | TokenKind::Byte(_) => {
-                unreachable!()
+                unreachable!("whitespace, comment, eof, byte attempted to be displayed")
             }
         };
         f.write_str(lit)
@@ -79,8 +78,7 @@ impl Display for TokenKind {
 }
 
 #[allow(dead_code)]
-/// Not actually used in parsing, more for debug purposes.
-pub fn tokenize(input: &str) -> impl Iterator<Item = Result<Token>> + '_ {
+pub fn tokenize(input: &'static str) -> impl Iterator<Item = Result<Token>> + '_ {
     let mut cursor = Cursor::new(input);
     std::iter::from_fn(move || loop {
         let token = cursor.advance_token();
@@ -96,21 +94,19 @@ pub fn tokenize(input: &str) -> impl Iterator<Item = Result<Token>> + '_ {
     })
 }
 
-/// Test if a character is considered to be whitespace.
+/// Test if a character is considered to be whitespace, including commas.
 pub(crate) fn is_whitespace(c: char) -> bool {
-    // Commas are essentially whitespace in LC3
-    matches!(c, ' ' | '\n' | '\t' | '\r' | ',')
+    char::is_ascii_whitespace(&c) || c == ','
 }
 
 pub(crate) fn is_reg_num(c: char) -> bool {
-    // Valid only between 0-7
+    // R0 - R7
     matches!(c, '0'..='7')
 }
 
 /// Test if a character is considered an LC3 identifier character.
 pub(crate) fn is_id(c: char) -> bool {
     // Non-prefixed numerical literals are considered identifiers.
-    // This is because line numbers can be used as labels.
     matches!(c, 'a'..='z' | 'A'..='Z' | '0'..='9' | '_')
 }
 
@@ -150,11 +146,10 @@ impl Cursor<'_> {
                 }
                 _ => self.ident(),
             },
-            // Register literal
+            // Register literals
             'r' | 'R' => match self.first() {
                 c if is_reg_num(c) => {
                     self.take_while(is_reg_num);
-                    // Registers are 2 tokens long and followed by whitespace/comma
                     if self.pos_in_token() == 2
                         && match self.first() {
                             c if is_whitespace(c) => true,
@@ -162,7 +157,7 @@ impl Cursor<'_> {
                             _ => false,
                         }
                     {
-                        // Unwrap is safe as c is always valid.
+                        // SAFETY: c is always valid
                         TokenKind::Reg(Register::from_str(&c.to_string()).unwrap())
                     } else {
                         self.ident()
@@ -170,7 +165,7 @@ impl Cursor<'_> {
                 }
                 _ => self.ident(),
             },
-            // Identifiers should be checked after everything else that overlaps.
+            // Check only after other identifier-likes
             c if is_id(c) => self.ident(),
             // Decimal literal
             '#' => self.dec()?,
@@ -180,14 +175,12 @@ impl Cursor<'_> {
             '"' => self.str()?,
             // Unknown starting characters
             _ => {
+                let start = self.abs_pos() - 1;
                 self.take_while(|c| !is_whitespace(c));
-                bail!(
-                    severity = Severity::Error,
-                    code = "lex::unknown",
-                    help = "Check the manual or something...",
-                    labels = vec![LabeledSpan::at_offset(start_pos, "unknown token")],
-                    "Encounetered an unknown token",
-                )
+                return Err(error::lex_unknown(
+                    (start..self.abs_pos()).into(),
+                    self.src(),
+                ));
             }
         };
         let res = Token::new(
@@ -206,16 +199,11 @@ impl Cursor<'_> {
         let value = match u16::from_str_radix(str_val, 16) {
             Ok(value) => value,
             Err(e) => {
-                bail!(
-                    severity = Severity::Error,
-                    code = "parse::hex_lit",
-                    help = "only use characters 0-9 and a-F.",
-                    labels = vec![LabeledSpan::at(
-                        start - prefix..self.abs_pos(),
-                        "incorrect literal"
-                    )],
-                    "Encountered an invalid hex literal: {e}",
-                )
+                return Err(error::lex_invalid_lit(
+                    (start - prefix..self.abs_pos()).into(),
+                    self.src(),
+                    e,
+                ))
             }
         };
 
@@ -225,24 +213,18 @@ impl Cursor<'_> {
     fn dec(&mut self) -> Result<TokenKind> {
         let start = self.abs_pos();
         let prefix = self.pos_in_token();
-        // Take the numeric part
-        self.take_while(|c| char::is_ascii_digit(&c) || c == '-');
+        self.take_while(|c| !is_whitespace(c));
         let str_val = self.get_range(start..self.abs_pos());
 
-        // Parse the string as an i16 to handle negative values
+        // i16 to handle negative values
         let value = match i16::from_str_radix(&str_val, 10) {
             Ok(value) => value,
             Err(e) => {
-                bail!(
-                    severity = Severity::Error,
-                    code = "parse::dec_lit",
-                    help = "LC3 supports 16 bits of space, from -32,768 to 32,767.",
-                    labels = vec![LabeledSpan::at(
-                        start - prefix..self.abs_pos(),
-                        "incorrect literal"
-                    )],
-                    "Encountered an invalid decimal literal: {e}",
-                )
+                return Err(error::lex_invalid_lit(
+                    (start - prefix..self.abs_pos()).into(),
+                    self.src(),
+                    e,
+                ))
             }
         };
 
@@ -260,25 +242,21 @@ impl Cursor<'_> {
                 terminated = true;
                 break;
             }
-            // Skip escaped
             if c == '\\' {
                 self.bump();
             }
         }
         if !terminated {
-            bail!(
-                severity = Severity::Error,
-                code = "parse::str_lit",
-                help = "hint: make sure to close string literals with a \" character.",
-                labels = vec![LabeledSpan::at(start..self.abs_pos(), "incorrect literal")],
-                "Encountered an unterminated string literal.",
-            )
+            return Err(error::lex_unclosed_str(
+                (start..self.abs_pos()).into(),
+                self.src(),
+            ));
         }
         Ok(TokenKind::Lit(LiteralKind::Str))
     }
 
     fn dir(&mut self) -> Result<TokenKind> {
-        // Account for starting .
+        // Starting .
         let start = self.abs_pos() - 1;
         self.take_while(is_id);
         let dir = self.get_range(start..self.abs_pos()).to_ascii_lowercase();
@@ -286,13 +264,10 @@ impl Cursor<'_> {
         if let Some(token_kind) = self.check_directive(&dir) {
             Ok(token_kind)
         } else {
-            bail!(
-                severity = Severity::Error,
-                code = "parse::dir",
-                help = "hint: check the list of available directives in the documentation.",
-                labels = vec![LabeledSpan::at(start..self.abs_pos(), "incorrect literal")],
-                "Encountered an invalid directive.",
-            )
+            Err(error::lex_invalid_dir(
+                (start..self.abs_pos()).into(),
+                self.src(),
+            ))
         }
     }
 
@@ -304,70 +279,69 @@ impl Cursor<'_> {
             .to_ascii_lowercase();
 
         let mut token_kind = self.check_instruction(&ident);
-        // If not an instruction, check if it's a trap
         if token_kind == TokenKind::Label {
             token_kind = self.check_trap(&ident);
         }
-
         token_kind
     }
 
     /// Expects lowercase
     fn check_directive(&self, dir_str: &str) -> Option<TokenKind> {
+        use DirKind::*;
+        use TokenKind::Dir;
         match dir_str {
-            ".orig" => Some(TokenKind::Dir(DirKind::Orig)),
-            ".end" => Some(TokenKind::Dir(DirKind::End)),
-            ".stringz" => Some(TokenKind::Dir(DirKind::Stringz)),
-            ".blkw" => Some(TokenKind::Dir(DirKind::Blkw)),
-            ".fill" => Some(TokenKind::Dir(DirKind::Fill)),
-            // Not a directive
+            ".orig" => Some(Dir(Orig)),
+            ".end" => Some(Dir(End)),
+            ".stringz" => Some(Dir(Stringz)),
+            ".blkw" => Some(Dir(Blkw)),
+            ".fill" => Some(Dir(Fill)),
             _ => None,
         }
     }
 
-    // Should learn how to write macros tbh :)
     /// Expects lowercase
     fn check_instruction(&self, ident: &str) -> TokenKind {
+        use InstrKind::*;
         use TokenKind::Instr;
         match ident {
-            "add" => Instr(InstrKind::Add),
-            "and" => Instr(InstrKind::And),
-            "br" => Instr(InstrKind::Br(Flag::Nzp)),
-            "brnzp" => Instr(InstrKind::Br(Flag::Nzp)),
-            "brnz" => Instr(InstrKind::Br(Flag::Nz)),
-            "brzp" => Instr(InstrKind::Br(Flag::Zp)),
-            "brnp" => Instr(InstrKind::Br(Flag::Np)),
-            "brn" => Instr(InstrKind::Br(Flag::N)),
-            "brz" => Instr(InstrKind::Br(Flag::Z)),
-            "brp" => Instr(InstrKind::Br(Flag::P)),
-            "jmp" => Instr(InstrKind::Jmp),
-            "jsr" => Instr(InstrKind::Jsr),
-            "jsrr" => Instr(InstrKind::Jsrr),
-            "ld" => Instr(InstrKind::Ld),
-            "ldi" => Instr(InstrKind::Ldi),
-            "ldr" => Instr(InstrKind::Ldr),
-            "lea" => Instr(InstrKind::Lea),
-            "not" => Instr(InstrKind::Not),
-            "ret" => Instr(InstrKind::Ret),
-            "rti" => Instr(InstrKind::Rti),
-            "st" => Instr(InstrKind::St),
-            "sti" => Instr(InstrKind::Sti),
-            // Not an instruction
+            "add" => Instr(Add),
+            "and" => Instr(And),
+            "br" => Instr(Br(Flag::Nzp)),
+            "brnzp" => Instr(Br(Flag::Nzp)),
+            "brnz" => Instr(Br(Flag::Nz)),
+            "brzp" => Instr(Br(Flag::Zp)),
+            "brnp" => Instr(Br(Flag::Np)),
+            "brn" => Instr(Br(Flag::N)),
+            "brz" => Instr(Br(Flag::Z)),
+            "brp" => Instr(Br(Flag::P)),
+            "jmp" => Instr(Jmp),
+            "jsr" => Instr(Jsr),
+            "jsrr" => Instr(Jsrr),
+            "ld" => Instr(Ld),
+            "ldi" => Instr(Ldi),
+            "ldr" => Instr(Ldr),
+            "lea" => Instr(Lea),
+            "not" => Instr(Not),
+            "ret" => Instr(Ret),
+            "rti" => Instr(Rti),
+            "st" => Instr(St),
+            "sti" => Instr(Sti),
             _ => TokenKind::Label,
         }
     }
 
     /// Expects lowercase
     fn check_trap(&self, ident: &str) -> TokenKind {
+        use TokenKind::Trap;
+        use TrapKind::*;
         match ident {
-            "getc" => TokenKind::Trap(TrapKind::Getc),
-            "out" => TokenKind::Trap(TrapKind::Out),
-            "puts" => TokenKind::Trap(TrapKind::Puts),
-            "in" => TokenKind::Trap(TrapKind::In),
-            "putsp" => TokenKind::Trap(TrapKind::Putsp),
-            "halt" => TokenKind::Trap(TrapKind::Halt),
-            "trap" => TokenKind::Trap(TrapKind::Trap),
-            // Not a trap
+            "getc" => Trap(Getc),
+            "out" => Trap(Out),
+            "puts" => Trap(Puts),
+            "in" => Trap(In),
+            "putsp" => Trap(Putsp),
+            "halt" => Trap(Halt),
+            "trap" => Trap(Generic),
             _ => TokenKind::Label,
         }
     }
