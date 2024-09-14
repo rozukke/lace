@@ -129,6 +129,15 @@ impl From<Span> for SourceSpan {
     }
 }
 
+impl From<Range<usize>> for Span {
+    fn from(value: Range<usize>) -> Self {
+        Span {
+            offs: SrcOffset(value.start),
+            len: value.end - value.start,
+        }
+    }
+}
+
 impl From<Span> for Range<usize> {
     fn from(value: Span) -> Self {
         value.offs()..value.end()
@@ -222,7 +231,7 @@ pub enum InstrKind {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum TrapKind {
-    Trap,
+    Generic,
     Halt,
     Putsp,
     In,

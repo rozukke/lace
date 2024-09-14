@@ -5,29 +5,33 @@ use std::{ops::Range, str::Chars};
 
 #[derive(Clone)]
 /// Peekable iterator over a char sequence.
-pub struct Cursor<'a> {
+pub struct Cursor<'sess> {
     len_remaining: usize,
     orig_size: usize,
     /// Iterator over chars in a &str
-    chars: Chars<'a>,
-    input: &'a str,
+    chars: Chars<'sess>,
+    src: &'static str,
 }
 
 pub(crate) const NULL_CHAR: char = '\0';
 
-impl<'a> Cursor<'a> {
-    pub fn new(input: &'a str) -> Cursor<'a> {
+impl<'sess> Cursor<'sess> {
+    pub fn new(src: &'static str) -> Cursor<'sess> {
         Cursor {
-            len_remaining: input.len(),
-            orig_size: input.len(),
-            chars: input.chars(),
-            input,
+            len_remaining: src.len(),
+            orig_size: src.len(),
+            chars: src.chars(),
+            src,
         }
     }
 
     /// Returns next character without consuming it.
     pub fn first(&self) -> char {
         self.chars.clone().next().unwrap_or(NULL_CHAR)
+    }
+
+    pub fn src(&self) -> &'static str {
+        self.src
     }
 
     /// File is finished parsing
@@ -63,6 +67,6 @@ impl<'a> Cursor<'a> {
     }
 
     pub(crate) fn get_range(&self, range: Range<usize>) -> &str {
-        &self.input[range]
+        &self.src[range]
     }
 }

@@ -5,9 +5,10 @@ use std::io::Write;
 use std::ops::RangeBounds;
 use std::path::PathBuf;
 
+use clap::builder::styling::Style;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
-use miette::{IntoDiagnostic, Result};
+use miette::{GraphicalTheme, IntoDiagnostic, MietteHandlerOpts, Result};
 
 use lace::AsmParser;
 
@@ -64,7 +65,9 @@ fn main() -> miette::Result<()> {
         match command {
             Command::Run { os, name } => todo!(),
             Command::Compile { name, dest } => {
-                let contents = fs::read_to_string(&name).into_diagnostic()?;
+                // Available until end of program
+                let contents: &'static str =
+                    Box::leak(Box::new(fs::read_to_string(&name).into_diagnostic()?));
                 // Process asm
                 let parser = lace::AsmParser::new(&contents)?;
                 let mut air = parser.parse()?;

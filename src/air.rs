@@ -107,7 +107,7 @@ pub enum AirStmt {
         dest_label: Label,
     },
     /// A raw value created during preprocessing
-    RawWord { bytes: RawWord },
+    RawWord { val: RawWord },
     /// Jump to address at index trap_vect of the trap table
     Trap { trap_vect: u8 },
 }
@@ -174,6 +174,7 @@ impl AsmLine {
         Ok(())
     }
 
+    /// Return binary representation of a statement
     #[allow(unused)]
     pub fn emit(&self) -> Result<u16> {
         match &self.stmt {
@@ -282,13 +283,13 @@ impl AsmLine {
                 raw |= self.bit_offs(dest_label, 9)?;
                 Ok(raw)
             }
-            AirStmt::RawWord { bytes } => Ok(bytes.0),
+            AirStmt::RawWord { val: bytes } => Ok(bytes.0),
             AirStmt::Trap { trap_vect } => Ok(0xF000 | *trap_vect as u16),
         }
     }
 
+    /// Find offset between label reference and current line while checking bounds
     fn bit_offs(&self, ref_label: &Label, bits: u32) -> Result<u16> {
-        // Get difference between own line and label line, check bounds
         let label_pos = match ref_label {
             Label::Ref(val) => val,
             Label::Unfilled(_) => panic!("Tried to offset unfilled label"),
