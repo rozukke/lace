@@ -2,7 +2,7 @@ use std::num::ParseIntError;
 
 use miette::{miette, LabeledSpan, Report, Severity};
 
-use crate::{lexer::Token, symbol::Span};
+use crate::{lexer::Token, parser::Bits, symbol::Span};
 
 // Lexer errors
 
@@ -117,6 +117,17 @@ pub fn parse_eof(src: &'static str) -> Report {
         help = "you may be missing operands in your last statement",
         labels = vec![LabeledSpan::at_offset(src.len() - 1, "unexpected token")],
         "Unexpected end of file",
+    )
+    .with_source_code(src)
+}
+
+pub fn parse_lit_range(span: Span, src: &'static str, bits: Bits) -> Report {
+    miette!(
+        severity = Severity::Error,
+        code = "parse::unexpected_token",
+        help = format!("this instruction expects literals that can be contained in {bits} bits",),
+        labels = vec![LabeledSpan::at(span, "out-of-range literal")],
+        "Found numeric literal of incorrect size"
     )
     .with_source_code(src)
 }

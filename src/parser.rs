@@ -1,6 +1,6 @@
 use std::{borrow::Cow, fmt::Display, iter::Peekable, vec::IntoIter};
 
-use miette::{bail, LabeledSpan, Result, Severity};
+use miette::Result;
 
 use crate::{
     air::{Air, AirStmt, ImmediateOrReg, RawWord},
@@ -373,16 +373,7 @@ impl AsmParser {
         };
         match check_range(val) {
             true => Ok(val),
-            false => {
-                bail!(
-                    severity = Severity::Error,
-                    help = format!(
-                        "this instruction expects literals that can be contained in {bits} bits",
-                    ),
-                    labels = vec![LabeledSpan::at(tok.span, "out-of-range literal")],
-                    "Found numeric literal {val} of incorrect size"
-                )
-            }
+            false => Err(error::parse_lit_range(tok.span, self.src, bits)),
         }
     }
 
