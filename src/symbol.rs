@@ -239,6 +239,8 @@ pub enum TrapKind {
     Puts,
     Out,
     Getc,
+    Putn,
+    Reg,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

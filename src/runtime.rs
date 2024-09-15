@@ -143,7 +143,7 @@ impl RunState {
             // imm
             Self::s_ext(instr, 5)
         };
-        let res = val1 + val2;
+        let res = val1.wrapping_add(val2);
         self.set_flags(res);
         *self.reg(dr) = res;
     }
@@ -161,7 +161,7 @@ impl RunState {
             // imm
             Self::s_ext(instr, 5)
         };
-        let res = val1 + val2;
+        let res = val1 & val2;
         self.set_flags(res);
         *self.reg(dr) = res;
     }
@@ -192,14 +192,14 @@ impl RunState {
 
     fn ld(&mut self, instr: u16) {
         let dr = (instr >> 9) & 0b111;
-        let val = *self.mem(self.pc + Self::s_ext(instr, 9));
+        let val = *self.mem(self.pc.wrapping_add(Self::s_ext(instr, 9)));
         *self.reg(dr) = val;
         self.set_flags(val);
     }
 
     fn ldi(&mut self, instr: u16) {
         let dr = (instr >> 9) & 0b111;
-        let ptr = *self.mem(self.pc + Self::s_ext(instr, 9));
+        let ptr = *self.mem(self.pc.wrapping_add(Self::s_ext(instr, 9)));
         let val = *self.mem(ptr);
         *self.reg(dr) = val;
         self.set_flags(val);
@@ -209,14 +209,14 @@ impl RunState {
         let dr = (instr >> 9) & 0b111;
         let br = (instr >> 6) & 0b111;
         let ptr = *self.reg(br);
-        let val = *self.mem(ptr + Self::s_ext(instr, 6));
+        let val = *self.mem(ptr.wrapping_add(Self::s_ext(instr, 6)));
         *self.reg(dr) = val;
         self.set_flags(val);
     }
 
     fn lea(&mut self, instr: u16) {
         let dr = (instr >> 9) & 0b111;
-        let val = self.pc + Self::s_ext(instr, 9);
+        let val = self.pc.wrapping_add(Self::s_ext(instr, 9));
         *self.reg(dr) = val;
         self.set_flags(val);
     }
@@ -236,13 +236,13 @@ impl RunState {
     fn st(&mut self, instr: u16) {
         let sr = (instr >> 9) & 0b111;
         let val = *self.reg(sr);
-        *self.mem(self.pc + Self::s_ext(instr, 9)) = val;
+        *self.mem(self.pc.wrapping_add(Self::s_ext(instr, 9))) = val;
     }
 
     fn sti(&mut self, instr: u16) {
         let sr = (instr >> 9) & 0b111;
         let val = *self.reg(sr);
-        let ptr = *self.mem(self.pc + Self::s_ext(instr, 9));
+        let ptr = *self.mem(self.pc.wrapping_add(Self::s_ext(instr, 9)));
         *self.mem(ptr) = val;
     }
 
@@ -250,7 +250,7 @@ impl RunState {
         let sr = (instr >> 9) & 0b111;
         let br = (instr >> 6) & 0b111;
         let ptr = *self.reg(br);
-        *self.mem(ptr + Self::s_ext(instr, 6));
+        *self.mem(ptr.wrapping_add(Self::s_ext(instr, 6)));
     }
 
     fn trap(&mut self, instr: u16) {
@@ -296,6 +296,20 @@ impl RunState {
             0x25 => {
                 self.pc = u16::MAX;
                 println!("\n{:>12}", "Halted".cyan());
+            }
+            // putn
+            0x26 => {
+                let val = *self.reg(0);
+                println!("{val}");
+            }
+            // reg
+            0x27 => {
+                println!("\n------ Registers ------");
+                for (i, reg) in self.reg.iter().enumerate() {
+                    println!("r{i}: {reg:.>#19}");
+                    // println!("r{i}: {reg:.>#19b}");
+                }
+                println!("-----------------------");
             }
             // unknown
             _ => panic!("You called a trap with an unknown vector of {}", trap_vect),

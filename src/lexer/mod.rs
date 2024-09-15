@@ -97,7 +97,7 @@ pub fn tokenize(input: &'static str) -> impl Iterator<Item = Result<Token>> + '_
 
 /// Test if a character is considered to be whitespace, including commas.
 pub(crate) fn is_whitespace(c: char) -> bool {
-    char::is_ascii_whitespace(&c) || c == ','
+    char::is_ascii_whitespace(&c) || matches!(c, ',' | ':')
 }
 
 pub(crate) fn is_reg_num(c: char) -> bool {
@@ -340,13 +340,15 @@ impl Cursor<'_> {
         use TokenKind::Trap;
         use TrapKind::*;
         match ident {
+            "trap" => Trap(Generic),
             "getc" => Trap(Getc),
             "out" => Trap(Out),
             "puts" => Trap(Puts),
             "in" => Trap(In),
             "putsp" => Trap(Putsp),
             "halt" => Trap(Halt),
-            "trap" => Trap(Generic),
+            "putn" => Trap(Putn),
+            "reg" => Trap(Reg),
             _ => TokenKind::Label,
         }
     }
