@@ -68,15 +68,20 @@ fn main() -> miette::Result<()> {
                 // Available until end of program
                 let contents: &'static str =
                     Box::leak(Box::new(fs::read_to_string(&name).into_diagnostic()?));
+                println!(
+                    "{:>12} {}",
+                    "Assembling".green().bold(),
+                    name.to_str().unwrap()
+                );
                 // Process asm
                 let parser = lace::AsmParser::new(&contents)?;
                 let mut air = parser.parse()?;
                 air.backpatch()?;
                 // Write to file
-                let mut file = File::create(dest.unwrap_or(
+                let out_file_name = dest.unwrap_or(
                     format!("{}.lc3", name.file_stem().unwrap().to_str().unwrap()).into(),
-                ))
-                .unwrap();
+                );
+                let mut file = File::create(&out_file_name).unwrap();
                 // Deal with .orig
                 if let Some(orig) = air.orig() {
                     file.write(&orig.to_be_bytes());
@@ -87,6 +92,16 @@ fn main() -> miette::Result<()> {
                 for i in 0..air.len() {
                     file.write(&air.get(i).emit()?.to_be_bytes());
                 }
+                println!(
+                    "{:>12} {}",
+                    "Finished".green().bold(),
+                    name.to_str().unwrap()
+                );
+                println!(
+                    "{:>12} {}",
+                    "Saved to".green().bold(),
+                    out_file_name.to_str().unwrap()
+                );
                 Ok(())
             }
             Command::Clean { name } => todo!(),

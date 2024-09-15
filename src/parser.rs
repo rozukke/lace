@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fmt::Display, iter::Peekable, vec::IntoIter};
+use std::{borrow::Cow, fmt::Display, iter::Peekable, u16, vec::IntoIter};
 
 use miette::Result;
 
@@ -43,9 +43,9 @@ pub fn preprocess(src: &'static str) -> Result<Vec<Token>> {
                     }
                     TokenKind::Lit(LiteralKind::Dec(lit)) => {
                         if lit < 0 {
-                            return Err(error::preproc_bad_lit(val.span, src, true));
+                            println!("{:?}", error::preproc_bad_lit(val.span, src, true));
                         }
-                        for _ in 0..lit {
+                        for _ in 0..lit as u16 {
                             res.push(Token::nullbyte());
                         }
                     }
