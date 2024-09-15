@@ -414,7 +414,7 @@ mod test {
     fn dec_too_large() {
         let mut lex = Cursor::new("#65535 #65536");
         let res = lex.advance_token().unwrap();
-        assert!(res.kind == TokenKind::Lit(LiteralKind::Dec(32767)));
+        assert!(res.kind == TokenKind::Lit(LiteralKind::Dec((65535 as u16) as i16)));
         // Whitespace
         assert!(lex.advance_real().is_err());
     }

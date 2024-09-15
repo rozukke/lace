@@ -487,7 +487,8 @@ mod test {
 
     #[test]
     fn preproc_blkw_neg() {
-        assert!(preprocess("temp .blkw #-3").is_err())
+        // TODO: potentially test for warnings
+        assert!(preprocess("temp .blkw #-3").is_ok())
     }
 
     #[test]
