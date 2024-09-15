@@ -227,6 +227,7 @@ pub enum InstrKind {
     Rti,
     St,
     Sti,
+    Str,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

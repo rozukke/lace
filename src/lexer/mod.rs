@@ -330,6 +330,7 @@ impl Cursor<'_> {
             "rti" => Instr(Rti),
             "st" => Instr(St),
             "sti" => Instr(Sti),
+            "str" => Instr(Str),
             _ => TokenKind::Label,
         }
     }

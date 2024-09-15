@@ -55,6 +55,15 @@ impl Air {
     }
 }
 
+impl IntoIterator for Air {
+    type Item = AsmLine;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.ast.into_iter()
+    }
+}
+
 /// Single LC3 statement. Has optional labels.
 #[derive(PartialEq, Eq, Debug)]
 pub enum AirStmt {
@@ -105,6 +114,12 @@ pub enum AirStmt {
     StoreInd {
         src_reg: Register,
         dest_label: Label,
+    },
+    /// Store value in src_reg at dest_label + offset
+    StoreOffs {
+        src_reg: Register,
+        dest_reg: Register,
+        offset: u8,
     },
     /// A raw value created during preprocessing
     RawWord { val: RawWord },
@@ -281,6 +296,17 @@ impl AsmLine {
                 let mut raw = 0xB000;
                 raw |= (*src_reg as u16) << 9;
                 raw |= self.bit_offs(dest_label, 9)?;
+                Ok(raw)
+            }
+            AirStmt::StoreOffs {
+                src_reg,
+                dest_reg,
+                offset,
+            } => {
+                let mut raw = 0x7000;
+                raw |= (*src_reg as u16) << 9;
+                raw |= (*dest_reg as u16) << 6;
+                raw |= *offset as u16;
                 Ok(raw)
             }
             AirStmt::RawWord { val: bytes } => Ok(bytes.0),
