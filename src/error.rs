@@ -2,7 +2,11 @@ use std::num::ParseIntError;
 
 use miette::{miette, LabeledSpan, Report, Severity};
 
-use crate::{lexer::Token, parser::Bits, symbol::Span};
+use crate::{
+    lexer::{Token, TokenKind},
+    parser::Bits,
+    symbol::Span,
+};
 
 // Lexer errors
 
@@ -53,19 +57,21 @@ pub fn lex_unknown(span: Span, src: &'static str) -> Report {
 // Preprocessor errors
 
 pub fn preproc_bad_lit(span: Span, src: &'static str, is_present: bool) -> Report {
-    let (help, label) = if is_present {
+    let (help, label, severity) = if is_present {
         (
-            "this directive expects a positive literal",
+            "you may have meant to use a positive literal",
             "negative literal",
+            Severity::Warning,
         )
     } else {
         (
             "this directive requires an integer or hex literal to follow",
             "not a numeric literal",
+            Severity::Error,
         )
     };
     miette!(
-        severity = Severity::Error,
+        severity = severity,
         code = "preproc::bad_lit",
         help = help,
         labels = vec![LabeledSpan::at(span, label)],
@@ -78,7 +84,7 @@ pub fn preproc_no_str(span: Span, src: &'static str) -> Report {
     miette!(
         severity = Severity::Error,
         code = "preproc::stringz",
-        help = ".stringz requires a valid string literal like \"hello\n\"",
+        help = ".stringz requires a valid string literal like \"hello\\n\"",
         labels = vec![LabeledSpan::at(span, "not a string literal")],
         "Expected a valid string literal.",
     )
@@ -99,11 +105,21 @@ pub fn parse_duplicate_label(span: Span, src: &'static str) -> Report {
 }
 
 pub fn parse_generic_unexpected(src: &'static str, expected: &str, found: Token) -> Report {
+    let mut help = "check the operands for this instruction".to_string();
+    if found.kind == TokenKind::Label {
+        let label = &src[found.span.offs()..found.span.offs() + found.span.len()];
+        if label.chars().all(|c| char::is_ascii_digit(&c)) {
+            help = format!("you may have meant to write a decimal literal: #{}", label)
+        }
+    }
     miette!(
         severity = Severity::Error,
         code = "parse::unexpected_token",
-        help = "check the operands for this instruction",
-        labels = vec![LabeledSpan::at(found.span, "unexpected token")],
+        help = help,
+        labels = vec![LabeledSpan::at(
+            found.span,
+            format!("unexpected {}", found.kind)
+        )],
         "Expected token of type {expected}, found {}",
         found.kind
     )
@@ -115,7 +131,7 @@ pub fn parse_eof(src: &'static str) -> Report {
         severity = Severity::Error,
         code = "parse::unexpected_eof",
         help = "you may be missing operands in your last statement",
-        labels = vec![LabeledSpan::at_offset(src.len() - 1, "unexpected token")],
+        labels = vec![LabeledSpan::at_offset(src.len() - 1, "here")],
         "Unexpected end of file",
     )
     .with_source_code(src)
