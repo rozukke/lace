@@ -37,6 +37,11 @@ enum Command {
         /// Destination to output .lc3 file
         dest: Option<PathBuf>,
     },
+    /// Check a `.asm` file without running or outputting binary
+    Check {
+        /// File to check
+        name: PathBuf,
+    },
     /// Remove compilation artifacts for specified source
     Clean {
         /// `.asm` file to try remove artifacts for
@@ -63,7 +68,7 @@ fn main() -> miette::Result<()> {
                 let contents: &'static str =
                     Box::leak(Box::new(fs::read_to_string(&name).into_diagnostic()?));
                 println!(
-                    "{:>12} {}",
+                    "{:>12} target {}",
                     "Assembling".green().bold(),
                     name.to_str().unwrap()
                 );
@@ -72,16 +77,12 @@ fn main() -> miette::Result<()> {
                 let mut air = parser.parse()?;
                 air.backpatch()?;
                 // Run file
-                println!(
-                    "{:>12} {}",
-                    "Running".green().bold(),
-                    name.to_str().unwrap()
-                );
+                println!("{:>12} binary", "Running".green().bold());
                 let mut program = RunState::try_from(air)?;
                 program.run();
                 println!(
-                    "{:>12} {}",
-                    "Finished".green().bold(),
+                    "{:>12} target {}",
+                    "Completed".green().bold(),
                     name.to_str().unwrap()
                 );
                 Ok(())
@@ -91,7 +92,7 @@ fn main() -> miette::Result<()> {
                 let contents: &'static str =
                     Box::leak(Box::new(fs::read_to_string(&name).into_diagnostic()?));
                 println!(
-                    "{:>12} {}",
+                    "{:>12} target {}",
                     "Assembling".green().bold(),
                     name.to_str().unwrap()
                 );
@@ -114,16 +115,30 @@ fn main() -> miette::Result<()> {
                 for i in 0..air.len() {
                     file.write(&air.get(i).emit()?.to_be_bytes());
                 }
-                println!(
-                    "{:>12} {}",
-                    "Finished".green().bold(),
-                    name.to_str().unwrap()
-                );
+                println!("{:>12} binary", "Finished".green().bold(),);
                 println!(
                     "{:>12} {}",
                     "Saved to".green().bold(),
                     out_file_name.to_str().unwrap()
                 );
+                Ok(())
+            }
+            Command::Check { name } => {
+                let contents: &'static str =
+                    Box::leak(Box::new(fs::read_to_string(&name).into_diagnostic()?));
+                println!(
+                    "{:>12} target {}",
+                    "Checking".green().bold(),
+                    name.to_str().unwrap()
+                );
+                // Process asm
+                let parser = lace::AsmParser::new(&contents)?;
+                let mut air = parser.parse()?;
+                air.backpatch()?;
+                for stmt in air {
+                    let _ = stmt.emit()?;
+                }
+                println!("{:>12} with 0 errors", "Finished".green().bold(),);
                 Ok(())
             }
             Command::Clean { name } => todo!(),
