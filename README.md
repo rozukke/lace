@@ -1,3 +1,5 @@
+![lace logo](./logo.png)
+
 # lace
 
 [![Build status](https://github.com/rozukke/lace/actions/workflows/rust.yml/badge.svg?branch=main&event=push)](https://github.com/rozukke/lace/actions/workflows/rust.yml)
@@ -12,32 +14,36 @@ with a copy of the original OS. **Some features are missing!**
 
 ## Commands
 - `run`: assemble and run a file - all in one command.
-- `compile`: creates a binary file with a `.lc3` extension. Note that `lace` cannot currently run these files, so you may need
+- `compile`: creates a binary file with a *.lc3* extension. Note that `lace` cannot currently run these files, so you may need
 a different LC3 virtual machine to test them out until that is implemented.
 - `check`: verifies that your file is correct without outputting it or running it.
 - `watch`: **(work in progress)** runs `check` for a specified file while you develop. Neat!
-- `fmt`: **(planned)** formats your `.asm` file to fit my arbitrary style guide.
+- `fmt`: **(planned)** formats your *.asm* file to fit my arbitrary style guide.
 - `clean`: **(planned)** used to clean debug artifacts that will be implemented in the future.
 
 ## Traps
 There are a few extra traps that should make debugging a lot nicer! Please note that they will not perform as expected when you run
 your binaries with other virtual machines.
-- `putn`: print the contents of `r0` to console. This isn't supposed to be easy, and you should probably learn why!
+- `putn`: print the contents of `r0` to console. That's not usually very easy to do, and you should probably learn why!
 - `reg`: print the contents of every register to console. Currently only supports u16 formatting.
 
 ## Work in progress
 There are several features and fixes under development:
 - Input traps
 - Showing multiple errors per compilation
+- Different number formats for console output
 - Watching a file
 - File formatting
 - Debug symbols
 - A step-through debugger (big one!)
+
 Check the repo for updates as it is under active development.
 
 ## Installation
 For now, please use `cargo` to get set up, as there are no official releases. Check in often for the latest updates! If you are
 unsure what `cargo` is, check out [this help page](https://doc.rust-lang.org/cargo/getting-started/installation.html).
+Alternatively, there is a *flake.nix* available with a Rust development shell, if you have Nix set up.
+
 To install, follow the steps below:
 ```sh
 git clone https://github.com/rozukke/lace.git
