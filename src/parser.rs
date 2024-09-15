@@ -290,6 +290,16 @@ impl AsmParser {
                     dest_label,
                 })
             }
+            InstrKind::Str => {
+                let src_reg = self.expect_reg()?;
+                let dest_reg = self.expect_reg()?;
+                let offset = self.expect_lit(Bits::Signed(6))? as u8;
+                Ok(AirStmt::StoreOffs {
+                    src_reg,
+                    dest_reg,
+                    offset,
+                })
+            }
         }
     }
 

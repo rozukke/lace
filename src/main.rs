@@ -10,7 +10,7 @@ use clap::{Parser, Subcommand};
 use colored::Colorize;
 use miette::{GraphicalTheme, IntoDiagnostic, MietteHandlerOpts, Result};
 
-use lace::AsmParser;
+use lace::{AsmParser, RunState};
 
 /// Lace is a complete & convenient assembler toolchain for the LC3 assembly language.
 #[derive(Parser)]
@@ -19,18 +19,14 @@ struct Args {
     #[command(subcommand)]
     command: Option<Command>,
 
-    /// Run commands in debug mode
-    #[arg(long)]
-    debug: bool,
+    /// Quickly provide a `.asm` file to run
+    path: Option<PathBuf>,
 }
 
 #[derive(Subcommand)]
 enum Command {
     /// Run text `.asm` or binary `.lc3` file directly and output to terminal
     Run {
-        /// Map the LC3 operating system ROM to memory to handle traps and interrupts
-        #[arg(short, long)]
-        os: bool,
         /// .asm file to run
         name: PathBuf,
     },
@@ -63,7 +59,33 @@ fn main() -> miette::Result<()> {
 
     if let Some(command) = args.command {
         match command {
-            Command::Run { os, name } => todo!(),
+            Command::Run { name } => {
+                let contents: &'static str =
+                    Box::leak(Box::new(fs::read_to_string(&name).into_diagnostic()?));
+                println!(
+                    "{:>12} {}",
+                    "Assembling".green().bold(),
+                    name.to_str().unwrap()
+                );
+                // Process asm
+                let parser = lace::AsmParser::new(&contents)?;
+                let mut air = parser.parse()?;
+                air.backpatch()?;
+                // Run file
+                println!(
+                    "{:>12} {}",
+                    "Running".green().bold(),
+                    name.to_str().unwrap()
+                );
+                let mut program = RunState::try_from(air)?;
+                program.run();
+                println!(
+                    "{:>12} {}",
+                    "Finished".green().bold(),
+                    name.to_str().unwrap()
+                );
+                Ok(())
+            }
             Command::Compile { name, dest } => {
                 // Available until end of program
                 let contents: &'static str =
@@ -109,10 +131,14 @@ fn main() -> miette::Result<()> {
             Command::Fmt { name } => todo!(),
         }
     } else {
-        println!("\n~ lace v{VERSION} - Copyright (c) 2024 Artemis Rosman ~");
-        println!("{}", LOGO.truecolor(255, 183, 197).bold());
-        println!("{SHORT_INFO}");
-        std::process::exit(0);
+        if let Some(path) = args.path {
+            todo!("Should allow for running files with no subcommand")
+        } else {
+            println!("\n~ lace v{VERSION} - Copyright (c) 2024 Artemis Rosman ~");
+            println!("{}", LOGO.truecolor(255, 183, 197).bold());
+            println!("{SHORT_INFO}");
+            std::process::exit(0);
+        }
     }
 }
 
@@ -131,9 +157,9 @@ x .d88"
    "%     ^Y"   ^Y'     "P'       "YP'"#;
 
 const SHORT_INFO: &str = r"
-Welcome to lace (from LAIS - LC3 Assembler & Interpreter System), an all-in-one toolchain
-for working with LC3 assembly code. Please use `-h` or `--help` to access
-the usage instructions and documentation.
+Welcome to lace (from LAIS - LC3 Assembler & Interpreter System),
+an all-in-one toolchain for working with LC3 assembly code.
+Please use `-h` or `--help` to access the usage instructions and documentation.
 ";
 
 const SHORT_HELP: &str = r"
