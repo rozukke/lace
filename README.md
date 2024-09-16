@@ -8,8 +8,8 @@
 [![Creator rozukke](https://img.shields.io/badge/Creator-rozukke-f497af.svg)](https://github.com/rozukke)
 [![Made with Rust](https://img.shields.io/badge/Made%20with-Rust-b7410e.svg)](https://www.rust-lang.org)
 
-`lace` is an all-in-one **LC3** (Little Computer 3) assembly toolchain. `lace` currently supports compiling, checking and
-running LC3 assembly files. It will support fancy convenience features like `watch`ing, a formatter and (probably) running
+`lace` is an all-in-one **LC3** (Little Computer 3) assembly toolchain. `lace` currently supports compiling, checking, running
+and placing a watch on LC3 assembly files. It will support fancy convenience features like a formatter and (probably) running
 with a copy of the original OS. **Some features are missing!**
 
 ## Commands
@@ -17,7 +17,7 @@ with a copy of the original OS. **Some features are missing!**
 - `compile`: creates a binary file with a *.lc3* extension. Note that `lace` cannot currently run these files, so you may need
 a different LC3 virtual machine to test them out until that is implemented.
 - `check`: verifies that your file is correct without outputting it or running it.
-- `watch`: **(work in progress)** runs `check` for a specified file while you develop. Neat!
+- `watch`: runs `check` for a specified file on save while you develop. Neat!
 - `fmt`: **(planned)** formats your *.asm* file to fit my arbitrary style guide.
 - `clean`: **(planned)** used to clean debug artifacts that will be implemented in the future.
 
@@ -29,10 +29,9 @@ your binaries with other virtual machines.
 
 ## Work in progress
 There are several features and fixes under development:
-- Input traps
+- Putsp trap
 - Showing multiple errors per compilation
 - Different number formats for console output
-- Watching a file
 - File formatting
 - Debug symbols
 - A step-through debugger (big one!)

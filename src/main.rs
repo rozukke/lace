@@ -1,13 +1,8 @@
-#![allow(unused)] // Remove later
-
 use std::fs::{self, File};
 use std::io::Write;
-use std::ops::RangeBounds;
 use std::path::PathBuf;
-use std::process::exit;
 use std::time::Duration;
 
-use clap::builder::styling::Style;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use hotwatch::notify::Event;
@@ -15,9 +10,10 @@ use hotwatch::{
     blocking::{Flow, Hotwatch},
     EventKind,
 };
-use miette::{GraphicalTheme, IntoDiagnostic, MietteHandlerOpts, Result};
+use miette::{IntoDiagnostic, Result};
 
-use lace::{reset_state, AsmParser, RunState, StaticSource};
+use lace::reset_state;
+use lace::{Air, RunState, StaticSource};
 
 /// Lace is a complete & convenient assembler toolchain for the LC3 assembly language.
 #[derive(Parser)]
@@ -67,113 +63,77 @@ enum Command {
 }
 
 fn main() -> miette::Result<()> {
+    use MsgColor::*;
     let args = Args::parse();
 
     if let Some(command) = args.command {
         match command {
             Command::Run { name } => {
-                let contents = StaticSource::new(fs::read_to_string(&name).into_diagnostic()?);
-                println!(
-                    "{:>12} target {}",
-                    "Assembling".green().bold(),
-                    name.to_str().unwrap()
-                );
-                // Process asm
-                let parser = lace::AsmParser::new(contents.src())?;
-                let mut air = parser.parse()?;
-                air.backpatch()?;
-                // Run file
-                println!("{:>12} binary", "Running".green().bold());
-                let mut program = RunState::try_from(air)?;
-                program.run();
-                println!(
-                    "{:>12} target {}",
-                    "Completed".green().bold(),
-                    name.to_str().unwrap()
-                );
+                run(&name)?;
                 Ok(())
             }
             Command::Compile { name, dest } => {
-                let contents = StaticSource::new(fs::read_to_string(&name).into_diagnostic()?);
-                println!(
-                    "{:>12} target {}",
-                    "Assembling".green().bold(),
-                    name.to_str().unwrap()
-                );
-                // Process asm
-                let parser = lace::AsmParser::new(contents.src())?;
-                let mut air = parser.parse()?;
-                air.backpatch()?;
-                // Write to file
-                let out_file_name = dest.unwrap_or(
-                    format!("{}.lc3", name.file_stem().unwrap().to_str().unwrap()).into(),
-                );
+                file_message(Green, "Assembing", &name);
+                let air = assemble(&name)?;
+
+                let out_file_name =
+                    dest.unwrap_or(name.with_extension("lc3").file_stem().unwrap().into());
                 let mut file = File::create(&out_file_name).unwrap();
+
                 // Deal with .orig
                 if let Some(orig) = air.orig() {
-                    file.write(&orig.to_be_bytes());
+                    let _ = file.write(&orig.to_be_bytes());
                 } else {
-                    file.write(&0x3000u16.to_be_bytes());
+                    let _ = file.write(&0x3000u16.to_be_bytes());
                 }
-                // Write lines
-                for i in 0..air.len() {
-                    file.write(&air.get(i).emit()?.to_be_bytes());
+
+                for stmt in air {
+                    let _ = file.write(&stmt.emit()?.to_be_bytes());
                 }
-                println!("{:>12} binary", "Finished".green().bold(),);
-                println!(
-                    "{:>12} {}",
-                    "Saved to".green().bold(),
-                    out_file_name.to_str().unwrap()
-                );
+
+                message(Green, "Finished", "emit binary");
+                file_message(Green, "Saved", &out_file_name);
                 Ok(())
             }
             Command::Check { name } => {
-                println!(
-                    "{:>12} target {}",
-                    "Checking".green().bold(),
-                    name.to_str().unwrap()
-                );
-                check(&name);
-                println!("{:>12} with 0 errors", "Finished".green().bold(),);
+                file_message(Green, "Checking", &name);
+                let _ = assemble(&name)?;
+                message(Green, "Success", "no errors found!");
                 Ok(())
             }
-            Command::Clean { name } => todo!(),
+            Command::Clean { name: _ } => todo!("There are no debug files implemented to clean!"),
             Command::Watch { name } => {
                 // Clear screen and move cursor to top left
                 print!("\x1B[2J\x1B[2;1H");
-                println!(
-                    "{:>12} target {}",
-                    "Watching".green().bold(),
-                    name.clone().to_str().unwrap()
-                );
-                println!("{:>12} press CTRL+C to exit", "TIP:".cyan());
+                file_message(Green, "Watching", &name);
+                message(Cyan, "Help", "press CTRL+C to exit");
+
                 let mut watcher = Hotwatch::new_with_custom_delay(Duration::from_millis(500))
                     .into_diagnostic()?;
+
                 watcher
                     .watch(name.clone(), move |event: Event| match event.kind {
                         EventKind::Modify(_) => {
                             // Clear screen
                             print!("\x1B[2J\x1B[2;1H");
-                            println!(
-                                "{:>12} target {}",
-                                "Watching".green().bold(),
-                                name.clone().to_str().unwrap()
-                            );
-                            println!("{:>12} re-checking...", "File changed".green());
-                            println!("{:>12} press CTRL+C to exit", "Help".cyan());
-                            match check(&name) {
+                            file_message(Green, "Watching", &name);
+                            message(Green, "Re-checking", "file change detected");
+                            message(Cyan, "Help", "press CTRL+C to exit");
+
+                            let _ = match assemble(&name) {
                                 Ok(_) => {
-                                    println!("{:>12} no errors found", "Success!".green());
+                                    message(Green, "Success", "no errors found!");
                                 }
                                 Err(e) => {
                                     println!("\n{:?}", e);
                                 }
                             };
+
                             reset_state();
                             Flow::Continue
                         }
                         EventKind::Remove(_) => {
-                            println!("{}", "Watched file was deleted. Exiting...".red());
+                            message(Red, "Error", "watched file was deleted. Exiting...");
                             std::process::exit(1);
                         }
                         _ => Flow::Continue,
@@ -182,11 +142,12 @@ fn main() -> miette::Result<()> {
                 watcher.run();
                 Ok(())
             }
-            Command::Fmt { name } => todo!(),
+            Command::Fmt { name: _ } => todo!("Formatting is not currently implemented"),
         }
     } else {
         if let Some(path) = args.path {
-            todo!("Should allow for running files with no subcommand")
+            run(&path)?;
+            Ok(())
         } else {
             println!("\n~ lace v{VERSION} - Copyright (c) 2024 Artemis Rosman ~");
             println!("{}", LOGO.truecolor(255, 183, 197).bold());
@@ -196,15 +157,48 @@ fn main() -> miette::Result<()> {
     }
 }
 
-fn check(name: &PathBuf) -> Result<()> {
+enum MsgColor {
+    Green,
+    Cyan,
+    Red,
+}
+
+fn file_message(color: MsgColor, left: &str, right: &PathBuf) {
+    let right = format!("target {}", right.to_str().unwrap());
+    message(color, left, &right);
+}
+
+fn message<S>(color: MsgColor, left: S, right: S)
+where
+    S: Colorize + std::fmt::Display,
+{
+    let left = match color {
+        MsgColor::Green => left.green(),
+        MsgColor::Cyan => left.cyan(),
+        MsgColor::Red => left.red(),
+    };
+    println!("{left:>12} {right}");
+}
+
+fn run(name: &PathBuf) -> Result<()> {
+    file_message(MsgColor::Green, "Assembling", &name);
+    let air = assemble(&name)?;
+
+    message(MsgColor::Green, "Running", "emitted binary");
+    let mut program = RunState::try_from(air)?;
+    program.run();
+
+    file_message(MsgColor::Green, "Completed", &name);
+    Ok(())
+}
+
+/// Return assembly intermediate representation of source file for further processing
+fn assemble(name: &PathBuf) -> Result<Air> {
     let contents = StaticSource::new(fs::read_to_string(&name).into_diagnostic()?);
     let parser = lace::AsmParser::new(contents.src())?;
     let mut air = parser.parse()?;
     air.backpatch()?;
-    for stmt in air {
-        let _ = stmt.emit()?;
-    }
-    Ok(())
+    Ok(air)
 }
 
 const LOGO: &str = r#"
@@ -225,10 +219,6 @@ const SHORT_INFO: &str = r"
 Welcome to lace (from LAIS - LC3 Assembler & Interpreter System),
 an all-in-one toolchain for working with LC3 assembly code.
 Please use `-h` or `--help` to access the usage instructions and documentation.
-";
-
-const SHORT_HELP: &str = r"
-Unable to recognise command. Please use `-h` or `--help` to view usage instructions.
 ";
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
