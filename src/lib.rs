@@ -1,7 +1,7 @@
-pub mod parser;
+mod parser;
 pub use parser::AsmParser;
 
-pub mod air;
+mod air;
 pub use air::Air;
 mod runtime;
 pub use runtime::RunState;
@@ -9,3 +9,4 @@ pub use runtime::RunState;
 mod error;
 mod lexer;
 mod symbol;
+pub use symbol::{reset_state, StaticSource};

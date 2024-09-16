@@ -7,12 +7,38 @@ thread_local! {
     pub static SYMBOL_TABLE: RefCell<FxHashMap<String, u16>> = RefCell::new(FxHashMap::default());
 }
 
+pub fn reset_state() {
+    with_symbol_table(|sym| sym.clear());
+}
+
 /// Access to symbol table via closure
 pub fn with_symbol_table<R, F>(f: F) -> R
 where
     F: FnOnce(&mut FxHashMap<String, u16>) -> R,
 {
     SYMBOL_TABLE.with_borrow_mut(f)
+}
+
+/// This is not allowed to be cloned to avoid double frees.
+pub struct StaticSource {
+    src: *mut String,
+}
+
+impl StaticSource {
+    pub fn new(src: String) -> Self {
+        let raw_ptr = Box::into_raw(Box::new(src));
+        Self { src: raw_ptr }
+    }
+
+    pub fn src(&self) -> &'static str {
+        unsafe { &*self.src }
+    }
+}
+
+impl Drop for StaticSource {
+    fn drop(&mut self) {
+        unsafe { drop(Box::from_raw(self.src)) }
+    }
 }
 
 /// Line number of referenced label

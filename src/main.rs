@@ -4,13 +4,20 @@ use std::fs::{self, File};
 use std::io::Write;
 use std::ops::RangeBounds;
 use std::path::PathBuf;
+use std::process::exit;
+use std::time::Duration;
 
 use clap::builder::styling::Style;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
+use hotwatch::notify::Event;
+use hotwatch::{
+    blocking::{Flow, Hotwatch},
+    EventKind,
+};
 use miette::{GraphicalTheme, IntoDiagnostic, MietteHandlerOpts, Result};
 
-use lace::{AsmParser, RunState};
+use lace::{reset_state, AsmParser, RunState, StaticSource};
 
 /// Lace is a complete & convenient assembler toolchain for the LC3 assembly language.
 #[derive(Parser)]
@@ -65,15 +72,14 @@ fn main() -> miette::Result<()> {
     if let Some(command) = args.command {
         match command {
             Command::Run { name } => {
-                let contents: &'static str =
-                    Box::leak(Box::new(fs::read_to_string(&name).into_diagnostic()?));
+                let contents = StaticSource::new(fs::read_to_string(&name).into_diagnostic()?);
                 println!(
                     "{:>12} target {}",
                     "Assembling".green().bold(),
                     name.to_str().unwrap()
                 );
                 // Process asm
-                let parser = lace::AsmParser::new(&contents)?;
+                let parser = lace::AsmParser::new(contents.src())?;
                 let mut air = parser.parse()?;
                 air.backpatch()?;
                 // Run file
@@ -88,16 +94,14 @@ fn main() -> miette::Result<()> {
                 Ok(())
             }
             Command::Compile { name, dest } => {
-                // Available until end of program
-                let contents: &'static str =
-                    Box::leak(Box::new(fs::read_to_string(&name).into_diagnostic()?));
+                let contents = StaticSource::new(fs::read_to_string(&name).into_diagnostic()?);
                 println!(
                     "{:>12} target {}",
                     "Assembling".green().bold(),
                     name.to_str().unwrap()
                 );
                 // Process asm
-                let parser = lace::AsmParser::new(&contents)?;
+                let parser = lace::AsmParser::new(contents.src())?;
                 let mut air = parser.parse()?;
                 air.backpatch()?;
                 // Write to file
@@ -124,25 +128,60 @@ fn main() -> miette::Result<()> {
                 Ok(())
             }
             Command::Check { name } => {
-                let contents: &'static str =
-                    Box::leak(Box::new(fs::read_to_string(&name).into_diagnostic()?));
                 println!(
                     "{:>12} target {}",
                     "Checking".green().bold(),
                     name.to_str().unwrap()
                 );
-                // Process asm
-                let parser = lace::AsmParser::new(&contents)?;
-                let mut air = parser.parse()?;
-                air.backpatch()?;
-                for stmt in air {
-                    let _ = stmt.emit()?;
-                }
+                check(&name);
                 println!("{:>12} with 0 errors", "Finished".green().bold(),);
                 Ok(())
             }
             Command::Clean { name } => todo!(),
-            Command::Watch { name } => todo!(),
+            Command::Watch { name } => {
+                // Clear screen and move cursor to top left
+                print!("\x1B[2J\x1B[2;1H");
+                println!(
+                    "{:>12} target {}",
+                    "Watching".green().bold(),
+                    name.clone().to_str().unwrap()
+                );
+                println!("{:>12} press CTRL+C to exit", "TIP:".cyan());
+                let mut watcher = Hotwatch::new_with_custom_delay(Duration::from_millis(500))
+                    .into_diagnostic()?;
+                watcher
+                    .watch(name.clone(), move |event: Event| match event.kind {
+                        EventKind::Modify(_) => {
+                            // Clear screen
+                            print!("\x1B[2J\x1B[2;1H");
+                            println!(
+                                "{:>12} target {}",
+                                "Watching".green().bold(),
+                                name.clone().to_str().unwrap()
+                            );
+                            println!("{:>12} re-checking...", "File changed".green());
+                            println!("{:>12} press CTRL+C to exit", "Help".cyan());
+                            match check(&name) {
+                                Ok(_) => {
+                                    println!("{:>12} no errors found", "Success!".green());
+                                }
+                                Err(e) => {
+                                    println!("\n{:?}", e);
+                                }
+                            };
+                            reset_state();
+                            Flow::Continue
+                        }
+                        EventKind::Remove(_) => {
+                            println!("{}", "Watched file was deleted. Exiting...".red());
+                            std::process::exit(1);
+                        }
+                        _ => Flow::Continue,
+                    })
+                    .into_diagnostic()?;
+                watcher.run();
+                Ok(())
+            }
             Command::Fmt { name } => todo!(),
         }
     } else {
@@ -155,6 +194,17 @@ fn main() -> miette::Result<()> {
             std::process::exit(0);
         }
     }
+}
+
+fn check(name: &PathBuf) -> Result<()> {
+    let contents = StaticSource::new(fs::read_to_string(&name).into_diagnostic()?);
+    let parser = lace::AsmParser::new(contents.src())?;
+    let mut air = parser.parse()?;
+    air.backpatch()?;
+    for stmt in air {
+        let _ = stmt.emit()?;
+    }
+    Ok(())
 }
 
 const LOGO: &str = r#"

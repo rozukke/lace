@@ -1,3 +1,4 @@
+; comment
 lea r0 hw
 puts
 halt
