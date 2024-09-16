@@ -49,7 +49,7 @@ pub fn lex_unknown(span: Span, src: &'static str) -> Report {
         code = "lex::unknown",
         help = "make sure that your int literals start with #",
         labels = vec![LabeledSpan::at(span, "unknown token")],
-        "Encounetered an unknown token",
+        "Encountered an unknown token",
     )
     .with_source_code(src)
 }
@@ -86,7 +86,7 @@ pub fn preproc_no_str(span: Span, src: &'static str) -> Report {
         code = "preproc::stringz",
         help = ".stringz requires a valid string literal like \"hello\\n\"",
         labels = vec![LabeledSpan::at(span, "not a string literal")],
-        "Expected a valid string literal.",
+        "Expected a valid string literal",
     )
     .with_source_code(src)
 }

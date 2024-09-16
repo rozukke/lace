@@ -1,9 +1,9 @@
-#![allow(unused)]
 use core::panic;
-use std::{cmp::Ordering, i16, u16, u32, u8, usize};
+use std::{cmp::Ordering, i16, io::Write, u16, u32, u8, usize};
 
-use crate::{symbol::Flag, Air};
+use crate::Air;
 use colored::Colorize;
+use console::Term;
 use miette::Result;
 
 /// LC3 can address 128KB of memory.
@@ -21,7 +21,7 @@ pub struct RunState {
     /// Condition code
     flag: RunFlag,
     /// Processor status register
-    psr: u16,
+    _psr: u16,
 }
 
 #[derive(Clone, Copy)]
@@ -55,7 +55,7 @@ impl RunState {
             pc: orig as u16,
             reg: [0; 8],
             flag: RunFlag::Uninit,
-            psr: 0,
+            _psr: 0,
         })
     }
 
@@ -134,11 +134,11 @@ impl RunState {
         let dr = (instr >> 9) & 0b111;
         let sr = (instr >> 6) & 0b111;
 
-        let val1 = *self.reg(dr);
+        let val1 = *self.reg(sr);
         // Check if imm
         let val2 = if instr & 0b100000 == 0 {
             // reg
-            *self.reg((instr & 0b111))
+            *self.reg(instr & 0b111)
         } else {
             // imm
             Self::s_ext(instr, 5)
@@ -152,11 +152,11 @@ impl RunState {
         let dr = (instr >> 9) & 0b111;
         let sr = (instr >> 6) & 0b111;
 
-        let val1 = *self.reg(dr);
+        let val1 = *self.reg(sr);
         // Check if imm
         let val2 = if instr & 0b100000 == 0 {
             // reg
-            *self.reg((instr & 0b111))
+            *self.reg(instr & 0b111)
         } else {
             // imm
             Self::s_ext(instr, 5)
@@ -229,7 +229,7 @@ impl RunState {
         self.set_flags(val);
     }
 
-    fn rti(&mut self, instr: u16) {
+    fn rti(&mut self, _instr: u16) {
         todo!("Please open an issue and I'll get RTI implemented in a jiffy :)")
     }
 
@@ -250,7 +250,8 @@ impl RunState {
         let sr = (instr >> 9) & 0b111;
         let br = (instr >> 6) & 0b111;
         let ptr = *self.reg(br);
-        *self.mem(ptr.wrapping_add(Self::s_ext(instr, 6)));
+        let val = *self.reg(sr);
+        *self.mem(ptr.wrapping_add(Self::s_ext(instr, 6))) = val;
     }
 
     fn trap(&mut self, instr: u16) {
@@ -258,14 +259,15 @@ impl RunState {
         match trap_vect {
             // getc
             0x20 => {
-                // TODO: impl getc
-                todo!("TODO: Some dependencies are required for immediate response.")
+                let cons = Term::stdout();
+                let c = cons.read_char().unwrap();
+                *self.reg(0) = c as u16;
             }
             // out
-            0x21 => unsafe {
+            0x21 => {
                 let chr = (*self.reg(0) & 0xFF) as u8 as char;
-                print!("{chr}")
-            },
+                print!("{chr}");
+            }
             // puts
             0x22 => {
                 // could probably rewrite with iterators but idk if worth
@@ -284,8 +286,11 @@ impl RunState {
             }
             // in
             0x23 => {
-                // TODO: impl in
-                todo!("TODO: Some dependencies are required for immediate response.")
+                let mut cons = Term::stdout();
+                let c = cons.read_char().unwrap();
+                *self.reg(0) = c as u16;
+                write!(cons, "{c}").unwrap();
+                cons.flush().unwrap();
             }
             // putsp
             0x24 => {

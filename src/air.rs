@@ -327,7 +327,7 @@ impl AsmLine {
             bail!(
                 severity = Severity::Error,
                 r#"Difference between label and label reference is too large: at line {}, referencing line {}
-                Consider opening an issue if you think that is not the case."#,
+                Please note that this could be because of a long .stringz literal or large .blkw allocation."#,
                 self.line,
                 label_pos
             )
