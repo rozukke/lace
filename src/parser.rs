@@ -37,12 +37,16 @@ pub fn preprocess(src: &'static str) -> Result<Vec<Token>> {
                 let val = cur.advance_real()?;
                 match val.kind {
                     TokenKind::Lit(LiteralKind::Hex(lit)) => {
+                        if lit <= 0 {
+                            println!("{:?}", error::preproc_bad_lit(val.span, src, true));
+                            println!("The literal will be converted to positive or set to a minimum of 1.");
+                        }
                         for _ in 0..lit {
                             res.push(Token::nullbyte());
                         }
                     }
                     TokenKind::Lit(LiteralKind::Dec(lit)) => {
-                        if lit < 0 {
+                        if lit <= 0 {
                             println!("{:?}", error::preproc_bad_lit(val.span, src, true));
                         }
                         for _ in 0..lit as u16 {

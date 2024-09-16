@@ -29,7 +29,7 @@ enum RunFlag {
     N = 0b100,
     Z = 0b010,
     P = 0b001,
-    Uninit = 0b000,
+    Uninit = 0b111,
 }
 
 impl RunState {
@@ -77,6 +77,11 @@ impl RunState {
         Self::lea,  // 0xE
         Self::trap, // 0xF
     ];
+
+    /// For testing
+    pub fn inspect(&self, mem: u16) -> u16 {
+        unsafe { *self.mem.get_unchecked(mem as usize) }
+    }
 
     /// Run with preset memory
     pub fn run(&mut self) {
@@ -319,5 +324,100 @@ impl RunState {
             // unknown
             _ => panic!("You called a trap with an unknown vector of {}", trap_vect),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{AsmParser, RunState};
+
+    fn run(src: &'static str) -> RunState {
+        let parser = AsmParser::new(src).unwrap();
+        let mut air = parser.parse().unwrap();
+        air.backpatch().unwrap();
+        let mut state = RunState::try_from(air).unwrap();
+        state.run();
+        state
+    }
+
+    #[test]
+    fn run_add() {
+        let mut state = run(r#"
+        add r0 r0 #15
+        add r1 r0 #5
+        add r2 r0 r1
+        add r3 r3 #2
+        add r3 r3 r3
+        "#);
+        assert_eq!(*state.reg(0), 15);
+        assert_eq!(*state.reg(1), 20);
+        assert_eq!(*state.reg(2), 35);
+        assert_eq!(*state.reg(3), 4);
+    }
+
+    #[test]
+    fn run_and() {
+        let mut state = run(r#"
+        ; preset value
+        add r0 r0 #15
+
+        and r0 r0 #7
+        and r1 r0 #4
+        and r2 r0 r1
+        add r3 r3 #9
+        and r3 r3 r3
+        "#);
+        assert_eq!(*state.reg(0), 7);
+        assert_eq!(*state.reg(1), 4);
+        assert_eq!(*state.reg(2), 4);
+        assert_eq!(*state.reg(3), 9);
+    }
+
+    #[test]
+    fn run_br() {
+        let mut state = run(r#"
+        br next
+        add r0 r0 #12
+        first
+        add r1 r1 #13
+        br end
+        next
+        add r0 r0 #11
+        br first
+        end halt
+        "#);
+        assert_eq!(*state.reg(0), 11);
+        assert_eq!(*state.reg(1), 13);
+    }
+
+    #[test]
+    fn run_jmp() {
+        let mut state = run(r#"
+        lea r1 end
+        jmp r1
+        add r0 r0 #15
+        end halt
+        "#);
+        assert_eq!(*state.reg(0), 0);
+    }
+
+    #[test]
+    fn run_st() {
+        let state = run(r#"
+        add r0 r0 #12
+        st r0 val
+        val .blkw #1
+        "#);
+        assert_eq!(state.inspect(0x3002), 12);
+    }
+
+    #[test]
+    fn run_ld() {
+        let mut state = run(r#"
+        ld r0 val
+        halt
+        val .fill 0x300
+        "#);
+        assert_eq!(*state.reg(0), 0x300);
     }
 }
