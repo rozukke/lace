@@ -1,20 +1,16 @@
 use std::{cell::RefCell, ops::Range, str::FromStr};
 
-use fxhash::FxBuildHasher;
-use indexmap::IndexMap;
+use fxhash::FxHashMap;
 use miette::{miette, Result, SourceSpan};
 
-// Symbol table of symbol -> memory address (line number)
-type FxMap<K, V> = IndexMap<K, V, FxBuildHasher>;
-
 thread_local! {
-    pub static SYMBOL_TABLE: RefCell<FxMap<String, u16>> = RefCell::new(IndexMap::with_hasher(FxBuildHasher::default()));
+    pub static SYMBOL_TABLE: RefCell<FxHashMap<String, u16>> = RefCell::new(FxHashMap::default());
 }
 
 /// Access to symbol table via closure
 pub fn with_symbol_table<R, F>(f: F) -> R
 where
-    F: FnOnce(&mut FxMap<String, u16>) -> R,
+    F: FnOnce(&mut FxHashMap<String, u16>) -> R,
 {
     SYMBOL_TABLE.with_borrow_mut(f)
 }
