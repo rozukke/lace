@@ -37,9 +37,9 @@ pub fn preprocess(src: &'static str) -> Result<Vec<Token>> {
                 let val = cur.advance_real()?;
                 match val.kind {
                     TokenKind::Lit(LiteralKind::Hex(lit)) => {
-                        if lit <= 0 {
+                        if lit == 0 {
                             println!("{:?}", error::preproc_bad_lit(val.span, src, true));
-                            println!("The literal will be converted to positive or set to a minimum of 1.");
+                            println!("The literal will be set to 1.");
                         }
                         for _ in 0..lit {
                             res.push(Token::nullbyte());
@@ -131,7 +131,7 @@ impl AsmParser {
         Ok(AsmParser {
             src,
             toks: toks.into_iter().peekable(),
-            air: Air::new(),
+            air: Air::default(),
             line: 1,
         })
     }
@@ -338,7 +338,7 @@ impl AsmParser {
                     unexpected,
                 ))
             }
-            None => return Err(error::parse_eof(self.src)),
+            None => Err(error::parse_eof(self.src)),
         }
     }
 
@@ -349,12 +349,10 @@ impl AsmParser {
     ) -> Result<Token> {
         match self.toks.next() {
             Some(tok) if check(&tok.kind) => Ok(tok),
-            Some(unexpected) => {
-                return Err(error::parse_generic_unexpected(
-                    self.src, expected, unexpected,
-                ))
-            }
-            None => return Err(error::parse_eof(self.src)),
+            Some(unexpected) => Err(error::parse_generic_unexpected(
+                self.src, expected, unexpected,
+            )),
+            None => Err(error::parse_eof(self.src)),
         }
     }
 
@@ -414,15 +412,13 @@ impl AsmParser {
                     let val = self.expect_lit(Bits::Signed(5))?;
                     Ok(ImmediateOrReg::Imm5(val as u8))
                 }
-                _ => {
-                    return Err(error::parse_generic_unexpected(
-                        self.src,
-                        "literal or register",
-                        *tok,
-                    ))
-                }
+                _ => Err(error::parse_generic_unexpected(
+                    self.src,
+                    "literal or register",
+                    *tok,
+                )),
             },
-            None => return Err(error::parse_eof(self.src)),
+            None => Err(error::parse_eof(self.src)),
         }
     }
 }
@@ -489,14 +485,14 @@ mod test {
         let res = preprocess("temp .blkw x2")
             .unwrap()
             .iter()
-            .map(|tok| tok.kind.clone())
+            .map(|tok| tok.kind)
             .collect::<Vec<TokenKind>>();
         assert!(res[1..] == vec![TokenKind::Byte(0), TokenKind::Byte(0)]);
 
         let res = preprocess("temp .blkw #3")
             .unwrap()
             .iter()
-            .map(|tok| tok.kind.clone())
+            .map(|tok| tok.kind)
             .collect::<Vec<TokenKind>>();
         assert!(res[1..] == vec![TokenKind::Byte(0), TokenKind::Byte(0), TokenKind::Byte(0)])
     }

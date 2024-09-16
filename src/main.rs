@@ -1,6 +1,6 @@
 use std::fs::{self, File};
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use clap::{Parser, Subcommand};
@@ -120,14 +120,14 @@ fn main() -> miette::Result<()> {
                             message(Green, "Re-checking", "file change detected");
                             message(Cyan, "Help", "press CTRL+C to exit");
 
-                            let _ = match assemble(&name) {
+                            match assemble(&name) {
                                 Ok(_) => {
                                     message(Green, "Success", "no errors found!");
                                 }
                                 Err(e) => {
                                     println!("\n{:?}", e);
                                 }
-                            };
+                            }
 
                             reset_state();
                             Flow::Continue
@@ -144,16 +144,14 @@ fn main() -> miette::Result<()> {
             }
             Command::Fmt { name: _ } => todo!("Formatting is not currently implemented"),
         }
+    } else if let Some(path) = args.path {
+        run(&path)?;
+        Ok(())
     } else {
-        if let Some(path) = args.path {
-            run(&path)?;
-            Ok(())
-        } else {
-            println!("\n~ lace v{VERSION} - Copyright (c) 2024 Artemis Rosman ~");
-            println!("{}", LOGO.truecolor(255, 183, 197).bold());
-            println!("{SHORT_INFO}");
-            std::process::exit(0);
-        }
+        println!("\n~ lace v{VERSION} - Copyright (c) 2024 Artemis Rosman ~");
+        println!("{}", LOGO.truecolor(255, 183, 197).bold());
+        println!("{SHORT_INFO}");
+        std::process::exit(0);
     }
 }
 
@@ -163,7 +161,7 @@ enum MsgColor {
     Red,
 }
 
-fn file_message(color: MsgColor, left: &str, right: &PathBuf) {
+fn file_message(color: MsgColor, left: &str, right: &Path) {
     let right = format!("target {}", right.to_str().unwrap());
     message(color, left, &right);
 }
@@ -181,20 +179,20 @@ where
 }
 
 fn run(name: &PathBuf) -> Result<()> {
-    file_message(MsgColor::Green, "Assembling", &name);
-    let air = assemble(&name)?;
+    file_message(MsgColor::Green, "Assembling", name);
+    let air = assemble(name)?;
 
     message(MsgColor::Green, "Running", "emitted binary");
     let mut program = RunState::try_from(air)?;
     program.run();
 
-    file_message(MsgColor::Green, "Completed", &name);
+    file_message(MsgColor::Green, "Completed", name);
     Ok(())
 }
 
 /// Return assembly intermediate representation of source file for further processing
 fn assemble(name: &PathBuf) -> Result<Air> {
-    let contents = StaticSource::new(fs::read_to_string(&name).into_diagnostic()?);
+    let contents = StaticSource::new(fs::read_to_string(name).into_diagnostic()?);
     let parser = lace::AsmParser::new(contents.src())?;
     let mut air = parser.parse()?;
     air.backpatch()?;

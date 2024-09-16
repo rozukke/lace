@@ -1,5 +1,6 @@
 use core::panic;
-use std::{cmp::Ordering, i16, io::Write, u16, u32, u8, usize};
+use std::cmp::Ordering;
+use std::io::Write;
 
 use crate::Air;
 use colored::Colorize;

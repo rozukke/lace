@@ -1,6 +1,5 @@
 use std::fmt::Display;
 use std::str::FromStr;
-use std::{i16, u16};
 
 use miette::Result;
 
@@ -218,9 +217,9 @@ impl Cursor<'_> {
         let str_val = self.get_range(start..self.abs_pos());
 
         // i16 to handle negative values
-        let value = match i16::from_str_radix(&str_val, 10) {
+        let value = match str_val.parse::<i16>() {
             Ok(value) => value,
-            Err(_) => match u16::from_str_radix(&str_val, 10) {
+            Err(_) => match str_val.parse::<u16>() {
                 Ok(val) => val as i16,
                 Err(e) => {
                     return Err(error::lex_invalid_lit(
@@ -417,7 +416,7 @@ mod test {
     fn dec_too_large() {
         let mut lex = Cursor::new("#65535 #65536");
         let res = lex.advance_token().unwrap();
-        assert!(res.kind == TokenKind::Lit(LiteralKind::Dec((65535 as u16) as i16)));
+        assert!(res.kind == TokenKind::Lit(LiteralKind::Dec(65535u16 as i16)));
         // Whitespace
         assert!(lex.advance_real().is_err());
     }

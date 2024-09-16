@@ -1,10 +1,9 @@
-use std::{i16, u16, u32};
-
 use miette::{bail, Result, Severity};
 
 use crate::symbol::{Flag, Label, Register};
 
 /// Assembly intermediate representation, contains starting address and list of instructions
+#[derive(Default)]
 pub struct Air {
     /// Memory address to start program at
     orig: Option<u16>,
@@ -13,16 +12,9 @@ pub struct Air {
 }
 
 impl Air {
-    pub fn new() -> Self {
-        Air {
-            orig: None,
-            ast: Vec::new(),
-        }
-    }
-
     /// Set the .orig offset for the program. Error if set twice.
     pub fn set_orig(&mut self, val: u16) -> Result<()> {
-        if let Some(_) = self.orig {
+        if self.orig.is_some() {
             bail!("Origin set twice.")
         } else {
             self.orig = Some(val);
@@ -41,6 +33,10 @@ impl Air {
 
     pub fn get(&self, idx: usize) -> &AsmLine {
         &self.ast[idx]
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.ast.is_empty()
     }
 
     pub fn len(&self) -> usize {
