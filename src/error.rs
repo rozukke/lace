@@ -13,7 +13,7 @@ use crate::{
 pub fn lex_invalid_dir(span: Span, src: &'static str) -> Report {
     miette!(
         severity = Severity::Error,
-        code = "parse::dir",
+        code = "lex::dir",
         help = "check the list of available directives in the documentation.",
         labels = vec![LabeledSpan::at(span, "incorrect directive")],
         "Encountered an invalid directive.",
@@ -24,7 +24,7 @@ pub fn lex_invalid_dir(span: Span, src: &'static str) -> Report {
 pub fn lex_unclosed_str(span: Span, src: &'static str) -> Report {
     miette!(
         severity = Severity::Error,
-        code = "parse::str_lit",
+        code = "lex::str_lit",
         help = "make sure to close string literals with a \" character.",
         labels = vec![LabeledSpan::at(span, "incorrect literal")],
         "Encountered an unterminated string literal.",
@@ -35,7 +35,7 @@ pub fn lex_unclosed_str(span: Span, src: &'static str) -> Report {
 pub fn lex_invalid_lit(span: Span, src: &'static str, e: ParseIntError) -> Report {
     miette!(
         severity = Severity::Error,
-        code = "parse::bad_lit",
+        code = "lex::bad_lit",
         help = "ranges from -32,768 to 32,767 or 0 to 65,535 are allowed",
         labels = vec![LabeledSpan::at(span, "incorrect literal")],
         "Encountered an invalid literal: {e}",

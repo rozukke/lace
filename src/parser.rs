@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fmt::Display, iter::Peekable, u16, vec::IntoIter};
+use std::{borrow::Cow, fmt::Display, iter::Peekable, vec::IntoIter};
 
 use miette::Result;
 
