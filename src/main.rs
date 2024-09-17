@@ -133,8 +133,12 @@ fn main() -> miette::Result<()> {
                             Flow::Continue
                         }
                         EventKind::Remove(_) => {
-                            message(Red, "Error", "watched file was deleted. Exiting...");
-                            std::process::exit(1);
+                            if name.exists() {
+                                Flow::Continue
+                            } else {
+                                message(Red, "Error", "watched file was deleted. Exiting...");
+                                std::process::exit(1);
+                            }
                         }
                         _ => Flow::Continue,
                     })
