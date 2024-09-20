@@ -13,7 +13,7 @@ const MEMORY_MAX: usize = 0x10000;
 pub struct RunState {
     /// System memory - 128KB in size.
     /// Need to figure out if this would cause problems with the stack.
-    mem: [u16; MEMORY_MAX],
+    mem: Box<[u16; MEMORY_MAX]>,
     /// Program counter
     pc: u16,
     /// 8x 16-bit registers
@@ -57,7 +57,7 @@ impl RunState {
         mem[orig..orig + raw.len()].clone_from_slice(&raw);
 
         Ok(RunState {
-            mem,
+            mem: Box::new(mem),
             pc: orig as u16,
             reg: [0; 8],
             flag: RunFlag::Uninit,
