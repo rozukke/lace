@@ -198,17 +198,20 @@ impl Cursor<'_> {
         let prefix = self.pos_in_token();
         self.take_while(|c| !is_whitespace(c));
         let str_val = self.get_range(start..self.abs_pos());
-        let value = match u16::from_str_radix(str_val, 16) {
-            Ok(value) => value,
-            Err(e) => match e.kind() {
-                IntErrorKind::PosOverflow => {
-                    return Err(error::lex_invalid_lit(
-                        (start - prefix..self.abs_pos()).into(),
-                        self.src(),
-                        e,
-                    ));
-                }
-                _ => return Ok(self.ident()),
+        let value = match i16::from_str_radix(str_val, 16) {
+            Ok(value) => value as u16,
+            Err(_) => match u16::from_str_radix(str_val, 16) {
+                Ok(value) => value,
+                Err(e) => match e.kind() {
+                    IntErrorKind::PosOverflow => {
+                        return Err(error::lex_invalid_lit(
+                            (start - prefix..self.abs_pos()).into(),
+                            self.src(),
+                            e,
+                        ))
+                    }
+                    _ => return Ok(self.ident()),
+                },
             },
         };
 
@@ -373,23 +376,30 @@ mod test {
     fn hex_correct_value() {
         let mut lex = Cursor::new("0x1234");
         let res = lex.advance_token().unwrap();
-        assert!(res.kind == TokenKind::Lit(LiteralKind::Hex(0x1234)))
+        assert_eq!(res.kind, TokenKind::Lit(LiteralKind::Hex(0x1234)))
     }
 
     #[test]
     fn hex_too_large() {
         let mut lex = Cursor::new("xFFFF x10000");
         let res = lex.advance_token().unwrap();
-        assert!(res.kind == TokenKind::Lit(LiteralKind::Hex(0xFFFF)));
+        assert_eq!(res.kind, TokenKind::Lit(LiteralKind::Hex(0xFFFF)));
         // Whitespace
         assert!(lex.advance_real().is_err());
+    }
+
+    #[test]
+    fn hex_neg() {
+        let mut lex = Cursor::new("x-4");
+        let res = lex.advance_token().unwrap();
+        assert_eq!(res.kind, TokenKind::Lit(LiteralKind::Hex((-0x4i16) as u16)))
     }
 
     #[test]
     fn hex_leading_0() {
         let mut lex = Cursor::new("0x3000");
         let res = lex.advance_token().unwrap();
-        assert!(res.kind == TokenKind::Lit(LiteralKind::Hex(0x3000)))
+        assert_eq!(res.kind, TokenKind::Lit(LiteralKind::Hex(0x3000)))
     }
 
     #[test]
