@@ -423,7 +423,8 @@ impl AsmParser {
     }
 }
 
-// Convenient way to pass around bit limits
+/// Convenient way to pass around bit limits
+#[derive(Debug)]
 pub enum Bits {
     Signed(u8),
     Unsigned(u8),
