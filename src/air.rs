@@ -436,7 +436,7 @@ mod test {
         };
         assert!(asm.emit().is_err());
         let asm = AsmLine {
-            line: 256,
+            line: 257,
             stmt: AirStmt::Branch {
                 flag: Flag::Nzp,
                 dest_label: Label::Ref(1),
