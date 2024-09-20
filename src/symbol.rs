@@ -33,10 +33,8 @@ impl StaticSource {
     pub fn src(&self) -> &'static str {
         unsafe { &*self.src }
     }
-}
 
-impl Drop for StaticSource {
-    fn drop(&mut self) {
+    pub fn reclaim(&mut self) {
         unsafe { drop(Box::from_raw(self.src)) }
     }
 }
