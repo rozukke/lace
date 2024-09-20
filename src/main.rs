@@ -196,7 +196,7 @@ fn run(name: &PathBuf) -> Result<()> {
     file_message(MsgColor::Green, "Assembling", &name);
     let mut program = if let Some(ext) = name.extension() {
         match ext.to_str().unwrap() {
-            "lc3" => {
+            "lc3" | "obj" => {
                 // Read to byte buffer
                 let mut file = File::open(&name).into_diagnostic()?;
                 let f_size = file.metadata().unwrap().len();
