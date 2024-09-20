@@ -323,7 +323,7 @@ impl AsmLine {
         let (offset, _) = label_pos.overflowing_sub(self.line);
         let offset = (offset as i16) - 1;
         // Must fit in specified offset bits
-        if offset.abs() > 2i16.pow(bits - 1) - 1 {
+        if offset.abs() > 2i16.pow(bits - 1) - if offset > 0 { 1 } else { 0 } {
             bail!(
                 severity = Severity::Error,
                 r#"Difference between label and label reference is too large: at line {}, referencing line {}
@@ -436,7 +436,7 @@ mod test {
         };
         assert!(asm.emit().is_err());
         let asm = AsmLine {
-            line: 256,
+            line: 257,
             stmt: AirStmt::Branch {
                 flag: Flag::Nzp,
                 dest_label: Label::Ref(1),
