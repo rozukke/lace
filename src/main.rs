@@ -1,6 +1,6 @@
 use std::fs::{self, File};
 use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use clap::{Parser, Subcommand};
@@ -106,6 +106,12 @@ fn main() -> miette::Result<()> {
             }
             Command::Clean { name: _ } => todo!("There are no debug files implemented to clean!"),
             Command::Watch { name } => {
+                // Vim breaks if watching a single file
+                let folder_path = match name.parent() {
+                    Some(pth) if pth.is_dir() => pth.to_path_buf(),
+                    _ => Path::new(".").to_path_buf(),
+                };
+
                 // Clear screen and move cursor to top left
                 print!("\x1B[2J\x1B[2;1H");
                 file_message(Green, "Watching", &name);
@@ -115,8 +121,9 @@ fn main() -> miette::Result<()> {
                     .into_diagnostic()?;
 
                 watcher
-                    .watch(name.clone(), move |event: Event| match event.kind {
-                        EventKind::Modify(_) => {
+                    .watch(folder_path, move |event: Event| match event.kind {
+                        // Watch remove for vim changes
+                        EventKind::Modify(_) | EventKind::Remove(_) => {
                             // Clear screen
                             print!("\x1B[2J\x1B[2;1H");
                             file_message(Green, "Watching", &name);
@@ -140,14 +147,6 @@ fn main() -> miette::Result<()> {
                             contents.reclaim();
                             Flow::Continue
                         }
-                        EventKind::Remove(_) => {
-                            if name.exists() {
-                                Flow::Continue
-                            } else {
-                                message(Red, "Error", "watched file was deleted. Exiting...");
-                                std::process::exit(1);
-                            }
-                        }
                         _ => Flow::Continue,
                     })
                     .into_diagnostic()?;
@@ -169,6 +168,7 @@ fn main() -> miette::Result<()> {
     }
 }
 
+#[allow(unused)]
 enum MsgColor {
     Green,
     Cyan,
