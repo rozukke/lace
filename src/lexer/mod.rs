@@ -1,4 +1,5 @@
 use std::fmt::Display;
+use std::num::IntErrorKind;
 use std::str::FromStr;
 use std::{i16, u16};
 
@@ -199,13 +200,16 @@ impl Cursor<'_> {
         let str_val = self.get_range(start..self.abs_pos());
         let value = match u16::from_str_radix(str_val, 16) {
             Ok(value) => value,
-            Err(e) => {
-                return Err(error::lex_invalid_lit(
-                    (start - prefix..self.abs_pos()).into(),
-                    self.src(),
-                    e,
-                ))
-            }
+            Err(e) => match e.kind() {
+                IntErrorKind::PosOverflow => {
+                    return Err(error::lex_invalid_lit(
+                        (start - prefix..self.abs_pos()).into(),
+                        self.src(),
+                        e,
+                    ));
+                }
+                _ => return Ok(self.ident()),
+            },
         };
 
         Ok(TokenKind::Lit(LiteralKind::Hex(value)))
@@ -386,6 +390,13 @@ mod test {
         let mut lex = Cursor::new("0x3000");
         let res = lex.advance_token().unwrap();
         assert!(res.kind == TokenKind::Lit(LiteralKind::Hex(0x3000)))
+    }
+
+    #[test]
+    fn hex_not_num() {
+        let mut lex = Cursor::new("X_S");
+        let res = lex.advance_token().unwrap();
+        assert_eq!(res.kind, TokenKind::Label)
     }
 
     // DEC LIT TESTS
