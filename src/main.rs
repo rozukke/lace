@@ -74,7 +74,8 @@ fn main() -> miette::Result<()> {
             }
             Command::Compile { name, dest } => {
                 file_message(Green, "Assembing", &name);
-                let air = assemble(&name)?;
+                let contents = StaticSource::new(fs::read_to_string(&name).into_diagnostic()?);
+                let air = assemble(&contents)?;
 
                 let out_file_name =
                     dest.unwrap_or(name.with_extension("lc3").file_stem().unwrap().into());
@@ -87,6 +88,7 @@ fn main() -> miette::Result<()> {
                     let _ = file.write(&0x3000u16.to_be_bytes());
                 }
 
+                // Write lines
                 for stmt in air {
                     let _ = file.write(&stmt.emit()?.to_be_bytes());
                 }
@@ -97,7 +99,8 @@ fn main() -> miette::Result<()> {
             }
             Command::Check { name } => {
                 file_message(Green, "Checking", &name);
-                let _ = assemble(&name)?;
+                let contents = StaticSource::new(fs::read_to_string(&name).into_diagnostic()?);
+                let _ = assemble(&contents)?;
                 message(Green, "Success", "no errors found!");
                 Ok(())
             }
@@ -120,7 +123,10 @@ fn main() -> miette::Result<()> {
                             message(Green, "Re-checking", "file change detected");
                             message(Cyan, "Help", "press CTRL+C to exit");
 
-                            let _ = match assemble(&name) {
+                            let mut contents = StaticSource::new(
+                                fs::read_to_string(&name).into_diagnostic().unwrap(),
+                            );
+                            let _ = match assemble(&contents) {
                                 Ok(_) => {
                                     message(Green, "Success", "no errors found!");
                                 }
@@ -130,6 +136,8 @@ fn main() -> miette::Result<()> {
                             };
 
                             reset_state();
+                            // To avoid leaking memory
+                            contents.reclaim();
                             Flow::Continue
                         }
                         EventKind::Remove(_) => {
@@ -182,7 +190,8 @@ where
 
 fn run(name: &PathBuf) -> Result<()> {
     file_message(MsgColor::Green, "Assembling", &name);
-    let air = assemble(&name)?;
+    let contents = StaticSource::new(fs::read_to_string(&name).into_diagnostic()?);
+    let air = assemble(&contents)?;
 
     message(MsgColor::Green, "Running", "emitted binary");
     let mut program = RunState::try_from(air)?;
@@ -193,8 +202,7 @@ fn run(name: &PathBuf) -> Result<()> {
 }
 
 /// Return assembly intermediate representation of source file for further processing
-fn assemble(name: &PathBuf) -> Result<Air> {
-    let contents = StaticSource::new(fs::read_to_string(&name).into_diagnostic()?);
+fn assemble(contents: &StaticSource) -> Result<Air> {
     let parser = lace::AsmParser::new(contents.src())?;
     let mut air = parser.parse()?;
     air.backpatch()?;
