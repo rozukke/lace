@@ -35,20 +35,26 @@ enum RunFlag {
 impl RunState {
     // Not generic because of miette error
     pub fn try_from(air: Air) -> Result<RunState> {
-        let orig: usize = air.orig().unwrap_or(0x3000).into();
-        let mut mem = [0; MEMORY_MAX];
-        let mut air_array = Vec::with_capacity(air.len());
+        let orig = air.orig().unwrap_or(0x3000);
+        let mut air_array: Vec<u16> = Vec::with_capacity(air.len() + 1);
 
+        air_array.push(orig);
         for stmt in air {
             air_array.push(stmt.emit()?);
         }
+        RunState::from_raw(air_array.as_slice())
+    }
 
-        // Sanity check
-        if orig + air_array.len() > MEMORY_MAX {
+    pub fn from_raw(raw: &[u16]) -> Result<RunState> {
+        let orig = raw[0] as usize;
+        if orig as usize + raw.len() > MEMORY_MAX {
             panic!("Assembly file is too long and cannot fit in memory.");
         }
 
-        mem[orig..orig + air_array.len()].clone_from_slice(&air_array);
+        let mut mem = [0; MEMORY_MAX];
+        let raw = &raw[1..];
+
+        mem[orig..orig + raw.len()].clone_from_slice(&raw);
 
         Ok(RunState {
             mem,

@@ -1,5 +1,5 @@
 use std::fs::{self, File};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -10,7 +10,7 @@ use hotwatch::{
     blocking::{Flow, Hotwatch},
     EventKind,
 };
-use miette::{IntoDiagnostic, Result};
+use miette::{bail, IntoDiagnostic, Result};
 
 use lace::reset_state;
 use lace::{Air, RunState, StaticSource};
@@ -78,7 +78,7 @@ fn main() -> miette::Result<()> {
                 let air = assemble(&contents)?;
 
                 let out_file_name =
-                    dest.unwrap_or(name.with_extension("lc3").file_stem().unwrap().into());
+                    dest.unwrap_or(name.with_extension("lc3").file_name().unwrap().into());
                 let mut file = File::create(&out_file_name).unwrap();
 
                 // Deal with .orig
@@ -194,11 +194,39 @@ where
 
 fn run(name: &PathBuf) -> Result<()> {
     file_message(MsgColor::Green, "Assembling", &name);
-    let contents = StaticSource::new(fs::read_to_string(&name).into_diagnostic()?);
-    let air = assemble(&contents)?;
+    let mut program = if let Some(ext) = name.extension() {
+        match ext.to_str().unwrap() {
+            "lc3" => {
+                // Read to byte buffer
+                let mut file = File::open(&name).into_diagnostic()?;
+                let f_size = file.metadata().unwrap().len();
+                let mut buffer = Vec::with_capacity(f_size as usize);
+                file.read_to_end(&mut buffer).into_diagnostic()?;
+
+                if buffer.len() % 2 != 0 {
+                    bail!("File is not aligned to 16 bits")
+                }
+
+                let u16_buf: Vec<u16> = buffer
+                    .chunks_exact(2)
+                    .map(|word| u16::from_be_bytes([word[0], word[1]]))
+                    .collect();
+                RunState::from_raw(&u16_buf)?
+            }
+            "asm" => {
+                let contents = StaticSource::new(fs::read_to_string(&name).into_diagnostic()?);
+                let air = assemble(&contents)?;
+                RunState::try_from(air)?
+            }
+            _ => {
+                bail!("File has unknown extension. Exiting...")
+            }
+        }
+    } else {
+        bail!("File has no extension. Exiting...");
+    };
 
     message(MsgColor::Green, "Running", "emitted binary");
-    let mut program = RunState::try_from(air)?;
     program.run();
 
     file_message(MsgColor::Green, "Completed", &name);
