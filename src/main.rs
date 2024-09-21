@@ -133,6 +133,7 @@ fn main() -> miette::Result<()> {
                             let mut contents = StaticSource::new(
                                 fs::read_to_string(&name).into_diagnostic().unwrap(),
                             );
+                            std::thread::sleep(Duration::from_millis(100));
                             let _ = match assemble(&contents) {
                                 Ok(_) => {
                                     message(Green, "Success", "no errors found!");
