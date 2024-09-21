@@ -2,7 +2,7 @@ use core::panic;
 use std::{
     cmp::Ordering,
     i16,
-    io::{stdout, Write},
+    io::{stdin, stdout, IsTerminal, Read, Write},
     u16, u32, u8, usize,
 };
 
@@ -270,9 +270,15 @@ impl RunState {
         match trap_vect {
             // getc
             0x20 => {
-                let cons = Term::stdout();
-                let c = cons.read_char().unwrap();
-                *self.reg(0) = c as u16;
+                if stdin().is_terminal() {
+                    let cons = Term::stdout();
+                    let c = cons.read_char().unwrap();
+                    *self.reg(0) = c as u16;
+                } else {
+                    let mut buf = [0; 1];
+                    stdin().read_exact(&mut buf).unwrap();
+                    *self.reg(0) = buf[0] as u16;
+                }
             }
             // out
             0x21 => {
@@ -299,11 +305,19 @@ impl RunState {
             }
             // in
             0x23 => {
-                let mut cons = Term::stdout();
-                let c = cons.read_char().unwrap();
-                *self.reg(0) = c as u16;
-                write!(cons, "{c}").unwrap();
-                cons.flush().unwrap();
+                if stdin().is_terminal() {
+                    let mut cons = Term::stdout();
+                    let c = cons.read_char().unwrap();
+                    *self.reg(0) = c as u16;
+                    write!(cons, "{c}").unwrap();
+                    cons.flush().unwrap();
+                } else {
+                    let mut buf = [0; 1];
+                    stdin().read_exact(&mut buf).unwrap();
+                    *self.reg(0) = buf[0] as u16;
+                    print!("{}", buf[0] as char);
+                    stdout().flush().unwrap();
+                }
             }
             // putsp
             0x24 => {
