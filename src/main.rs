@@ -1,6 +1,7 @@
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::thread::sleep;
 use std::time::Duration;
 
 use clap::{Parser, Subcommand};
@@ -106,6 +107,9 @@ fn main() -> miette::Result<()> {
             }
             Command::Clean { name: _ } => todo!("There are no debug files implemented to clean!"),
             Command::Watch { name } => {
+                if !name.exists() {
+                    bail!("File does not exist. Exiting...")
+                }
                 // Vim breaks if watching a single file
                 let folder_path = match name.parent() {
                     Some(pth) if pth.is_dir() => pth.to_path_buf(),
@@ -130,9 +134,16 @@ fn main() -> miette::Result<()> {
                             message(Green, "Re-checking", "file change detected");
                             message(Cyan, "Help", "press CTRL+C to exit");
 
-                            let mut contents = StaticSource::new(
-                                fs::read_to_string(&name).into_diagnostic().unwrap(),
-                            );
+                            // Now we are developing software (makes reruns more obvious)
+                            sleep(Duration::from_millis(50));
+
+                            let mut contents = StaticSource::new(match fs::read_to_string(&name) {
+                                Ok(cts) => cts,
+                                Err(e) => {
+                                    eprintln!("{e}. Exiting...");
+                                    std::process::exit(1)
+                                }
+                            });
                             let _ = match assemble(&contents) {
                                 Ok(_) => {
                                     message(Green, "Success", "no errors found!");
