@@ -284,6 +284,7 @@ impl RunState {
             0x21 => {
                 let chr = (*self.reg(0) & 0xFF) as u8 as char;
                 print!("{chr}");
+                stdout().flush().unwrap();
             }
             // puts
             0x22 => {
@@ -300,6 +301,7 @@ impl RunState {
                     addr += 1;
                 }
                 print!("{string}");
+                stdout().flush().unwrap();
             }
             // in
             0x23 => {
