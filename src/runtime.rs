@@ -6,7 +6,7 @@ use std::{
     u16, u32, u8, usize,
 };
 
-use crate::Air;
+use crate::{Air, Debugger};
 use colored::Colorize;
 use console::Term;
 use miette::Result;
@@ -27,6 +27,9 @@ pub struct RunState {
     flag: RunFlag,
     /// Processor status register
     _psr: u16,
+
+    // TODO: Make private
+    pub debugger: Option<Debugger>,
 }
 
 #[derive(Clone, Copy)]
@@ -47,6 +50,7 @@ impl RunState {
         for stmt in air {
             air_array.push(stmt.emit()?);
         }
+
         RunState::from_raw(air_array.as_slice())
     }
 
@@ -67,6 +71,7 @@ impl RunState {
             reg: [0; 8],
             flag: RunFlag::Uninit,
             _psr: 0,
+            debugger: None,
         })
     }
 
@@ -92,6 +97,9 @@ impl RunState {
     /// Run with preset memory
     pub fn run(&mut self) {
         loop {
+            if let Some(debugger) = &mut self.debugger {
+                debugger.wait_for_command();
+            }
             if self.pc >= 0xFE00 {
                 // Entering device address space
                 break;

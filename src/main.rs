@@ -14,6 +14,7 @@ use hotwatch::{
 use miette::{bail, IntoDiagnostic, Result};
 
 use lace::reset_state;
+use lace::Debugger;
 use lace::{Air, RunState, StaticSource};
 
 /// Lace is a complete & convenient assembler toolchain for the LC3 assembly language.
@@ -33,6 +34,9 @@ enum Command {
     Run {
         /// .asm file to run
         name: PathBuf,
+        /// Run `.asm` file with debugger
+        #[arg(short, long)]
+        debugger: bool,
     },
     /// Create binary `.lc3` file to run later or view compiled data
     Compile {
@@ -69,8 +73,8 @@ fn main() -> miette::Result<()> {
 
     if let Some(command) = args.command {
         match command {
-            Command::Run { name } => {
-                run(&name)?;
+            Command::Run { name, debugger } => {
+                run(&name, debugger)?;
                 Ok(())
             }
             Command::Compile { name, dest } => {
@@ -168,7 +172,7 @@ fn main() -> miette::Result<()> {
         }
     } else {
         if let Some(path) = args.path {
-            run(&path)?;
+            run(&path, false)?;
             Ok(())
         } else {
             println!("\n~ lace v{VERSION} - Copyright (c) 2024 Artemis Rosman ~");
@@ -203,11 +207,15 @@ where
     println!("{left:>12} {right}");
 }
 
-fn run(name: &PathBuf) -> Result<()> {
+fn run(name: &PathBuf, debugger: bool) -> Result<()> {
     file_message(MsgColor::Green, "Assembling", &name);
     let mut program = if let Some(ext) = name.extension() {
         match ext.to_str().unwrap() {
             "lc3" | "obj" => {
+                if debugger {
+                    bail!("Cannot use debugger on non-assembly file");
+                }
+
                 // Read to byte buffer
                 let mut file = File::open(&name).into_diagnostic()?;
                 let f_size = file.metadata().unwrap().len();
@@ -227,7 +235,12 @@ fn run(name: &PathBuf) -> Result<()> {
             "asm" => {
                 let contents = StaticSource::new(fs::read_to_string(&name).into_diagnostic()?);
                 let air = assemble(&contents)?;
-                RunState::try_from(air)?
+                // TODO: Re-order statements to remove double clone
+                let mut state = RunState::try_from(air.clone())?;
+                if debugger {
+                    state.debugger = Some(Debugger::new(contents, air.clone()));
+                }
+                state
             }
             _ => {
                 bail!("File has unknown extension. Exiting...")
