@@ -2,8 +2,17 @@ use std::io::{stdin, stdout, Write};
 
 use crate::{Air, StaticSource};
 
+// TODO(refactor): Perhaps there is `clap` trait that can be implemented for
+// this struct, to avoid field duplication in `Command` enum
+pub struct DebuggerOptions {
+    pub minimal: bool,
+    pub input: Option<String>,
+}
+
 pub struct Debugger {
     status: DebuggerStatus,
+    minimal: bool,
+    input: Option<String>,
     // ...
 }
 
@@ -14,9 +23,11 @@ pub enum DebuggerStatus {
 }
 
 impl Debugger {
-    pub fn new(contents: StaticSource, air: Air) -> Self {
+    pub fn new(contents: StaticSource, air: Air, opts: DebuggerOptions) -> Self {
         Self {
             status: DebuggerStatus::WaitForCommand,
+            minimal: opts.minimal,
+            input: opts.input,
         }
     }
 

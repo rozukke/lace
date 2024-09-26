@@ -8,7 +8,7 @@ pub use air::Air;
 mod runtime;
 pub use runtime::RunState;
 mod debugger;
-pub use debugger::Debugger;
+pub use debugger::{Debugger, DebuggerOptions};
 
 // Reset global state for watch
 mod symbol;

@@ -13,8 +13,8 @@ use hotwatch::{
 };
 use miette::{bail, IntoDiagnostic, Result};
 
-use lace::reset_state;
 use lace::Debugger;
+use lace::{reset_state, DebuggerOptions};
 use lace::{Air, RunState, StaticSource};
 
 /// Lace is a complete & convenient assembler toolchain for the LC3 assembly language.
@@ -32,11 +32,19 @@ struct Args {
 enum Command {
     /// Run text `.asm` or binary `.lc3` file directly and output to terminal
     Run {
-        /// .asm file to run
+        /// `.asm` or `.lc3` file to run
         name: PathBuf,
-        /// Run `.asm` file with debugger
+    },
+    /// Run text `.asm` file directly and with debugger
+    Debug {
+        /// `.asm` file to run
+        name: PathBuf,
+        /// Produce minimal debugger output
         #[arg(short, long)]
-        debugger: bool,
+        minimal: bool,
+        /// Input for debugger commands
+        #[arg(short = 'd', long = "debugger-input")]
+        input: Option<String>,
     },
     /// Create binary `.lc3` file to run later or view compiled data
     Compile {
@@ -73,8 +81,16 @@ fn main() -> miette::Result<()> {
 
     if let Some(command) = args.command {
         match command {
-            Command::Run { name, debugger } => {
-                run(&name, debugger)?;
+            Command::Run { name } => {
+                run(&name, None)?;
+                Ok(())
+            }
+            Command::Debug {
+                name,
+                input,
+                minimal,
+            } => {
+                run(&name, Some(DebuggerOptions { input, minimal }))?;
                 Ok(())
             }
             Command::Compile { name, dest } => {
@@ -172,7 +188,7 @@ fn main() -> miette::Result<()> {
         }
     } else {
         if let Some(path) = args.path {
-            run(&path, false)?;
+            run(&path, None)?;
             Ok(())
         } else {
             println!("\n~ lace v{VERSION} - Copyright (c) 2024 Artemis Rosman ~");
@@ -207,12 +223,12 @@ where
     println!("{left:>12} {right}");
 }
 
-fn run(name: &PathBuf, debugger: bool) -> Result<()> {
+fn run(name: &PathBuf, debugger_opts: Option<DebuggerOptions>) -> Result<()> {
     file_message(MsgColor::Green, "Assembling", &name);
     let mut program = if let Some(ext) = name.extension() {
         match ext.to_str().unwrap() {
             "lc3" | "obj" => {
-                if debugger {
+                if debugger_opts.is_some() {
                     bail!("Cannot use debugger on non-assembly file");
                 }
 
@@ -237,8 +253,8 @@ fn run(name: &PathBuf, debugger: bool) -> Result<()> {
                 let air = assemble(&contents)?;
                 // TODO: Re-order statements to remove double clone
                 let mut state = RunState::try_from(air.clone())?;
-                if debugger {
-                    state.debugger = Some(Debugger::new(contents, air.clone()));
+                if let Some(opts) = debugger_opts {
+                    state.debugger = Some(Debugger::new(contents, air.clone(), opts));
                 }
                 state
             }
