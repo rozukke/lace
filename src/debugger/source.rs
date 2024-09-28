@@ -2,46 +2,23 @@ use std::io::{self, IsTerminal, Read, Write};
 
 use console::Key;
 
-use crate::{Air, StaticSource};
-
-// TODO(refactor): Perhaps there is `clap` trait that can be implemented for
-// this struct, to avoid field duplication in `Command` enum
-pub struct DebuggerOptions {
-    pub minimal: bool,
-    pub input: Option<String>,
+#[allow(private_interfaces)]
+pub enum Source {
+    Argument(Argument),
+    Stdin(Stdin),
+    Terminal(Terminal),
 }
 
-pub struct Debugger {
-    status: Status,
-    minimal: bool,
-
-    command_source: CommandSource,
-    // ...
-}
-
-pub enum Status {
-    WaitForCommand,
-    // ContinueUntilBreakpoint,
-    // ContinueUntilEndOfSubroutine,
-}
-
-// TODO(refactor?): These types could be put in a module
-enum CommandSource {
-    Stdin(StdinSource),
-    Terminal(TerminalSource),
-    Argument(ArgumentSource),
-}
-
-struct StdinSource {
+struct Stdin {
     line: String,
 }
 
-struct ArgumentSource {
+struct Argument {
     argument: String,
     cursor: usize,
 }
 
-struct TerminalSource {
+struct Terminal {
     next: String,
     history: Vec<String>,
     /// Line cursor
@@ -50,90 +27,46 @@ struct TerminalSource {
     index: usize,
 }
 
-impl Debugger {
-    pub fn new(contents: StaticSource, air: Air, opts: DebuggerOptions) -> Self {
-        Self {
-            status: Status::WaitForCommand,
-            minimal: opts.minimal,
-            command_source: CommandSource::from(opts.input),
-        }
-    }
-
-    pub fn wait_for_command(&mut self) {
-        loop {
-            let Some(line) = self.command_source.read() else {
-                println!("EOF");
-                break;
-            };
-            let line = line.trim();
-            println!("<{}>", line);
-        }
-    }
+pub trait SourceReader {
+    /// Returned string slice will not include leading or trailing whitespace
+    fn read(&mut self) -> Option<&str>;
 }
 
-impl CommandSource {
+impl Source {
     pub fn from(argument: Option<String>) -> Self {
         if let Some(argument) = argument {
-            return CommandSource::Argument(ArgumentSource::from(argument));
+            return Source::Argument(Argument::from(argument));
         }
         if io::stdin().is_terminal() {
-            return CommandSource::Terminal(TerminalSource::new());
+            return Source::Terminal(Terminal::new());
         }
-        CommandSource::Stdin(StdinSource::new())
+        Source::Stdin(Stdin::new())
     }
+}
 
-    pub fn read(&mut self) -> Option<&str> {
+impl SourceReader for Source {
+    fn read(&mut self) -> Option<&str> {
         match self {
+            Self::Argument(argument) => argument.read(),
             Self::Stdin(stdin) => stdin.read(),
             Self::Terminal(terminal) => terminal.read(),
-            Self::Argument(argument) => argument.read(),
         }
     }
 }
 
-impl StdinSource {
-    pub fn new() -> Self {
-        Self {
-            line: String::new(),
-        }
-    }
-
-    fn read(&mut self) -> Option<&str> {
-        self.line.clear();
-        loop {
-            let Some(ch) = Self::read_stdin_char() else {
-                if self.line.is_empty() {
-                    // First character is EOF
-                    return None;
-                }
-                break;
-            };
-            if ch == '\n' || ch == ';' {
-                break;
-            }
-            self.line.push(ch);
-        }
-        Some(&self.line)
-    }
-
-    fn read_stdin_char() -> Option<char> {
-        let mut buffer = [0; 1];
-        if io::stdin().read(&mut buffer).unwrap() == 0 {
-            return None;
-        }
-        Some(buffer[0] as char)
-    }
-}
-
-impl ArgumentSource {
+impl Argument {
     pub fn from(source: String) -> Self {
         Self {
             argument: source,
             cursor: 0,
         }
     }
+}
 
-    pub fn read(&mut self) -> Option<&str> {
+impl SourceReader for Argument {
+    fn read(&mut self) -> Option<&str> {
+        print!("Command: ");
+
         // TODO(opt): This recalculates char index each time
         let mut chars = self.argument.chars().skip(self.cursor);
 
@@ -156,11 +89,61 @@ impl ArgumentSource {
         let end = self.cursor;
         self.cursor += 1;
 
-        Some(self.argument.get(start..end).expect("checked above"))
+        let command = self
+            .argument
+            .get(start..end)
+            .expect("calculated incorrect character indexes")
+            .trim();
+
+        println!("{}", command);
+        Some(command)
     }
 }
 
-impl TerminalSource {
+impl Stdin {
+    pub fn new() -> Self {
+        Self {
+            line: String::new(),
+        }
+    }
+
+    fn read_stdin_char() -> Option<char> {
+        let mut buffer = [0; 1];
+        if io::stdin().read(&mut buffer).unwrap() == 0 {
+            return None;
+        }
+        Some(buffer[0] as char)
+    }
+}
+
+impl SourceReader for Stdin {
+    fn read(&mut self) -> Option<&str> {
+        print!("Command: ");
+
+        self.line.clear();
+
+        // Take characters until delimiter
+        loop {
+            let Some(ch) = Self::read_stdin_char() else {
+                if self.line.is_empty() {
+                    // First character is EOF
+                    return None;
+                }
+                break;
+            };
+            if ch == '\n' || ch == ';' {
+                break;
+            }
+            self.line.push(ch);
+        }
+
+        let command = self.line.trim();
+        println!("{}", command);
+        Some(&command)
+    }
+}
+
+impl Terminal {
     pub fn new() -> Self {
         Self {
             next: String::new(),
@@ -170,7 +153,34 @@ impl TerminalSource {
         }
     }
 
-    pub fn read(&mut self) -> Option<&str> {
+    fn is_next(&self) -> bool {
+        debug_assert!(self.index <= self.history.len(), "index went past history");
+        self.index >= self.history.len()
+    }
+
+    /// Run before modifying `next`
+    /// If focused on a history item, clone it to `next` and update index
+    fn update_next(&mut self) {
+        debug_assert!(self.index <= self.history.len(), "index went past history");
+        if self.index < self.history.len() {
+            self.next = self.history.get(self.index).expect("checked above").clone();
+            self.index = self.history.len();
+        }
+    }
+
+    /// Get next or historic command, from index
+    fn get_current(&self) -> &str {
+        assert!(self.index <= self.history.len(), "index went past history");
+        if self.index >= self.history.len() {
+            &self.next
+        } else {
+            self.history.get(self.index).expect("checked above")
+        }
+    }
+}
+
+impl SourceReader for Terminal {
+    fn read(&mut self) -> Option<&str> {
         // TODO(opt): This creates a new handle each time
         let mut cons = console::Term::stdout();
 
@@ -270,31 +280,6 @@ impl TerminalSource {
         // Always reset index to next command
         self.index = self.history.len();
 
-        Some(&self.next)
-    }
-
-    fn is_next(&self) -> bool {
-        debug_assert!(self.index <= self.history.len(), "index went past history");
-        self.index >= self.history.len()
-    }
-
-    /// Run before modifying `next`
-    /// If focused on a history item, clone it to `next` and update index
-    fn update_next(&mut self) {
-        debug_assert!(self.index <= self.history.len(), "index went past history");
-        if self.index < self.history.len() {
-            self.next = self.history.get(self.index).expect("checked above").clone();
-            self.index = self.history.len();
-        }
-    }
-
-    /// Get next or historic command, from index
-    fn get_current(&self) -> &str {
-        assert!(self.index <= self.history.len(), "index went past history");
-        if self.index >= self.history.len() {
-            &self.next
-        } else {
-            self.history.get(self.index).expect("checked above")
-        }
+        Some(&self.next.trim())
     }
 }
