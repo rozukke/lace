@@ -2,22 +2,26 @@ use std::io::{self, IsTerminal, Read, Write};
 
 use console::Key;
 
-#[allow(private_interfaces)]
-pub enum Source {
+#[allow(private_interfaces)] // Perhaps a bad practice
+pub enum SourceMode {
     Argument(Argument),
     Stdin(Stdin),
     Terminal(Terminal),
 }
 
+// Stdin which is not attached to a terminal, i.e. piped.
 struct Stdin {
-    line: String,
+    /// Command must be stored somewhere to be referenced
+    buffer: String,
 }
 
+// Command-line argument
 struct Argument {
     argument: String,
     cursor: usize,
 }
 
+// Interactive unbuffered terminal
 struct Terminal {
     next: String,
     history: Vec<String>,
@@ -28,23 +32,24 @@ struct Terminal {
 }
 
 pub trait SourceReader {
+    /// `None` indicates EOF
     /// Returned string slice will not include leading or trailing whitespace
     fn read(&mut self) -> Option<&str>;
 }
 
-impl Source {
+impl SourceMode {
     pub fn from(argument: Option<String>) -> Self {
         if let Some(argument) = argument {
-            return Source::Argument(Argument::from(argument));
+            return SourceMode::Argument(Argument::from(argument));
         }
         if io::stdin().is_terminal() {
-            return Source::Terminal(Terminal::new());
+            return SourceMode::Terminal(Terminal::new());
         }
-        Source::Stdin(Stdin::new())
+        SourceMode::Stdin(Stdin::new())
     }
 }
 
-impl SourceReader for Source {
+impl SourceReader for SourceMode {
     fn read(&mut self) -> Option<&str> {
         let command = match self {
             Self::Argument(argument) => argument.read(),
@@ -102,11 +107,12 @@ impl SourceReader for Argument {
 impl Stdin {
     pub fn new() -> Self {
         Self {
-            line: String::new(),
+            buffer: String::new(),
         }
     }
 
-    fn read_stdin_char() -> Option<char> {
+    /// `None` indicates EOF
+    fn read_char() -> Option<char> {
         let mut buffer = [0; 1];
         if io::stdin().read(&mut buffer).unwrap() == 0 {
             return None;
@@ -117,12 +123,12 @@ impl Stdin {
 
 impl SourceReader for Stdin {
     fn read(&mut self) -> Option<&str> {
-        self.line.clear();
+        self.buffer.clear();
 
         // Take characters until delimiter
         loop {
-            let Some(ch) = Self::read_stdin_char() else {
-                if self.line.is_empty() {
+            let Some(ch) = Self::read_char() else {
+                if self.buffer.is_empty() {
                     // First character is EOF
                     return None;
                 }
@@ -131,10 +137,10 @@ impl SourceReader for Stdin {
             if ch == '\n' || ch == ';' {
                 break;
             }
-            self.line.push(ch);
+            self.buffer.push(ch);
         }
 
-        Some(self.line.trim())
+        Some(self.buffer.trim())
     }
 }
 
@@ -214,6 +220,7 @@ impl SourceReader for Terminal {
                     '\x00'..='\x1f' | '\x7f' => (),
 
                     ';' => {
+                        // TODO(feat): Multiple commands in single line for terminal source
                         // This would need a buffer field on `Self`
                         unimplemented!("multiple commands in one line");
                     }

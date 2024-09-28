@@ -1,7 +1,7 @@
 mod source;
 
 use crate::runtime::MEMORY_MAX;
-use source::{Source, SourceReader};
+use source::{SourceMode, SourceReader};
 
 type Memory = Box<[u16; MEMORY_MAX]>;
 
@@ -15,7 +15,7 @@ pub struct DebuggerOptions {
 pub struct Debugger {
     state: State,
     minimal: bool,
-    source: Source,
+    source: SourceMode,
 
     orig: u16,
     memory: Memory,
@@ -32,7 +32,7 @@ impl Debugger {
         Self {
             state: State::WaitForCommand,
             minimal: opts.minimal,
-            source: Source::from(opts.input),
+            source: SourceMode::from(opts.input),
             orig,
             memory,
         }
@@ -40,6 +40,7 @@ impl Debugger {
 
     pub fn wait_for_command(&mut self) {
         loop {
+            // TODO
             let Some(line) = self.source.read() else {
                 println!("EOF");
                 break;
