@@ -25,7 +25,7 @@ pub enum Status {
     // ContinueUntilEndOfSubroutine,
 }
 
-// TODO(refactor): Rename all these types!
+// TODO(refactor?): These types could be put in a module
 enum CommandSource {
     Stdin,
     Terminal(TerminalSource),
@@ -40,8 +40,10 @@ struct ArgumentSource {
 struct TerminalSource {
     next: String,
     history: Vec<String>,
-    cursor: usize, // Line cursor
-    index: usize,  // Focused item in history, or new entry if index==length
+    /// Line cursor
+    cursor: usize,
+    /// Focused item in history, or new entry if index==length
+    index: usize,
 }
 
 impl Debugger {
@@ -56,7 +58,7 @@ impl Debugger {
     pub fn wait_for_command(&mut self) {
         loop {
             let Some(line) = self.command_source.read() else {
-                println!("EOF?");
+                println!("EOF");
                 break;
             };
             println!("<{}>", line);
@@ -66,16 +68,13 @@ impl Debugger {
 
 impl CommandSource {
     pub fn from(argument: Option<String>) -> Self {
-        match argument {
-            Some(argument) => CommandSource::Argument(ArgumentSource::from(argument)),
-            None => {
-                if io::stdin().is_terminal() {
-                    CommandSource::Terminal(TerminalSource::new())
-                } else {
-                    CommandSource::Stdin
-                }
-            }
+        if let Some(argument) = argument {
+            return CommandSource::Argument(ArgumentSource::from(argument));
         }
+        if io::stdin().is_terminal() {
+            return CommandSource::Terminal(TerminalSource::new());
+        }
+        CommandSource::Stdin
     }
 
     pub fn read(&mut self) -> Option<&str> {
@@ -88,17 +87,69 @@ impl CommandSource {
 
     // TODO(feat): Handle EOF (return None)
     fn read_stdin(&self) -> Option<&str> {
+        let ch = Self::read_stdin_char()?;
         todo!();
+    }
+
+    fn read_stdin_char() -> Option<char> {
+        let mut buffer = [0; 1];
+        if io::stdin().read(&mut buffer).unwrap() == 0 {
+            return None;
+        }
+        Some(buffer[0] as char)
+    }
+}
+
+impl ArgumentSource {
+    pub fn from(source: String) -> Self {
+        Self {
+            argument: source,
+            cursor: 0,
+        }
+    }
+
+    pub fn read(&mut self) -> Option<&str> {
+        // TODO(opt): This recalculates char index each time
+        // Skip leading whitespace
+        let mut chars = self.argument.chars().skip(self.cursor).peekable();
+        while let Some(ch) = chars.peek() {
+            if !ch.is_ascii_whitespace() {
+                break;
+            }
+            chars.next();
+            self.cursor += 1;
+        }
+        let start = self.cursor;
+
+        // EOF
+        if chars.peek().is_none() {
+            return None;
+        }
+
+        // Take characters until delimiter
+        let mut end = self.cursor;
+        while let Some(ch) = chars.next() {
+            if ch == '\n' || ch == ';' {
+                break;
+            }
+            self.cursor += 1;
+            if !ch.is_ascii_whitespace() {
+                end = self.cursor;
+            }
+        }
+        self.cursor += 1;
+
+        Some(self.argument.get(start..end).expect("checked above"))
     }
 }
 
 impl TerminalSource {
     pub fn new() -> Self {
         Self {
-            history: Vec::new(),
             next: String::new(),
-            index: 0,
+            history: Vec::new(),
             cursor: 0,
+            index: 0,
         }
     }
 
@@ -109,18 +160,18 @@ impl TerminalSource {
         self.next.clear();
         self.cursor = 0;
 
+        // Read keys until newline
         loop {
             // Clear line, print prompt, set cursor position
             cons.clear_line().unwrap();
             // Must use `write!` to be flushed
             write!(cons, "Command: ").unwrap();
-            // write!(cons, " {}/{}> ", self.index, self.history.len()).unwrap();
             write!(cons, "{}", self.get_current()).unwrap();
             cons.move_cursor_left(
                 self.get_current()
                     .len()
                     .checked_sub(self.cursor)
-                    .unwrap_or(0),
+                    .unwrap_or(0), // If invariance is violated
             )
             .unwrap();
             cons.flush().unwrap();
@@ -128,28 +179,32 @@ impl TerminalSource {
             let key = cons.read_key().unwrap();
             match key {
                 Key::Enter | Key::Char('\n') => {
-                    if !self.next.is_empty() || self.index < self.history.len() {
+                    if self.is_next() && self.next.is_empty() {
+                        println!();
+                    } else {
                         self.update_next();
                         break;
-                    } else {
-                        println!();
                     }
                 }
 
                 Key::Char(ch) => match ch {
+                    // Ignore ASCII control characters
+                    '\x00'..='\x1f' | '\x7f' => (),
+
                     ';' => {
+                        // This would need a buffer field on `Self`
                         unimplemented!("multiple commands in one line");
                     }
 
+                    // Skip leading whitespace
                     ' ' if self.next.is_empty() => (),
 
-                    // ASCII printable characters
-                    '\x20'..='\x7e' => {
+                    // Depending on terminal, this should also support pasting from clipboard
+                    _ => {
                         self.update_next();
                         self.next.insert(self.cursor, ch);
                         self.cursor += 1;
                     }
-                    _ => (),
                 },
 
                 Key::Backspace => {
@@ -157,19 +212,6 @@ impl TerminalSource {
                     if !self.next.is_empty() {
                         self.next.pop();
                         self.cursor -= 1;
-                    }
-                }
-
-                Key::ArrowUp => {
-                    if self.index > 0 {
-                        self.index -= 1;
-                        self.cursor = self.get_current().len();
-                    }
-                }
-                Key::ArrowDown => {
-                    if self.index < self.history.len() {
-                        self.index += 1;
-                        self.cursor = self.get_current().len();
                     }
                 }
 
@@ -181,6 +223,18 @@ impl TerminalSource {
                 Key::ArrowRight => {
                     if self.cursor < self.get_current().len() {
                         self.cursor += 1;
+                    }
+                }
+                Key::ArrowUp => {
+                    if self.index > 0 {
+                        self.index -= 1;
+                        self.cursor = self.get_current().len();
+                    }
+                }
+                Key::ArrowDown => {
+                    if self.index < self.history.len() {
+                        self.index += 1;
+                        self.cursor = self.get_current().len();
                     }
                 }
 
@@ -205,9 +259,15 @@ impl TerminalSource {
         Some(&self.next)
     }
 
+    fn is_next(&self) -> bool {
+        debug_assert!(self.index <= self.history.len(), "index went past history");
+        self.index >= self.history.len()
+    }
+
     /// Run before modifying `next`
     /// If focused on a history item, clone it to `next` and update index
     fn update_next(&mut self) {
+        debug_assert!(self.index <= self.history.len(), "index went past history");
         if self.index < self.history.len() {
             self.next = self.history.get(self.index).expect("checked above").clone();
             self.index = self.history.len();
@@ -222,46 +282,5 @@ impl TerminalSource {
         } else {
             self.history.get(self.index).expect("checked above")
         }
-    }
-}
-
-impl ArgumentSource {
-    pub fn from(source: String) -> Self {
-        Self {
-            argument: source,
-            cursor: 0,
-        }
-    }
-
-    pub fn read(&mut self) -> Option<&str> {
-        // TODO(opt): This recalculates char index each time
-        let mut chars = self.argument.chars().skip(self.cursor).peekable();
-        while let Some(ch) = chars.peek() {
-            if !ch.is_ascii_whitespace() {
-                break;
-            }
-            chars.next();
-            self.cursor += 1;
-        }
-        let start = self.cursor;
-
-        // EOF
-        if chars.peek().is_none() {
-            return None;
-        }
-
-        let mut end = self.cursor;
-        while let Some(ch) = chars.next() {
-            if ch == '\n' || ch == ';' {
-                break;
-            }
-            self.cursor += 1;
-            if !ch.is_ascii_whitespace() {
-                end = self.cursor;
-            }
-        }
-        self.cursor += 1;
-
-        Some(self.argument.get(start..end).expect("checked above"))
     }
 }
