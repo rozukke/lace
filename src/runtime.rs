@@ -302,8 +302,22 @@ impl RunState {
             }
             // putsp
             0x24 => {
-                // TODO: impl putsp
-                todo!("TODO: putsp can be put off until someone needs it")
+                let mut addr = *self.reg(0);
+                loop {
+                    let chr_raw = *self.mem(addr);
+                    let chr_high = ((chr_raw >> 8) & 0xFF) as u8 as char;
+                    if chr_high == '\0' {
+                        break;
+                    }
+                    print!("{}", chr_high);
+                    let chr_low = (chr_raw & 0xFF) as u8 as char;
+                    if chr_low == '\0' {
+                        break;
+                    }
+                    print!("{}", chr_low);
+                    addr += 1;
+                }
+                stdout().flush().unwrap();
             }
             // halt
             0x25 => {
