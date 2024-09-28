@@ -46,11 +46,14 @@ impl Source {
 
 impl SourceReader for Source {
     fn read(&mut self) -> Option<&str> {
-        match self {
+        let command = match self {
             Self::Argument(argument) => argument.read(),
             Self::Stdin(stdin) => stdin.read(),
-            Self::Terminal(terminal) => terminal.read(),
-        }
+            Self::Terminal(terminal) => return terminal.read(),
+        };
+        // Echo prompt and command for non-terminal source
+        println!("Command: {}", command.unwrap_or(""));
+        command
     }
 }
 
@@ -65,8 +68,6 @@ impl Argument {
 
 impl SourceReader for Argument {
     fn read(&mut self) -> Option<&str> {
-        print!("Command: ");
-
         // TODO(opt): This recalculates char index each time
         let mut chars = self.argument.chars().skip(self.cursor);
 
@@ -94,8 +95,6 @@ impl SourceReader for Argument {
             .get(start..end)
             .expect("calculated incorrect character indexes")
             .trim();
-
-        println!("{}", command);
         Some(command)
     }
 }
@@ -118,8 +117,6 @@ impl Stdin {
 
 impl SourceReader for Stdin {
     fn read(&mut self) -> Option<&str> {
-        print!("Command: ");
-
         self.line.clear();
 
         // Take characters until delimiter
@@ -137,9 +134,7 @@ impl SourceReader for Stdin {
             self.line.push(ch);
         }
 
-        let command = self.line.trim();
-        println!("{}", command);
-        Some(&command)
+        Some(self.line.trim())
     }
 }
 

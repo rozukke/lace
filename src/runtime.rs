@@ -6,13 +6,13 @@ use std::{
     u16, u32, u8, usize,
 };
 
-use crate::{Air, Debugger};
+use crate::{Air, Debugger, DebuggerOptions};
 use colored::Colorize;
 use console::Term;
 use miette::Result;
 
 /// LC3 can address 128KB of memory.
-const MEMORY_MAX: usize = 0x10000;
+pub(crate) const MEMORY_MAX: usize = 0x10000;
 
 /// Represents complete program state during runtime.
 pub struct RunState {
@@ -28,8 +28,7 @@ pub struct RunState {
     /// Processor status register
     _psr: u16,
 
-    // TODO: Make private
-    pub debugger: Option<Debugger>,
+    debugger: Option<Debugger>,
 }
 
 #[derive(Clone, Copy)]
@@ -52,6 +51,13 @@ impl RunState {
         }
 
         RunState::from_raw(air_array.as_slice())
+    }
+
+    pub fn try_from_with_debugger(air: Air, debugger_opts: DebuggerOptions) -> Result<RunState> {
+        let mut state = Self::try_from(air)?;
+        // Assume PC to be origin
+        state.debugger = Some(Debugger::new(debugger_opts, state.pc, state.mem.clone()));
+        Ok(state)
     }
 
     pub fn from_raw(raw: &[u16]) -> Result<RunState> {

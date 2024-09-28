@@ -1,8 +1,9 @@
 mod source;
 
-use crate::{Air, StaticSource};
-
+use crate::runtime::MEMORY_MAX;
 use source::{Source, SourceReader};
+
+type Memory = Box<[u16; MEMORY_MAX]>;
 
 // TODO(refactor): Perhaps there is `clap` trait that can be implemented for
 // this struct, to avoid field duplication in `Command` enum
@@ -12,25 +13,28 @@ pub struct DebuggerOptions {
 }
 
 pub struct Debugger {
-    status: Status,
+    state: State,
     minimal: bool,
-
     source: Source,
-    // ...
+
+    orig: u16,
+    memory: Memory,
 }
 
-pub enum Status {
+pub enum State {
     WaitForCommand,
     // ContinueUntilBreakpoint,
     // ContinueUntilEndOfSubroutine,
 }
 
 impl Debugger {
-    pub fn new(contents: StaticSource, air: Air, opts: DebuggerOptions) -> Self {
+    pub fn new(opts: DebuggerOptions, orig: u16, memory: Memory) -> Self {
         Self {
-            status: Status::WaitForCommand,
+            state: State::WaitForCommand,
             minimal: opts.minimal,
             source: Source::from(opts.input),
+            orig,
+            memory,
         }
     }
 

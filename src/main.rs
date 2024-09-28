@@ -252,11 +252,10 @@ fn run(name: &PathBuf, debugger_opts: Option<DebuggerOptions>) -> Result<()> {
                 let contents = StaticSource::new(fs::read_to_string(&name).into_diagnostic()?);
                 let air = assemble(&contents)?;
                 // TODO: Re-order statements to remove double clone
-                let mut state = RunState::try_from(air.clone())?;
-                if let Some(opts) = debugger_opts {
-                    state.debugger = Some(Debugger::new(contents, air.clone(), opts));
+                match debugger_opts {
+                    None => RunState::try_from(air.clone())?,
+                    Some(opts) => RunState::try_from_with_debugger(air.clone(), opts)?,
                 }
-                state
             }
             _ => {
                 bail!("File has unknown extension. Exiting...")
