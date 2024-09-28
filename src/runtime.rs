@@ -282,17 +282,15 @@ impl RunState {
             0x22 => {
                 // could probably rewrite with iterators but idk if worth
                 let mut addr = *self.reg(0);
-                let mut string = String::new();
                 loop {
                     let chr_raw = *self.mem(addr);
                     let chr_ascii = (chr_raw & 0xFF) as u8 as char;
                     if chr_ascii == '\0' {
                         break;
                     }
-                    string.push(chr_ascii);
+                    print!("{}", chr_ascii);
                     addr += 1;
                 }
-                print!("{string}");
                 stdout().flush().unwrap();
             }
             // in
