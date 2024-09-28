@@ -1,4 +1,4 @@
-use std::io::{IsTerminal, Read, Write};
+use std::io::{self, IsTerminal, Read, Write};
 
 use console::Key;
 
@@ -15,7 +15,7 @@ pub struct Debugger {
     status: Status,
     minimal: bool,
 
-    input: CommandSource,
+    command_source: CommandSource,
     // ...
 }
 
@@ -27,42 +27,35 @@ pub enum Status {
 
 // TODO(refactor): Rename all these types!
 enum CommandSource {
-    Input(CommandInput),
-    History(CommandHistory),
+    Stdin,
+    Terminal(TerminalSource),
+    Argument(ArgumentSource),
 }
 
-struct CommandInput {
-    source: String,
+struct ArgumentSource {
+    argument: String,
     cursor: usize,
 }
 
-struct CommandHistory {
-    history: Vec<String>,
+struct TerminalSource {
     next: String,
-    index: usize, // Focused item in history, or new entry if index==length
-    cursor: usize,
+    history: Vec<String>,
+    cursor: usize, // Line cursor
+    index: usize,  // Focused item in history, or new entry if index==length
 }
 
 impl Debugger {
     pub fn new(contents: StaticSource, air: Air, opts: DebuggerOptions) -> Self {
-        let input = match opts.input {
-            Some(source) => CommandSource::Input(CommandInput::from(source)),
-            None => CommandSource::History(CommandHistory::new()),
-        };
         Self {
             status: Status::WaitForCommand,
             minimal: opts.minimal,
-            input,
+            command_source: CommandSource::from(opts.input),
         }
     }
 
     pub fn wait_for_command(&mut self) {
         loop {
-            // for item in &self.history.history {
-            //     println!(" - {}", item);
-            // }
-
-            let Some(line) = self.input.read_command() else {
+            let Some(line) = self.command_source.read() else {
                 println!("EOF?");
                 break;
             };
@@ -72,53 +65,34 @@ impl Debugger {
 }
 
 impl CommandSource {
-    fn read_command(&mut self) -> Option<&str> {
+    pub fn from(argument: Option<String>) -> Self {
+        match argument {
+            Some(argument) => CommandSource::Argument(ArgumentSource::from(argument)),
+            None => {
+                if io::stdin().is_terminal() {
+                    CommandSource::Terminal(TerminalSource::new())
+                } else {
+                    CommandSource::Stdin
+                }
+            }
+        }
+    }
+
+    pub fn read(&mut self) -> Option<&str> {
         match self {
-            Self::Input(input) => input.read_command(),
-            Self::History(history) => history.read_command(),
+            Self::Stdin => self.read_stdin(),
+            Self::Terminal(terminal) => terminal.read(),
+            Self::Argument(argument) => argument.read(),
         }
+    }
+
+    // TODO(feat): Handle EOF (return None)
+    fn read_stdin(&self) -> Option<&str> {
+        todo!();
     }
 }
 
-impl CommandInput {
-    pub fn from(source: String) -> Self {
-        Self { source, cursor: 0 }
-    }
-
-    fn read_command(&mut self) -> Option<&str> {
-        // TODO(opt): This recalculates char index each time
-        let mut chars = self.source.chars().skip(self.cursor).peekable();
-        while let Some(ch) = chars.peek() {
-            if !ch.is_ascii_whitespace() {
-                break;
-            }
-            chars.next();
-            self.cursor += 1;
-        }
-        let start = self.cursor;
-
-        // EOF
-        if chars.peek().is_none() {
-            return None;
-        }
-
-        let mut end = self.cursor;
-        while let Some(ch) = chars.next() {
-            if ch == '\n' || ch == ';' {
-                break;
-            }
-            self.cursor += 1;
-            if !ch.is_ascii_whitespace() {
-                end = self.cursor;
-            }
-        }
-        self.cursor += 1;
-
-        Some(self.source.get(start..end).expect("checked above"))
-    }
-}
-
-impl CommandHistory {
+impl TerminalSource {
     pub fn new() -> Self {
         Self {
             history: Vec::new(),
@@ -128,9 +102,8 @@ impl CommandHistory {
         }
     }
 
-    // TODO(feat): Support non-terminal stdin
-    // TODO(feat): Handle EOF (return None)
-    pub fn read_command(&mut self) -> Option<&str> {
+    pub fn read(&mut self) -> Option<&str> {
+        // TODO(opt): This creates a new handle each time
         let mut cons = console::Term::stdout();
 
         self.next.clear();
@@ -249,5 +222,46 @@ impl CommandHistory {
         } else {
             self.history.get(self.index).expect("checked above")
         }
+    }
+}
+
+impl ArgumentSource {
+    pub fn from(source: String) -> Self {
+        Self {
+            argument: source,
+            cursor: 0,
+        }
+    }
+
+    pub fn read(&mut self) -> Option<&str> {
+        // TODO(opt): This recalculates char index each time
+        let mut chars = self.argument.chars().skip(self.cursor).peekable();
+        while let Some(ch) = chars.peek() {
+            if !ch.is_ascii_whitespace() {
+                break;
+            }
+            chars.next();
+            self.cursor += 1;
+        }
+        let start = self.cursor;
+
+        // EOF
+        if chars.peek().is_none() {
+            return None;
+        }
+
+        let mut end = self.cursor;
+        while let Some(ch) = chars.next() {
+            if ch == '\n' || ch == ';' {
+                break;
+            }
+            self.cursor += 1;
+            if !ch.is_ascii_whitespace() {
+                end = self.cursor;
+            }
+        }
+        self.cursor += 1;
+
+        Some(self.argument.get(start..end).expect("checked above"))
     }
 }
