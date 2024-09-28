@@ -27,9 +27,13 @@ pub enum Status {
 
 // TODO(refactor?): These types could be put in a module
 enum CommandSource {
-    Stdin,
+    Stdin(StdinSource),
     Terminal(TerminalSource),
     Argument(ArgumentSource),
+}
+
+struct StdinSource {
+    line: String,
 }
 
 struct ArgumentSource {
@@ -61,6 +65,7 @@ impl Debugger {
                 println!("EOF");
                 break;
             };
+            let line = line.trim();
             println!("<{}>", line);
         }
     }
@@ -74,21 +79,41 @@ impl CommandSource {
         if io::stdin().is_terminal() {
             return CommandSource::Terminal(TerminalSource::new());
         }
-        CommandSource::Stdin
+        CommandSource::Stdin(StdinSource::new())
     }
 
     pub fn read(&mut self) -> Option<&str> {
         match self {
-            Self::Stdin => self.read_stdin(),
+            Self::Stdin(stdin) => stdin.read(),
             Self::Terminal(terminal) => terminal.read(),
             Self::Argument(argument) => argument.read(),
         }
     }
+}
 
-    // TODO(feat): Handle EOF (return None)
-    fn read_stdin(&self) -> Option<&str> {
-        let ch = Self::read_stdin_char()?;
-        todo!();
+impl StdinSource {
+    pub fn new() -> Self {
+        Self {
+            line: String::new(),
+        }
+    }
+
+    fn read(&mut self) -> Option<&str> {
+        self.line.clear();
+        loop {
+            let Some(ch) = Self::read_stdin_char() else {
+                if self.line.is_empty() {
+                    // First character is EOF
+                    return None;
+                }
+                break;
+            };
+            if ch == '\n' || ch == ';' {
+                break;
+            }
+            self.line.push(ch);
+        }
+        Some(&self.line)
     }
 
     fn read_stdin_char() -> Option<char> {
@@ -110,33 +135,25 @@ impl ArgumentSource {
 
     pub fn read(&mut self) -> Option<&str> {
         // TODO(opt): This recalculates char index each time
-        // Skip leading whitespace
-        let mut chars = self.argument.chars().skip(self.cursor).peekable();
-        while let Some(ch) = chars.peek() {
-            if !ch.is_ascii_whitespace() {
-                break;
-            }
-            chars.next();
-            self.cursor += 1;
-        }
-        let start = self.cursor;
-
-        // EOF
-        if chars.peek().is_none() {
-            return None;
-        }
+        let mut chars = self.argument.chars().skip(self.cursor);
 
         // Take characters until delimiter
-        let mut end = self.cursor;
-        while let Some(ch) = chars.next() {
+        let start = self.cursor;
+        loop {
+            let Some(ch) = chars.next() else {
+                if start == self.cursor {
+                    // First character is EOF
+                    return None;
+                }
+                break;
+            };
             if ch == '\n' || ch == ';' {
                 break;
             }
             self.cursor += 1;
-            if !ch.is_ascii_whitespace() {
-                end = self.cursor;
-            }
         }
+
+        let end = self.cursor;
         self.cursor += 1;
 
         Some(self.argument.get(start..end).expect("checked above"))
@@ -195,9 +212,6 @@ impl TerminalSource {
                         // This would need a buffer field on `Self`
                         unimplemented!("multiple commands in one line");
                     }
-
-                    // Skip leading whitespace
-                    ' ' if self.next.is_empty() => (),
 
                     // Depending on terminal, this should also support pasting from clipboard
                     _ => {
