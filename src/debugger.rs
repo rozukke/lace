@@ -15,8 +15,7 @@ pub struct Debugger {
     status: Status,
     minimal: bool,
 
-    input: Option<(String, usize)>,
-    history: CommandHistory,
+    input: CommandSource,
     // ...
 }
 
@@ -24,6 +23,17 @@ pub enum Status {
     WaitForCommand,
     // ContinueUntilBreakpoint,
     // ContinueUntilEndOfSubroutine,
+}
+
+// TODO(refactor): Rename all these types!
+enum CommandSource {
+    Input(CommandInput),
+    History(CommandHistory),
+}
+
+struct CommandInput {
+    source: String,
+    cursor: usize,
 }
 
 struct CommandHistory {
@@ -35,11 +45,14 @@ struct CommandHistory {
 
 impl Debugger {
     pub fn new(contents: StaticSource, air: Air, opts: DebuggerOptions) -> Self {
+        let input = match opts.input {
+            Some(source) => CommandSource::Input(CommandInput::from(source)),
+            None => CommandSource::History(CommandHistory::new()),
+        };
         Self {
             status: Status::WaitForCommand,
             minimal: opts.minimal,
-            input: opts.input.map(|input| (input, 0)),
-            history: CommandHistory::new(),
+            input,
         }
     }
 
@@ -49,18 +62,59 @@ impl Debugger {
             //     println!(" - {}", item);
             // }
 
-            let Some(line) = self.read_command() else {
-                todo!("EOF?");
+            let Some(line) = self.input.read_command() else {
+                println!("EOF?");
+                break;
             };
             println!("<{}>", line);
         }
     }
+}
+
+impl CommandSource {
+    fn read_command(&mut self) -> Option<&str> {
+        match self {
+            Self::Input(input) => input.read_command(),
+            Self::History(history) => history.read_command(),
+        }
+    }
+}
+
+impl CommandInput {
+    pub fn from(source: String) -> Self {
+        Self { source, cursor: 0 }
+    }
 
     fn read_command(&mut self) -> Option<&str> {
-        if self.input.is_some() {
-            unimplemented!("predefined command input");
+        // TODO(opt): This recalculates char index each time
+        let mut chars = self.source.chars().skip(self.cursor).peekable();
+        while let Some(ch) = chars.peek() {
+            if !ch.is_ascii_whitespace() {
+                break;
+            }
+            chars.next();
+            self.cursor += 1;
         }
-        self.history.read_command()
+        let start = self.cursor;
+
+        // EOF
+        if chars.peek().is_none() {
+            return None;
+        }
+
+        let mut end = self.cursor;
+        while let Some(ch) = chars.next() {
+            if ch == '\n' || ch == ';' {
+                break;
+            }
+            self.cursor += 1;
+            if !ch.is_ascii_whitespace() {
+                end = self.cursor;
+            }
+        }
+        self.cursor += 1;
+
+        Some(self.source.get(start..end).expect("checked above"))
     }
 }
 
@@ -110,6 +164,12 @@ impl CommandHistory {
                 }
 
                 Key::Char(ch) => match ch {
+                    ';' => {
+                        unimplemented!("multiple commands in one line");
+                    }
+
+                    ' ' if self.next.is_empty() => (),
+
                     // ASCII printable characters
                     '\x20'..='\x7e' => {
                         self.update_next();
