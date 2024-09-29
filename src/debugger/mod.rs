@@ -59,6 +59,10 @@ impl Debugger {
                 println!("EOF");
                 break Action::StopDebugger;
             };
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
             let command = match Command::try_from(line) {
                 Ok(command) => command,
                 Err(err) => {

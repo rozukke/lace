@@ -262,7 +262,6 @@ impl<'a> CommandIter<'a> {
             self.next();
         }
 
-        println!("{} / {}", self.base, self.head);
         if self.get().is_empty() {
             return Err(Error::MissingCommandName);
         }

@@ -31,6 +31,7 @@ struct Terminal {
     term: console::Term,
     next: String,
     history: Vec<String>,
+    head: Option<usize>,
     /// Line cursor
     cursor: usize,
     /// Focused item in history, or new entry if index==length
@@ -39,7 +40,7 @@ struct Terminal {
 
 pub trait SourceReader {
     /// `None` indicates EOF
-    /// Returned string slice will not include leading or trailing whitespace
+    /// Returned string slice MAY include leading or trailing whitespace
     fn read(&mut self) -> Option<&str>;
 }
 
@@ -104,8 +105,7 @@ impl SourceReader for Argument {
         let command = self
             .argument
             .get(start..end)
-            .expect("calculated incorrect character indexes")
-            .trim();
+            .expect("calculated incorrect character indexes");
         Some(command)
     }
 }
@@ -147,7 +147,7 @@ impl SourceReader for Stdin {
             self.buffer.push(ch);
         }
 
-        Some(self.buffer.trim())
+        Some(&self.buffer)
     }
 }
 
@@ -157,6 +157,7 @@ impl Terminal {
             term: console::Term::stdout(),
             next: String::new(),
             history: Vec::new(),
+            head: None,
             cursor: 0,
             index: 0,
         }
@@ -227,12 +228,6 @@ impl Terminal {
                 // Ignore ASCII control characters
                 '\x00'..='\x1f' | '\x7f' => (),
 
-                ';' => {
-                    // TODO(feat): Multiple commands in single line for terminal source
-                    // This would need a buffer field on `Self`
-                    unimplemented!("multiple commands in one line");
-                }
-
                 // Depending on terminal, this should also support pasting from clipboard
                 _ => {
                     self.update_next();
@@ -278,6 +273,23 @@ impl Terminal {
 
 impl SourceReader for Terminal {
     fn read(&mut self) -> Option<&str> {
+        // Read next command in line with command delimeters
+        if let Some(head) = self.head {
+            // TODO(refactor): This is duplicated at the bottom of the function
+            let rest = &self.next[head..];
+            let command = match rest.find(';') {
+                Some(index) => {
+                    self.head = Some(head + index + 1);
+                    &rest[..index]
+                }
+                None => {
+                    self.head = None;
+                    &rest
+                }
+            };
+            return Some(command);
+        }
+
         self.next.clear();
         self.cursor = 0;
 
@@ -303,6 +315,17 @@ impl SourceReader for Terminal {
         // Always reset index to next command
         self.index = self.history.len();
 
-        Some(&self.next.trim())
+        // Return first command in line
+        let command = match self.next.find(';') {
+            Some(index) => {
+                self.head = Some(index + 1);
+                &self.next[..index]
+            }
+            None => {
+                self.head = None;
+                &self.next
+            }
+        };
+        Some(command)
     }
 }
