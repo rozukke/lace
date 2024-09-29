@@ -11,11 +11,13 @@ type Memory = Box<[u16; MEMORY_MAX]>;
 
 // TODO(refactor): Perhaps there is `clap` trait that can be implemented for
 // this struct, to avoid field duplication in `Command` enum
+#[derive(Debug)]
 pub struct DebuggerOptions {
     pub minimal: bool,
     pub input: Option<String>,
 }
 
+#[derive(Debug)]
 pub struct Debugger {
     state: State,
     minimal: bool,
@@ -25,12 +27,14 @@ pub struct Debugger {
     memory: Memory,
 }
 
+#[derive(Debug)]
 pub enum State {
     WaitForAction,
     // ContinueUntilBreakpoint,
     // ContinueUntilEndOfSubroutine,
 }
 
+#[derive(Debug)]
 pub enum Action {
     Continue,
     StopDebugger,

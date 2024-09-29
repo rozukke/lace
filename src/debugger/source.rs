@@ -3,6 +3,7 @@ use std::io::{self, IsTerminal, Read, Write};
 use console::Key;
 
 #[allow(private_interfaces)] // Perhaps a bad practice
+#[derive(Debug)]
 pub enum SourceMode {
     Argument(Argument),
     Stdin(Stdin),
@@ -10,18 +11,21 @@ pub enum SourceMode {
 }
 
 // Stdin which is not attached to a terminal, i.e. piped.
+#[derive(Debug)]
 struct Stdin {
     /// Command must be stored somewhere to be referenced
     buffer: String,
 }
 
 // Command-line argument
+#[derive(Debug)]
 struct Argument {
     argument: String,
     cursor: usize,
 }
 
 // Interactive unbuffered terminal
+#[derive(Debug)]
 struct Terminal {
     next: String,
     history: Vec<String>,
