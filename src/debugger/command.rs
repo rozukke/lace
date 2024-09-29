@@ -233,7 +233,12 @@ impl<'a> CommandIter<'a> {
     }
 
     fn is_end_of_argument(&self) -> bool {
-        matches!(self.peek(), None | Some(' ' | ';'))
+        let ch = self.peek();
+        debug_assert!(
+            !matches!(ch, Some(';' | '\n')),
+            "semicolons/newlines should have been handled already"
+        );
+        matches!(ch, None | Some(' ' | ';' | '\n'))
     }
 
     fn skip_whitespace(&mut self) {
