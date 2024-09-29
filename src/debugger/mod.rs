@@ -59,7 +59,6 @@ impl Debugger {
                 println!("EOF");
                 break Action::StopDebugger;
             };
-            println!("<{}>", line);
             let command = match Command::try_from(line) {
                 Ok(command) => command,
                 Err(err) => {
