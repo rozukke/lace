@@ -301,18 +301,14 @@ impl RunState {
             // puts
             0x22 => {
                 // could probably rewrite with iterators but idk if worth
-                let mut addr = *self.reg(0);
-                let mut string = String::new();
-                loop {
+                for addr in *self.reg(0).. {
                     let chr_raw = *self.mem(addr);
                     let chr_ascii = (chr_raw & 0xFF) as u8 as char;
                     if chr_ascii == '\0' {
                         break;
                     }
-                    string.push(chr_ascii);
-                    addr += 1;
+                    print!("{}", chr_ascii);
                 }
-                print!("{string}");
                 stdout().flush().unwrap();
             }
             // in
@@ -324,8 +320,17 @@ impl RunState {
             }
             // putsp
             0x24 => {
-                // TODO: impl putsp
-                todo!("TODO: putsp can be put off until someone needs it")
+                'string: for addr in *self.reg(0).. {
+                    let chr_raw = *self.mem(addr);
+                    for chr in [chr_raw >> 8, chr_raw & 0xFF] {
+                        let chr_ascii = chr as u8 as char;
+                        if chr_ascii == '\0' {
+                            break 'string;
+                        }
+                        print!("{}", chr_ascii);
+                    }
+                }
+                stdout().flush().unwrap();
             }
             // halt
             0x25 => {
