@@ -1,9 +1,13 @@
+mod command;
 mod source;
 
 use crate::runtime::MEMORY_MAX;
+use command::Command;
 use source::{SourceMode, SourceReader};
 
 type Memory = Box<[u16; MEMORY_MAX]>;
+
+// TODO(feat): Use stderr for all debugger output (except in terminal mode?)
 
 // TODO(refactor): Perhaps there is `clap` trait that can be implemented for
 // this struct, to avoid field duplication in `Command` enum
@@ -22,15 +26,21 @@ pub struct Debugger {
 }
 
 pub enum State {
-    WaitForCommand,
+    WaitForAction,
     // ContinueUntilBreakpoint,
     // ContinueUntilEndOfSubroutine,
+}
+
+pub enum Action {
+    Continue,
+    StopDebugger,
+    QuitProgram,
 }
 
 impl Debugger {
     pub fn new(opts: DebuggerOptions, orig: u16, memory: Memory) -> Self {
         Self {
-            state: State::WaitForCommand,
+            state: State::WaitForAction,
             minimal: opts.minimal,
             source: SourceMode::from(opts.input),
             orig,
@@ -38,14 +48,23 @@ impl Debugger {
         }
     }
 
-    pub fn wait_for_command(&mut self) {
+    pub fn wait_for_action(&mut self) -> Action {
         loop {
             // TODO
             let Some(line) = self.source.read() else {
                 println!("EOF");
-                break;
+                break Action::StopDebugger;
             };
             println!("<{}>", line);
+            let command = match Command::try_from(line) {
+                Ok(command) => command,
+                Err(err) => {
+                    eprintln!("{:?}", err);
+                    continue;
+                }
+            };
+
+            println!("{:?}", command);
         }
     }
 }

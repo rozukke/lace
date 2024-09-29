@@ -6,7 +6,7 @@ use std::{
     u16, u32, u8, usize,
 };
 
-use crate::{Air, Debugger, DebuggerOptions};
+use crate::{debugger::Action, Air, Debugger, DebuggerOptions};
 use colored::Colorize;
 use console::Term;
 use miette::Result;
@@ -104,7 +104,13 @@ impl RunState {
     pub fn run(&mut self) {
         loop {
             if let Some(debugger) = &mut self.debugger {
-                debugger.wait_for_command();
+                match debugger.wait_for_action() {
+                    Action::Continue => (),
+                    Action::StopDebugger => {
+                        self.debugger = None;
+                    }
+                    Action::QuitProgram => return,
+                }
             }
             if self.pc >= 0xFE00 {
                 // Entering device address space
