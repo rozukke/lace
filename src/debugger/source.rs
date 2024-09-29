@@ -13,6 +13,7 @@ pub enum SourceMode {
 // Stdin which is not attached to a terminal, i.e. piped.
 #[derive(Debug)]
 struct Stdin {
+    stdin: io::Stdin,
     /// Command must be stored somewhere to be referenced
     buffer: String,
 }
@@ -112,14 +113,15 @@ impl SourceReader for Argument {
 impl Stdin {
     pub fn new() -> Self {
         Self {
+            stdin: io::stdin(),
             buffer: String::new(),
         }
     }
 
     /// `None` indicates EOF
-    fn read_char() -> Option<char> {
+    fn read_char(&mut self) -> Option<char> {
         let mut buffer = [0; 1];
-        if io::stdin().read(&mut buffer).unwrap() == 0 {
+        if self.stdin.read(&mut buffer).unwrap() == 0 {
             return None;
         }
         Some(buffer[0] as char)
@@ -132,7 +134,7 @@ impl SourceReader for Stdin {
 
         // Take characters until delimiter
         loop {
-            let Some(ch) = Self::read_char() else {
+            let Some(ch) = self.read_char() else {
                 if self.buffer.is_empty() {
                     // First character is EOF
                     return None;
