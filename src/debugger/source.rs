@@ -27,6 +27,7 @@ struct Argument {
 // Interactive unbuffered terminal
 #[derive(Debug)]
 struct Terminal {
+    term: console::Term,
     next: String,
     history: Vec<String>,
     /// Line cursor
@@ -151,6 +152,7 @@ impl SourceReader for Stdin {
 impl Terminal {
     pub fn new() -> Self {
         Self {
+            term: console::Term::stdout(),
             next: String::new(),
             history: Vec::new(),
             cursor: 0,
@@ -182,93 +184,106 @@ impl Terminal {
             self.history.get(self.index).expect("checked above")
         }
     }
-}
 
-impl SourceReader for Terminal {
-    fn read(&mut self) -> Option<&str> {
-        // TODO(opt): This creates a new handle each time
-        let mut cons = console::Term::stdout();
+    fn print_prompt(&mut self) {
+        // Clear line, print prompt, set cursor position
+        self.term.clear_line().unwrap();
 
-        self.next.clear();
-        self.cursor = 0;
+        // Must use `write!` to be flushed
+        write!(self.term, "Command: ").unwrap();
 
-        // Read keys until newline
-        loop {
-            // Clear line, print prompt, set cursor position
-            cons.clear_line().unwrap();
-            // Must use `write!` to be flushed
-            write!(cons, "Command: ").unwrap();
-            write!(cons, "{}", self.get_current()).unwrap();
-            cons.move_cursor_left(
+        // TODO: What in the world is this...
+        let current = unsafe { &*(self.get_current() as *const str) };
+        write!(self.term, "{}", current).unwrap();
+
+        self.term
+            .move_cursor_left(
                 self.get_current()
                     .len()
                     .checked_sub(self.cursor)
                     .unwrap_or(0), // If invariance is violated
             )
             .unwrap();
-            cons.flush().unwrap();
 
-            let key = cons.read_key().unwrap();
-            match key {
-                Key::Enter | Key::Char('\n') => {
-                    if self.is_next() && self.next.is_empty() {
-                        println!();
-                    } else {
-                        self.update_next();
-                        break;
-                    }
-                }
+        self.term.flush().unwrap();
+    }
 
-                Key::Char(ch) => match ch {
-                    // Ignore ASCII control characters
-                    '\x00'..='\x1f' | '\x7f' => (),
-
-                    ';' => {
-                        // TODO(feat): Multiple commands in single line for terminal source
-                        // This would need a buffer field on `Self`
-                        unimplemented!("multiple commands in one line");
-                    }
-
-                    // Depending on terminal, this should also support pasting from clipboard
-                    _ => {
-                        self.update_next();
-                        self.next.insert(self.cursor, ch);
-                        self.cursor += 1;
-                    }
-                },
-
-                Key::Backspace => {
+    // Return of `true` indicates to break loop
+    fn read_key(&mut self) -> bool {
+        let key = self.term.read_key().unwrap();
+        match key {
+            Key::Enter | Key::Char('\n') => {
+                if self.is_next() && self.next.is_empty() {
+                    println!();
+                } else {
                     self.update_next();
-                    if !self.next.is_empty() {
-                        self.next.pop();
-                        self.cursor -= 1;
-                    }
+                    return true;
+                }
+            }
+
+            Key::Char(ch) => match ch {
+                // Ignore ASCII control characters
+                '\x00'..='\x1f' | '\x7f' => (),
+
+                ';' => {
+                    // TODO(feat): Multiple commands in single line for terminal source
+                    // This would need a buffer field on `Self`
+                    unimplemented!("multiple commands in one line");
                 }
 
-                Key::ArrowLeft => {
-                    if self.cursor > 0 {
-                        self.cursor -= 1;
-                    }
+                // Depending on terminal, this should also support pasting from clipboard
+                _ => {
+                    self.update_next();
+                    self.next.insert(self.cursor, ch);
+                    self.cursor += 1;
                 }
-                Key::ArrowRight => {
-                    if self.cursor < self.get_current().len() {
-                        self.cursor += 1;
-                    }
-                }
-                Key::ArrowUp => {
-                    if self.index > 0 {
-                        self.index -= 1;
-                        self.cursor = self.get_current().len();
-                    }
-                }
-                Key::ArrowDown => {
-                    if self.index < self.history.len() {
-                        self.index += 1;
-                        self.cursor = self.get_current().len();
-                    }
-                }
+            },
 
-                _ => (),
+            Key::Backspace => {
+                self.update_next();
+                if !self.next.is_empty() {
+                    self.next.pop();
+                    self.cursor -= 1;
+                }
+            }
+            Key::ArrowLeft => {
+                if self.cursor > 0 {
+                    self.cursor -= 1;
+                }
+            }
+            Key::ArrowRight => {
+                if self.cursor < self.get_current().len() {
+                    self.cursor += 1;
+                }
+            }
+            Key::ArrowUp => {
+                if self.index > 0 {
+                    self.index -= 1;
+                    self.cursor = self.get_current().len();
+                }
+            }
+            Key::ArrowDown => {
+                if self.index < self.history.len() {
+                    self.index += 1;
+                    self.cursor = self.get_current().len();
+                }
+            }
+            _ => (),
+        }
+        false
+    }
+}
+
+impl SourceReader for Terminal {
+    fn read(&mut self) -> Option<&str> {
+        self.next.clear();
+        self.cursor = 0;
+
+        // Read keys until newline
+        loop {
+            self.print_prompt();
+            if self.read_key() {
+                break;
             }
         }
         println!();
