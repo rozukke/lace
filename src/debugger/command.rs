@@ -86,13 +86,15 @@ enum Radix {
     Hex = 16,
 }
 
+type Result<T> = std::result::Result<T, CommandError>;
+
 impl TryFrom<&str> for Command {
     type Error = CommandError;
 
-    fn try_from(line: &str) -> Result<Self, Self::Error> {
-        let mut line = CommandIter::from(line);
+    fn try_from(line: &str) -> std::result::Result<Self, Self::Error> {
+        let mut iter = CommandIter::from(line);
 
-        let name = line.take_command_name()?;
+        let name = iter.take_command_name()?;
         // println!("<{}>", name);
 
         // TODO(fix): Check bounds for integer arguments
@@ -106,98 +108,51 @@ impl TryFrom<&str> for Command {
             "reset" => Self::Reset,
 
             "step" | "t" => {
-                let count = match line.take_argument()? {
-                    None => 1,
-                    Some(Argument::Integer(count)) => count.max(1) as usize,
-                    _ => return Err(CommandError::InvalidArgumentKind),
-                };
+                let count = iter.take_integer_or_default(1)? as usize;
                 Self::Step { count }
             }
             "next" | "n" => {
-                let count = match line.take_argument()? {
-                    None => 1,
-                    Some(Argument::Integer(count)) => count.max(1) as usize,
-                    _ => return Err(CommandError::InvalidArgumentKind),
-                };
+                let count = iter.take_integer_or_default(1)? as usize;
                 Self::Step { count }
             }
-
             "get" | "g" => {
-                let location = match line.take_argument()? {
-                    None => return Err(CommandError::MissingArgument),
-                    Some(Argument::Register(register)) => Location::Register(register),
-                    Some(Argument::Integer(address)) => {
-                        Location::Memory(MemoryLocation::Address(address as u16))
-                    }
-                    Some(Argument::Label(label)) => Location::Memory(MemoryLocation::Label(label)),
-                };
+                let location = iter.take_location()?;
                 Self::Get { location }
             }
             "set" | "s" => {
-                let location = match line.take_argument()? {
-                    None => return Err(CommandError::MissingArgument),
-                    Some(Argument::Register(register)) => Location::Register(register),
-                    Some(Argument::Integer(address)) => {
-                        Location::Memory(MemoryLocation::Address(address as u16))
-                    }
-                    Some(Argument::Label(label)) => Location::Memory(MemoryLocation::Label(label)),
-                };
-                let value = match line.take_argument()? {
-                    Some(Argument::Integer(value)) => value as u16,
-                    _ => return Err(CommandError::InvalidArgumentKind),
-                };
+                let location = iter.take_location()?;
+                let value = iter.take_integer()? as u16;
                 Self::Set { location, value }
             }
-
             "source" => {
-                let count = match line.take_argument()? {
-                    None => 1,
-                    Some(Argument::Integer(count)) => count.max(1) as usize,
-                    _ => return Err(CommandError::InvalidArgumentKind),
-                };
-                let location = match line.take_argument()? {
-                    None => MemoryLocation::PC,
-                    Some(Argument::Integer(address)) => MemoryLocation::Address(address as u16),
-                    Some(Argument::Label(label)) => MemoryLocation::Label(label),
-                    _ => return Err(CommandError::InvalidArgumentKind),
-                };
+                let count = iter.take_integer_or_default(1)? as usize;
+                let location = iter.take_memory_location_or_pc()?;
                 Self::Source { count, location }
             }
 
             "break" | "b" => {
-                let subname = line.take_command_name()?;
+                let subname = iter.take_command_name()?;
                 match subname.to_lowercase().as_str() {
                     "list" | "l" => Self::BreakList,
-
                     "add" | "a" => {
-                        let location = match line.take_argument()? {
-                            None => MemoryLocation::PC,
-                            Some(Argument::Integer(address)) => {
-                                MemoryLocation::Address(address as u16)
-                            }
-                            Some(Argument::Label(label)) => MemoryLocation::Label(label),
-                            _ => return Err(CommandError::InvalidArgumentKind),
-                        };
+                        let location = iter.take_memory_location_or_pc()?;
                         Self::BreakAdd { location }
                     }
                     "remove" | "r" => {
-                        let location = match line.take_argument()? {
-                            None => MemoryLocation::PC,
-                            Some(Argument::Integer(address)) => {
-                                MemoryLocation::Address(address as u16)
-                            }
-                            Some(Argument::Label(label)) => MemoryLocation::Label(label),
-                            _ => return Err(CommandError::InvalidArgumentKind),
-                        };
+                        let location = iter.take_memory_location_or_pc()?;
                         Self::BreakAdd { location }
                     }
-
                     _ => return Err(CommandError::InvalidCommandName),
                 }
             }
-            "breaklist" | "bl" | "breakadd" | "ba" | "breakremove" | "br" => {
-                eprintln!("unimplemented: more break command aliases");
-                return Err(CommandError::InvalidCommandName);
+            "breaklist" | "bl" => Self::BreakList,
+            "breakadd" | "ba" => {
+                let location = iter.take_memory_location_or_pc()?;
+                Self::BreakAdd { location }
+            }
+            "breakremove" | "br" => {
+                let location = iter.take_memory_location_or_pc()?;
+                Self::BreakAdd { location }
             }
 
             "eval" => {
@@ -209,7 +164,7 @@ impl TryFrom<&str> for Command {
         };
 
         // All commands except `eval`
-        if line.take_argument()?.is_some() {
+        if iter.take_argument()?.is_some() {
             return Err(CommandError::TooManyArguments);
         }
 
@@ -292,7 +247,7 @@ impl<'a> CommandIter<'a> {
         self.set_base();
     }
 
-    pub fn take_command_name(&mut self) -> Result<&str, CommandError> {
+    pub fn take_command_name(&mut self) -> Result<&str> {
         self.skip_whitespace();
         self.reset_head();
 
@@ -310,7 +265,7 @@ impl<'a> CommandIter<'a> {
         Ok(self.take())
     }
 
-    pub fn take_argument(&mut self) -> Result<Option<Argument>, CommandError> {
+    pub fn take_argument(&mut self) -> Result<Option<Argument>> {
         debug_assert!(
             self.head == self.base,
             "should have been called with head==base"
@@ -324,13 +279,49 @@ impl<'a> CommandIter<'a> {
         if let Some(register) = self.take_register() {
             return Ok(Some(Argument::Register(register)));
         }
-        if let Some(integer) = self.take_integer(true)? {
+        if let Some(integer) = self.take_token_integer(true)? {
             return Ok(Some(Argument::Integer(integer)));
         }
-        if let Some(label) = self.take_label()? {
+        if let Some(label) = self.take_token_label()? {
             return Ok(Some(Argument::Label(label)));
         }
         Err(CommandError::InvalidArgument)
+    }
+
+    pub fn take_integer(&mut self) -> Result<i16> {
+        Ok(match self.take_argument()? {
+            None => return Err(CommandError::MissingArgument),
+            Some(Argument::Integer(count)) => count.max(1),
+            _ => return Err(CommandError::InvalidArgumentKind),
+        })
+    }
+
+    pub fn take_integer_or_default(&mut self, default: i16) -> Result<i16> {
+        Ok(match self.take_argument()? {
+            None => default,
+            Some(Argument::Integer(count)) => count.max(1),
+            _ => return Err(CommandError::InvalidArgumentKind),
+        })
+    }
+
+    pub fn take_location(&mut self) -> Result<Location> {
+        Ok(match self.take_argument()? {
+            None => return Err(CommandError::MissingArgument),
+            Some(Argument::Register(register)) => Location::Register(register),
+            Some(Argument::Integer(address)) => {
+                Location::Memory(MemoryLocation::Address(address as u16))
+            }
+            Some(Argument::Label(label)) => Location::Memory(MemoryLocation::Label(label)),
+        })
+    }
+
+    pub fn take_memory_location_or_pc(&mut self) -> Result<MemoryLocation> {
+        Ok(match self.take_argument()? {
+            None => MemoryLocation::PC,
+            Some(Argument::Integer(address)) => MemoryLocation::Address(address as u16),
+            Some(Argument::Label(label)) => MemoryLocation::Label(label),
+            _ => return Err(CommandError::InvalidArgumentKind),
+        })
     }
 
     fn take_register(&mut self) -> Option<Register> {
@@ -357,22 +348,22 @@ impl<'a> CommandIter<'a> {
         Some(register)
     }
 
-    fn take_integer(&mut self, allow_sign: bool) -> Result<Option<i16>, CommandError> {
+    fn take_token_integer(&mut self, allow_sign: bool) -> Result<Option<i16>> {
         // Don't reset head
         // Don't skip whitespace
         for radix in Radix::ALL {
-            if let Some(integer) = self.take_integer_with_radix(allow_sign, *radix)? {
+            if let Some(integer) = self.take_token_integer_with_radix(allow_sign, *radix)? {
                 return Ok(Some(integer));
             }
         }
         Ok(None)
     }
 
-    fn take_integer_with_radix(
+    fn take_token_integer_with_radix(
         &mut self,
         allow_sign: bool,
         radix: Radix,
-    ) -> Result<Option<i16>, CommandError> {
+    ) -> Result<Option<i16>> {
         self.reset_head();
         // Don't skip whitespace
 
@@ -449,7 +440,7 @@ impl<'a> CommandIter<'a> {
         Ok(Some(integer as i16))
     }
 
-    fn take_label(&mut self) -> Result<Option<Label>, CommandError> {
+    fn take_token_label(&mut self) -> Result<Option<Label>> {
         self.reset_head();
         // Don't skip whitespace
 
@@ -475,7 +466,7 @@ impl<'a> CommandIter<'a> {
             Some('+') => {
                 self.next();
                 self.base = self.head;
-                let Some(offset) = self.take_integer(false)? else {
+                let Some(offset) = self.take_token_integer(false)? else {
                     return Err(CommandError::InvalidLabel);
                 };
                 offset
@@ -483,7 +474,7 @@ impl<'a> CommandIter<'a> {
             Some('-') => {
                 self.next();
                 self.base = self.head;
-                let Some(offset) = self.take_integer(false)? else {
+                let Some(offset) = self.take_token_integer(false)? else {
                     return Err(CommandError::InvalidLabel);
                 };
                 -offset
