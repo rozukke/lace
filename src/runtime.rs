@@ -281,15 +281,13 @@ impl RunState {
             // puts
             0x22 => {
                 // could probably rewrite with iterators but idk if worth
-                let mut addr = *self.reg(0);
-                loop {
+                for addr in *self.reg(0).. {
                     let chr_raw = *self.mem(addr);
                     let chr_ascii = (chr_raw & 0xFF) as u8 as char;
                     if chr_ascii == '\0' {
                         break;
                     }
                     print!("{}", chr_ascii);
-                    addr += 1;
                 }
                 stdout().flush().unwrap();
             }
@@ -302,20 +300,15 @@ impl RunState {
             }
             // putsp
             0x24 => {
-                let mut addr = *self.reg(0);
-                loop {
+                'string: for addr in *self.reg(0).. {
                     let chr_raw = *self.mem(addr);
-                    let chr_high = ((chr_raw >> 8) & 0xFF) as u8 as char;
-                    if chr_high == '\0' {
-                        break;
+                    for chr in [chr_raw >> 8, chr_raw & 0xFF] {
+                        let chr_ascii = chr as u8 as char;
+                        if chr_ascii == '\0' {
+                            break 'string;
+                        }
+                        print!("{}", chr_ascii);
                     }
-                    print!("{}", chr_high);
-                    let chr_low = (chr_raw & 0xFF) as u8 as char;
-                    if chr_low == '\0' {
-                        break;
-                    }
-                    print!("{}", chr_low);
-                    addr += 1;
                 }
                 stdout().flush().unwrap();
             }
