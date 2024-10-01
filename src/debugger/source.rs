@@ -22,6 +22,7 @@ struct Stdin {
 #[derive(Debug)]
 struct Argument {
     buffer: String,
+    // Byte index
     cursor: usize,
 }
 
@@ -30,6 +31,7 @@ struct Argument {
 struct Terminal {
     term: console::Term,
     buffer: String,
+    // Byte index
     cursor: usize,
 
     history: Vec<String>,
@@ -82,27 +84,20 @@ impl Argument {
 
 impl SourceReader for Argument {
     fn read(&mut self) -> Option<&str> {
-        // TODO(opt): This recalculates char index each time
-        let mut chars = self.buffer.chars().skip(self.cursor);
+        // EOF
+        if self.cursor >= self.buffer.len() {
+            return None;
+        }
 
         // Take characters until delimiter
         let start = self.cursor;
-        loop {
-            let Some(ch) = chars.next() else {
-                if start == self.cursor {
-                    // First character is EOF
-                    return None;
-                }
-                break;
-            };
-            if ch == '\n' || ch == ';' {
-                break;
-            }
-            self.cursor += 1;
+        let mut chars = self.buffer[self.cursor..].chars();
+        while let Some(ch) = chars.next().filter(|ch| *ch != '\n' && *ch != ';') {
+            self.cursor += ch.len_utf8();
         }
 
         let end = self.cursor;
-        self.cursor += 1;
+        self.cursor += 1; // sizeof('\n' or ';')
 
         let command = self
             .buffer
