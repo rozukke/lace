@@ -47,6 +47,13 @@ pub trait SourceReader {
     /// `None` indicates EOF
     /// Returned string slice MAY include leading or trailing whitespace
     fn read(&mut self) -> Option<&str>;
+
+    fn write_prompt(f: &mut impl io::Write) -> io::Result<()> {
+        write!(f, "\x1b[1;34m")?;
+        write!(f, "Command: ")?;
+        write!(f, "\x1b[0m")?;
+        Ok(())
+    }
 }
 
 impl SourceMode {
@@ -70,7 +77,9 @@ impl SourceReader for SourceMode {
             Self::Terminal(terminal) => return terminal.read(),
         };
         // Echo prompt and command for non-terminal source
-        println!("Command: {}", command.unwrap_or(""));
+        // TODO(opt): This recreates the stdout handle each time
+        Self::write_prompt(&mut io::stdout()).unwrap();
+        println!("{}", command.unwrap_or("").trim());
         command
     }
 }
@@ -204,8 +213,7 @@ impl Terminal {
         // Clear line, print prompt, set cursor position
         self.term.clear_line().unwrap();
 
-        // Must use `write!` to be flushed
-        write!(self.term, "Command: ").unwrap();
+        Self::write_prompt(&mut self.term).unwrap();
 
         // TODO: What in the world is this...
         let current = unsafe { &*(self.get_current() as *const str) };

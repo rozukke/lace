@@ -103,12 +103,16 @@ impl RunState {
     pub fn run(&mut self) {
         loop {
             if let Some(debugger) = &mut self.debugger {
-                match debugger.wait_for_action() {
-                    Action::Proceed => (),
-                    Action::StopDebugger => {
-                        self.debugger = None;
+                loop {
+                    match debugger.wait_for_action() {
+                        Action::None => (),
+                        Action::Proceed => break,
+                        Action::StopDebugger => {
+                            self.debugger = None;
+                            break;
+                        }
+                        Action::QuitProgram => return,
                     }
-                    Action::QuitProgram => return,
                 }
             }
             if self.pc >= 0xFE00 {
@@ -124,13 +128,14 @@ impl RunState {
     }
 
     #[inline]
-    fn reg(&mut self, reg: u16) -> &mut u16 {
+    pub(super) fn reg(&mut self, reg: u16) -> &mut u16 {
         // SAFETY: Should only be indexed with values that are & 0b111
+        debug_assert!(reg < 8);
         unsafe { self.reg.get_unchecked_mut(reg as usize) }
     }
 
     #[inline]
-    fn mem(&mut self, addr: u16) -> &mut u16 {
+    pub(super) fn mem(&mut self, addr: u16) -> &mut u16 {
         // SAFETY: memory fits any u16 index
         unsafe { self.mem.get_unchecked_mut(addr as usize) }
     }
