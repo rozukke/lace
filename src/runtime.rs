@@ -18,13 +18,13 @@ pub(crate) const MEMORY_MAX: usize = 0x10000;
 pub struct RunState {
     /// System memory - 128KB in size.
     /// Need to figure out if this would cause problems with the stack.
-    mem: Box<[u16; MEMORY_MAX]>,
+    pub(super) mem: Box<[u16; MEMORY_MAX]>,
     /// Program counter
-    pc: u16,
+    pub(super) pc: u16,
     /// 8x 16-bit registers
-    reg: [u16; 8],
+    pub(super) reg: [u16; 8],
     /// Condition code
-    flag: RunFlag,
+    pub(super) flag: RunFlag,
     /// Processor status register
     _psr: u16,
 
@@ -32,7 +32,7 @@ pub struct RunState {
 }
 
 #[derive(Clone, Copy)]
-enum RunFlag {
+pub(super) enum RunFlag {
     N = 0b100,
     Z = 0b010,
     P = 0b001,
@@ -55,8 +55,7 @@ impl RunState {
 
     pub fn try_from_with_debugger(air: Air, debugger_opts: DebuggerOptions) -> Result<RunState> {
         let mut state = Self::try_from(air)?;
-        // Assume PC to be origin
-        state.debugger = Some(Debugger::new(debugger_opts, state.pc, state.mem.clone()));
+        state.debugger = Some(Debugger::new(debugger_opts, &mut state));
         Ok(state)
     }
 
@@ -105,7 +104,7 @@ impl RunState {
         loop {
             if let Some(debugger) = &mut self.debugger {
                 match debugger.wait_for_action() {
-                    Action::Continue => (),
+                    Action::Proceed => (),
                     Action::StopDebugger => {
                         self.debugger = None;
                     }
@@ -353,6 +352,19 @@ impl RunState {
             }
             // unknown
             _ => panic!("You called a trap with an unknown vector of {}", trap_vect),
+        }
+    }
+}
+
+impl Clone for RunState {
+    fn clone(&self) -> Self {
+        Self {
+            mem: self.mem.clone(),
+            pc: self.pc,
+            reg: self.reg,
+            flag: self.flag,
+            _psr: self._psr,
+            debugger: None,
         }
     }
 }

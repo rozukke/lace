@@ -14,6 +14,7 @@ pub enum SourceMode {
 #[derive(Debug)]
 struct Stdin {
     stdin: io::Stdin,
+
     /// Command must be stored somewhere to be referenced
     buffer: String,
 }
@@ -30,6 +31,7 @@ struct Argument {
 #[derive(Debug)]
 struct Terminal {
     term: console::Term,
+
     buffer: String,
     // Byte index
     cursor: usize,

@@ -1,7 +1,7 @@
 mod command;
 mod source;
 
-use crate::runtime::MEMORY_MAX;
+use crate::{runtime::MEMORY_MAX, RunState};
 use command::Command;
 use source::{SourceMode, SourceReader};
 
@@ -17,62 +17,79 @@ pub struct DebuggerOptions {
     pub input: Option<String>,
 }
 
-#[derive(Debug)]
 pub struct Debugger {
-    state: State,
+    status: Status,
     minimal: bool,
     source: SourceMode,
 
-    orig: u16,
-    memory: Memory,
+    // TODO(refactor): Make this good
+    state: *mut RunState,
+    initial_state: Box<RunState>,
 }
 
 #[derive(Debug, Default)]
-pub enum State {
+pub enum Status {
     #[default]
     WaitForAction,
-    // ContinueUntilBreakpoint,
-    // ContinueUntilEndOfSubroutine,
+    ContinueUntilBreakpoint,
+    ContinueUntilEndOfSubroutine,
 }
 
 #[derive(Debug)]
 pub enum Action {
-    Continue,
+    Proceed,
     StopDebugger,
     QuitProgram,
 }
 
 impl Debugger {
-    pub fn new(opts: DebuggerOptions, orig: u16, memory: Memory) -> Self {
+    pub fn new(opts: DebuggerOptions, state: &mut RunState) -> Self {
         Self {
-            state: State::default(),
+            status: Status::default(),
             minimal: opts.minimal,
             source: SourceMode::from(opts.input),
-            orig,
-            memory,
+            state: state as *mut RunState,
+            initial_state: Box::new(state.clone()),
         }
     }
 
     pub fn wait_for_action(&mut self) -> Action {
+        let Some(command) = self.next_command() else {
+            return Action::StopDebugger;
+        };
+        println!("{:?}", command);
+
+        match command {
+            Command::Continue => {
+                self.status = Status::ContinueUntilBreakpoint;
+                println!("Continuing...");
+            }
+
+            _ => {
+                eprintln!("(command not yet implemented)");
+            }
+        }
+
+        Action::Proceed
+    }
+
+    // Returns `None` on EOF
+    fn next_command(&mut self) -> Option<Command> {
         loop {
-            // TODO
-            let Some(line) = self.source.read() else {
-                println!("EOF");
-                break Action::StopDebugger;
-            };
-            let line = line.trim();
+            let line = self.source.read()?.trim();
             if line.is_empty() {
                 continue;
             }
+
             let command = match Command::try_from(line) {
                 Ok(command) => command,
-                Err(err) => {
-                    eprintln!("{:?}", err);
+                Err(error) => {
+                    eprintln!("{:?}", error);
                     continue;
                 }
             };
 
-            println!("{:?}", command);
+            return Some(command);
         }
     }
 }
