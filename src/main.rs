@@ -13,7 +13,6 @@ use hotwatch::{
 };
 use miette::{bail, IntoDiagnostic, Result};
 
-use lace::Debugger;
 use lace::{reset_state, DebuggerOptions};
 use lace::{Air, RunState, StaticSource};
 

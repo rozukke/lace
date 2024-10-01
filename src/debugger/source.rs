@@ -21,7 +21,7 @@ struct Stdin {
 // Command-line argument
 #[derive(Debug)]
 struct Argument {
-    argument: String,
+    buffer: String,
     cursor: usize,
 }
 
@@ -29,13 +29,14 @@ struct Argument {
 #[derive(Debug)]
 struct Terminal {
     term: console::Term,
-    next: String,
-    history: Vec<String>,
-    head: Option<usize>,
-    /// Line cursor
+    buffer: String,
     cursor: usize,
+
+    history: Vec<String>,
     /// Focused item in history, or new entry if index==length
-    index: usize,
+    history_index: usize,
+    /// Visible line cursor in terminal
+    visible_cursor: usize,
 }
 
 pub trait SourceReader {
@@ -49,10 +50,11 @@ impl SourceMode {
         if let Some(argument) = argument {
             return SourceMode::Argument(Argument::from(argument));
         }
-        if io::stdin().is_terminal() {
+        let stdin = io::stdin();
+        if stdin.is_terminal() {
             return SourceMode::Terminal(Terminal::new());
         }
-        SourceMode::Stdin(Stdin::new())
+        SourceMode::Stdin(Stdin::from(stdin))
     }
 }
 
@@ -72,7 +74,7 @@ impl SourceReader for SourceMode {
 impl Argument {
     pub fn from(source: String) -> Self {
         Self {
-            argument: source,
+            buffer: source,
             cursor: 0,
         }
     }
@@ -81,7 +83,7 @@ impl Argument {
 impl SourceReader for Argument {
     fn read(&mut self) -> Option<&str> {
         // TODO(opt): This recalculates char index each time
-        let mut chars = self.argument.chars().skip(self.cursor);
+        let mut chars = self.buffer.chars().skip(self.cursor);
 
         // Take characters until delimiter
         let start = self.cursor;
@@ -103,7 +105,7 @@ impl SourceReader for Argument {
         self.cursor += 1;
 
         let command = self
-            .argument
+            .buffer
             .get(start..end)
             .expect("calculated incorrect character indexes");
         Some(command)
@@ -111,9 +113,9 @@ impl SourceReader for Argument {
 }
 
 impl Stdin {
-    pub fn new() -> Self {
+    pub fn from(stdin: io::Stdin) -> Self {
         Self {
-            stdin: io::stdin(),
+            stdin,
             buffer: String::new(),
         }
     }
@@ -155,36 +157,49 @@ impl Terminal {
     pub fn new() -> Self {
         Self {
             term: console::Term::stdout(),
-            next: String::new(),
-            history: Vec::new(),
-            head: None,
+            buffer: String::new(),
             cursor: 0,
-            index: 0,
+            history: Vec::new(),
+            history_index: 0,
+            visible_cursor: 0,
         }
     }
 
     fn is_next(&self) -> bool {
-        debug_assert!(self.index <= self.history.len(), "index went past history");
-        self.index >= self.history.len()
+        debug_assert!(
+            self.history_index <= self.history.len(),
+            "index went past history"
+        );
+        self.history_index >= self.history.len()
     }
 
     /// Run before modifying `next`
     /// If focused on a history item, clone it to `next` and update index
     fn update_next(&mut self) {
-        debug_assert!(self.index <= self.history.len(), "index went past history");
-        if self.index < self.history.len() {
-            self.next = self.history.get(self.index).expect("checked above").clone();
-            self.index = self.history.len();
+        debug_assert!(
+            self.history_index <= self.history.len(),
+            "index went past history"
+        );
+        if self.history_index < self.history.len() {
+            self.buffer = self
+                .history
+                .get(self.history_index)
+                .expect("checked above")
+                .clone();
+            self.history_index = self.history.len();
         }
     }
 
     /// Get next or historic command, from index
     fn get_current(&self) -> &str {
-        assert!(self.index <= self.history.len(), "index went past history");
-        if self.index >= self.history.len() {
-            &self.next
+        assert!(
+            self.history_index <= self.history.len(),
+            "index went past history"
+        );
+        if self.history_index >= self.history.len() {
+            &self.buffer
         } else {
-            self.history.get(self.index).expect("checked above")
+            self.history.get(self.history_index).expect("checked above")
         }
     }
 
@@ -203,7 +218,7 @@ impl Terminal {
             .move_cursor_left(
                 self.get_current()
                     .len()
-                    .checked_sub(self.cursor)
+                    .checked_sub(self.visible_cursor)
                     .unwrap_or(0), // If invariance is violated
             )
             .unwrap();
@@ -216,7 +231,7 @@ impl Terminal {
         let key = self.term.read_key().unwrap();
         match key {
             Key::Enter | Key::Char('\n') => {
-                if self.is_next() && self.next.is_empty() {
+                if self.is_next() && self.buffer.is_empty() {
                     println!();
                 } else {
                     self.update_next();
@@ -231,67 +246,49 @@ impl Terminal {
                 // Depending on terminal, this should also support pasting from clipboard
                 _ => {
                     self.update_next();
-                    self.next.insert(self.cursor, ch);
-                    self.cursor += 1;
+                    self.buffer.insert(self.visible_cursor, ch);
+                    self.visible_cursor += 1;
                 }
             },
 
             Key::Backspace => {
                 self.update_next();
-                if !self.next.is_empty() {
-                    self.next.pop();
-                    self.cursor -= 1;
+                if !self.buffer.is_empty() {
+                    self.buffer.pop();
+                    self.visible_cursor -= 1;
                 }
             }
             Key::ArrowLeft => {
-                if self.cursor > 0 {
-                    self.cursor -= 1;
+                if self.visible_cursor > 0 {
+                    self.visible_cursor -= 1;
                 }
             }
             Key::ArrowRight => {
-                if self.cursor < self.get_current().len() {
-                    self.cursor += 1;
+                if self.visible_cursor < self.get_current().len() {
+                    self.visible_cursor += 1;
                 }
             }
             Key::ArrowUp => {
-                if self.index > 0 {
-                    self.index -= 1;
-                    self.cursor = self.get_current().len();
+                if self.history_index > 0 {
+                    self.history_index -= 1;
+                    self.visible_cursor = self.get_current().len();
                 }
             }
             Key::ArrowDown => {
-                if self.index < self.history.len() {
-                    self.index += 1;
-                    self.cursor = self.get_current().len();
+                if self.history_index < self.history.len() {
+                    self.history_index += 1;
+                    self.visible_cursor = self.get_current().len();
                 }
             }
             _ => (),
         }
         false
     }
-}
 
-impl SourceReader for Terminal {
-    fn read(&mut self) -> Option<&str> {
-        // Read next command in line with command delimeters
-        if let Some(head) = self.head {
-            // TODO(refactor): This is duplicated at the bottom of the function
-            let rest = &self.next[head..];
-            let command = match rest.find(';') {
-                Some(index) => {
-                    self.head = Some(head + index + 1);
-                    &rest[..index]
-                }
-                None => {
-                    self.head = None;
-                    &rest
-                }
-            };
-            return Some(command);
-        }
-
-        self.next.clear();
-        self.cursor = 0;
+    /// Read entire (multi-command) line from terminal
+    fn read_line(&mut self) {
+        self.buffer.clear();
+        self.visible_cursor = 0;
 
         // Read keys until newline
         loop {
@@ -302,30 +299,49 @@ impl SourceReader for Terminal {
         }
         println!();
 
-        debug_assert!(!self.next.is_empty(), "should have looped until non-empty");
+        debug_assert!(
+            !self.buffer.is_empty(),
+            "should have looped until non-empty"
+        );
 
         // Push to history if different to last command
         if !self
             .history
             .last()
-            .is_some_and(|previous| previous == &self.next)
+            .is_some_and(|previous| previous == &self.buffer)
         {
-            self.history.push(self.next.clone());
+            self.history.push(self.buffer.clone());
         }
         // Always reset index to next command
-        self.index = self.history.len();
+        self.history_index = self.history.len();
+    }
 
-        // Return first command in line
-        let command = match self.next.find(';') {
+    /// Returns next command from line buffer
+    fn get_next_command(&mut self) -> &str {
+        let rest = &self.buffer[self.cursor..];
+        match rest.find(';') {
+            // Multiple commands in buffer
+            // Take first command and update head index
             Some(index) => {
-                self.head = Some(index + 1);
-                &self.next[..index]
+                self.cursor += index + 1;
+                &rest[..index]
             }
+            // Rest of buffer is 1 command
+            // Take rest of buffer and reset head index
             None => {
-                self.head = None;
-                &self.next
+                self.cursor = 0;
+                &rest
             }
-        };
-        Some(command)
+        }
+    }
+}
+
+impl SourceReader for Terminal {
+    fn read(&mut self) -> Option<&str> {
+        // Reached end of line buffer: read new line
+        if self.cursor == 0 {
+            self.read_line();
+        }
+        Some(self.get_next_command())
     }
 }

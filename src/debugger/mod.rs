@@ -27,8 +27,9 @@ pub struct Debugger {
     memory: Memory,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub enum State {
+    #[default]
     WaitForAction,
     // ContinueUntilBreakpoint,
     // ContinueUntilEndOfSubroutine,
@@ -44,7 +45,7 @@ pub enum Action {
 impl Debugger {
     pub fn new(opts: DebuggerOptions, orig: u16, memory: Memory) -> Self {
         Self {
-            state: State::WaitForAction,
+            state: State::default(),
             minimal: opts.minimal,
             source: SourceMode::from(opts.input),
             orig,
