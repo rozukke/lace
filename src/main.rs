@@ -14,7 +14,7 @@ use hotwatch::{
 use miette::{bail, IntoDiagnostic, Result};
 
 use lace::{reset_state, DebuggerOptions};
-use lace::{Air, RunState, StaticSource};
+use lace::{Air, RunEnvironment, StaticSource};
 
 /// Lace is a complete & convenient assembler toolchain for the LC3 assembly language.
 #[derive(Parser)]
@@ -245,15 +245,15 @@ fn run(name: &PathBuf, debugger_opts: Option<DebuggerOptions>) -> Result<()> {
                     .chunks_exact(2)
                     .map(|word| u16::from_be_bytes([word[0], word[1]]))
                     .collect();
-                RunState::from_raw(&u16_buf)?
+                RunEnvironment::from_raw(&u16_buf)?
             }
             "asm" => {
                 let contents = StaticSource::new(fs::read_to_string(&name).into_diagnostic()?);
                 let air = assemble(&contents)?;
                 // TODO: Re-order statements to remove double clone
                 match debugger_opts {
-                    None => RunState::try_from(air.clone())?,
-                    Some(opts) => RunState::try_from_with_debugger(air.clone(), opts)?,
+                    None => RunEnvironment::try_from(air.clone())?,
+                    Some(opts) => RunEnvironment::try_from_with_debugger(air.clone(), opts)?,
                 }
             }
             _ => {

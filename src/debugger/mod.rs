@@ -1,11 +1,9 @@
 mod command;
 mod source;
 
-use crate::{runtime::MEMORY_MAX, RunState};
+use crate::runtime::RunState;
 use command::{Command, Location, MemoryLocation};
 use source::{SourceMode, SourceReader};
-
-type Memory = Box<[u16; MEMORY_MAX]>;
 
 // TODO(feat): Use stderr for all debugger output (except in terminal mode?)
 
@@ -17,6 +15,7 @@ pub struct DebuggerOptions {
     pub input: Option<String>,
 }
 
+#[allow(dead_code)]
 pub struct Debugger {
     status: Status,
     minimal: bool,
@@ -27,6 +26,7 @@ pub struct Debugger {
     initial_state: Box<RunState>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Default)]
 pub enum Status {
     #[default]
@@ -44,7 +44,7 @@ pub enum Action {
 }
 
 impl Debugger {
-    pub fn new(opts: DebuggerOptions, state: &mut RunState) -> Self {
+    pub(super) fn new(opts: DebuggerOptions, state: &mut RunState) -> Self {
         Self {
             status: Status::default(),
             minimal: opts.minimal,
@@ -98,7 +98,7 @@ impl Debugger {
                 Location::Register(register) => {
                     *self.state().reg(register as u16) = value;
                 }
-                Location::Memory(memory_location) => {
+                Location::Memory(_memory_location) => {
                     todo!();
                 }
             },

@@ -14,8 +14,14 @@ use miette::Result;
 /// LC3 can address 128KB of memory.
 pub(crate) const MEMORY_MAX: usize = 0x10000;
 
+pub struct RunEnvironment {
+    state: RunState,
+    debugger: Option<Debugger>,
+}
+
 /// Represents complete program state during runtime.
-pub struct RunState {
+#[derive(Clone)]
+pub(super) struct RunState {
     /// System memory - 128KB in size.
     /// Need to figure out if this would cause problems with the stack.
     pub(super) mem: Box<[u16; MEMORY_MAX]>,
@@ -27,8 +33,6 @@ pub struct RunState {
     pub(super) flag: RunFlag,
     /// Processor status register
     _psr: u16,
-
-    debugger: Option<Debugger>,
 }
 
 #[derive(Clone, Copy)]
@@ -39,9 +43,9 @@ pub(super) enum RunFlag {
     Uninit = 0b000,
 }
 
-impl RunState {
+impl RunEnvironment {
     // Not generic because of miette error
-    pub fn try_from(air: Air) -> Result<RunState> {
+    pub fn try_from(air: Air) -> Result<RunEnvironment> {
         let orig = air.orig().unwrap_or(0x3000);
         let mut air_array: Vec<u16> = Vec::with_capacity(air.len() + 1);
 
@@ -50,16 +54,19 @@ impl RunState {
             air_array.push(stmt.emit()?);
         }
 
-        RunState::from_raw(air_array.as_slice())
+        RunEnvironment::from_raw(air_array.as_slice())
     }
 
-    pub fn try_from_with_debugger(air: Air, debugger_opts: DebuggerOptions) -> Result<RunState> {
-        let mut state = Self::try_from(air)?;
-        state.debugger = Some(Debugger::new(debugger_opts, &mut state));
-        Ok(state)
+    pub fn try_from_with_debugger(
+        air: Air,
+        debugger_opts: DebuggerOptions,
+    ) -> Result<RunEnvironment> {
+        let mut env = Self::try_from(air)?;
+        env.debugger = Some(Debugger::new(debugger_opts, &mut env.state));
+        Ok(env)
     }
 
-    pub fn from_raw(raw: &[u16]) -> Result<RunState> {
+    pub fn from_raw(raw: &[u16]) -> Result<RunEnvironment> {
         let orig = raw[0] as usize;
         if orig as usize + raw.len() > MEMORY_MAX {
             panic!("Assembly file is too long and cannot fit in memory.");
@@ -70,16 +77,48 @@ impl RunState {
 
         mem[orig..orig + raw.len()].clone_from_slice(&raw);
 
-        Ok(RunState {
-            mem: Box::new(mem),
-            pc: orig as u16,
-            reg: [0; 8],
-            flag: RunFlag::Uninit,
-            _psr: 0,
+        Ok(RunEnvironment {
+            state: RunState {
+                mem: Box::new(mem),
+                pc: orig as u16,
+                reg: [0; 8],
+                flag: RunFlag::Uninit,
+                _psr: 0,
+            },
             debugger: None,
         })
     }
 
+    /// Run with preset memory
+    pub fn run(&mut self) {
+        loop {
+            if let Some(debugger) = &mut self.debugger {
+                loop {
+                    match debugger.wait_for_action() {
+                        Action::None => (),
+                        Action::Proceed => break,
+                        Action::StopDebugger => {
+                            self.debugger = None;
+                            break;
+                        }
+                        Action::QuitProgram => return,
+                    }
+                }
+            }
+            if self.state.pc >= 0xFE00 {
+                // Entering device address space
+                break;
+            }
+            let instr = self.state.mem[self.state.pc as usize];
+            let opcode = (instr >> 12) as usize;
+            // PC incremented before instruction is performed
+            self.state.pc += 1;
+            RunState::OP_TABLE[opcode](&mut self.state, instr);
+        }
+    }
+}
+
+impl RunState {
     const OP_TABLE: [fn(&mut RunState, u16); 16] = [
         Self::br,   // 0x0
         Self::add,  // 0x1
@@ -98,34 +137,6 @@ impl RunState {
         Self::lea,  // 0xE
         Self::trap, // 0xF
     ];
-
-    /// Run with preset memory
-    pub fn run(&mut self) {
-        loop {
-            if let Some(debugger) = &mut self.debugger {
-                loop {
-                    match debugger.wait_for_action() {
-                        Action::None => (),
-                        Action::Proceed => break,
-                        Action::StopDebugger => {
-                            self.debugger = None;
-                            break;
-                        }
-                        Action::QuitProgram => return,
-                    }
-                }
-            }
-            if self.pc >= 0xFE00 {
-                // Entering device address space
-                break;
-            }
-            let instr = self.mem[self.pc as usize];
-            let opcode = (instr >> 12) as usize;
-            // PC incremented before instruction is performed
-            self.pc += 1;
-            Self::OP_TABLE[opcode](self, instr);
-        }
-    }
 
     #[inline]
     pub(super) fn reg(&mut self, reg: u16) -> &mut u16 {
@@ -357,19 +368,6 @@ impl RunState {
             }
             // unknown
             _ => panic!("You called a trap with an unknown vector of {}", trap_vect),
-        }
-    }
-}
-
-impl Clone for RunState {
-    fn clone(&self) -> Self {
-        Self {
-            mem: self.mem.clone(),
-            pc: self.pc,
-            reg: self.reg,
-            flag: self.flag,
-            _psr: self._psr,
-            debugger: None,
         }
     }
 }

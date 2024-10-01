@@ -1,5 +1,6 @@
 use crate::symbol::Register;
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum Command {
     Step {
@@ -112,7 +113,7 @@ impl TryFrom<&str> for Command {
             }
             "next" | "n" => {
                 let count = iter.take_positive_integer_optional()?;
-                Self::Step { count }
+                Self::Next { count }
             }
             "get" | "g" => {
                 let location = iter.take_location()?;
@@ -139,7 +140,7 @@ impl TryFrom<&str> for Command {
                     }
                     "remove" | "r" => {
                         let location = iter.take_memory_location_or_pc()?;
-                        Self::BreakAdd { location }
+                        Self::BreakRemove { location }
                     }
                     _ => return Err(Error::InvalidCommandName),
                 }
@@ -151,7 +152,7 @@ impl TryFrom<&str> for Command {
             }
             "breakremove" | "br" => {
                 let location = iter.take_memory_location_or_pc()?;
-                Self::BreakAdd { location }
+                Self::BreakRemove { location }
             }
 
             "eval" => {
