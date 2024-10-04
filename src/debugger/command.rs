@@ -596,8 +596,7 @@ mod tests {
 
     #[test]
     fn take_arguments_works() {
-        return;
-        let line = "  name  -54  r3 0x5812 Foo  Bar+0x04; 4209";
+        let line = "  name  -54  r3 0x5812 Foo  Bar+0x04 4209";
         let mut iter = CommandIter::from(line);
 
         assert_eq!(iter.take_command_name(), Ok("name"));
@@ -621,6 +620,7 @@ mod tests {
                 offset: 0x04,
             })))
         );
+        assert_eq!(iter.take_argument(), Ok(Some(Argument::Integer(4209))));
         assert_eq!(iter.take_argument(), Ok(None));
     }
 
