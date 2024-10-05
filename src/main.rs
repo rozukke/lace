@@ -250,7 +250,6 @@ fn run(name: &PathBuf, debugger_opts: Option<DebuggerOptions>) -> Result<()> {
             "asm" => {
                 let contents = StaticSource::new(fs::read_to_string(&name).into_diagnostic()?);
                 let air = assemble(&contents)?;
-                // TODO: Re-order statements to remove double clone
                 match debugger_opts {
                     None => RunEnvironment::try_from(air.clone())?,
                     Some(opts) => RunEnvironment::try_from_with_debugger(air.clone(), opts)?,

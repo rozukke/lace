@@ -625,7 +625,37 @@ mod tests {
     }
 
     #[test]
-    fn take_token_integer_works() {
+    fn take_register_works() {
+        macro_rules! expect_register {
+            ( $input:expr, $expected:pat ) => {{
+                let mut iter = CommandIter::from($input);
+                let result = iter.take_register();
+                assert!(
+                    matches!(result, $expected),
+                    "Actual: {:?}\nExpected: {}",
+                    result,
+                    stringify!($expected),
+                );
+                // Check no trailing tokens if successfully parsed register
+                if matches!(result, Some(_)) {
+                    iter.skip_whitespace();
+                    assert!(iter.is_end_of_argument(), "checking trailing tokens");
+                }
+            }};
+        }
+
+        expect_register!("", None);
+        expect_register!("a", None);
+        expect_register!("rn", None);
+        expect_register!("r8", None);
+        expect_register!("r0n", None);
+        expect_register!("r0n", None);
+        expect_register!("r0", Some(Register::R0));
+        expect_register!("r7", Some(Register::R7));
+    }
+
+    #[test]
+    fn take_integer_works() {
         macro_rules! expect_integer {
             ( $input:expr, $allow_sign:expr, $expected:pat ) => {{
                 let mut iter = CommandIter::from($input);
@@ -693,6 +723,11 @@ mod tests {
         expect_integer!("b-2", true, Err(_));
         expect_integer!("o-8", true, Err(_));
         expect_integer!("x-g", true, Err(_));
+        // Simple bounds check (it is not supposed to be super accurate)
+        expect_integer!("x80000000", true, Err(_));
+        expect_integer!("x7fffffff", true, Ok(Some(0x7fffffff)));
+        expect_integer!("x-7fffffff", true, Ok(Some(-0x7fffffff)));
+        expect_integer!("x-80000000", true, Err(_));
         // Decimal
         expect_integer!("0", true, Ok(Some(0)));
         expect_integer!("00", true, Ok(Some(0)));
@@ -856,7 +891,7 @@ mod tests {
     }
 
     #[test]
-    fn take_token_label_works() {
+    fn take_label_works() {
         // My apologies for these awful macros
         macro_rules! expect_label {
             ( $input:expr, $($expected:tt)* ) => {{
