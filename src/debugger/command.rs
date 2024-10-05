@@ -595,7 +595,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn take_arguments_works() {
+    fn take_many_arguments_works() {
         let line = "  name  -54  r3 0x5812 Foo  Bar+0x04 4209";
         let mut iter = CommandIter::from(line);
 
@@ -624,25 +624,34 @@ mod tests {
         assert_eq!(iter.take_argument(), Ok(None));
     }
 
+    macro_rules! expect_tokens {
+        ( $method:ident ($($args:tt)*), $input:expr, $($expected:tt)* ) => {{
+            eprintln!("{}", $input);
+            let mut iter = CommandIter::from($input);
+            let result = iter.$method($($args)*);
+            expect_tokens!(@expected result, $($expected)*);
+        }};
+        (@expected $result:expr, Err(_)) => {
+            assert!($result.is_err());
+        };
+        (@expected $result:expr, $expected:expr) => {
+            assert_eq!($result, $expected, stringify!($expected));
+        };
+    }
+
+    #[test]
+    fn take_argument_works() {
+        macro_rules! expect_argument { ( $($x:tt)* ) => {
+            expect_tokens!(take_argument(), $($x)*);
+        }}
+        expect_argument!("", Ok(None));
+    }
+
     #[test]
     fn take_register_works() {
-        macro_rules! expect_register {
-            ( $input:expr, $expected:pat ) => {{
-                let mut iter = CommandIter::from($input);
-                let result = iter.take_register();
-                assert!(
-                    matches!(result, $expected),
-                    "Actual: {:?}\nExpected: {}",
-                    result,
-                    stringify!($expected),
-                );
-                // Check no trailing tokens if successfully parsed register
-                if matches!(result, Some(_)) {
-                    iter.skip_whitespace();
-                    assert!(iter.is_end_of_argument(), "checking trailing tokens");
-                }
-            }};
-        }
+        macro_rules! expect_register { ( $($x:tt)* ) => {
+            expect_tokens!(take_register(), $($x)*);
+        }}
 
         expect_register!("", None);
         expect_register!("a", None);
@@ -656,257 +665,231 @@ mod tests {
 
     #[test]
     fn take_integer_works() {
-        macro_rules! expect_integer {
-            ( $input:expr, $allow_sign:expr, $expected:pat ) => {{
-                let mut iter = CommandIter::from($input);
-                let result = iter.take_token_integer($allow_sign);
-                assert!(
-                    matches!(result, $expected),
-                    "Actual: {:?}\nExpected: {}",
-                    result,
-                    stringify!($expected),
-                );
-                // Check no trailing tokens if successfully parsed integer
-                if matches!(result, Ok(Some(_))) {
-                    iter.skip_whitespace();
-                    assert!(iter.is_end_of_argument(), "checking trailing tokens");
-                }
-            }};
-        }
+        macro_rules! expect_integer { ( $allow_sign:expr, $($x:tt)* ) => {
+            expect_tokens!(take_token_integer($allow_sign), $($x)*);
+        }}
 
         // These tests cover all edge cases which I can think of
         // Invalid or non-integers
-        expect_integer!("", true, Ok(None)); // Non-integer
-        expect_integer!("a", true, Ok(None));
-        expect_integer!("z", true, Ok(None));
-        expect_integer!("+", true, Ok(None));
-        expect_integer!(",", true, Ok(None));
-        expect_integer!("b2", true, Ok(None));
-        expect_integer!("o8", true, Ok(None));
-        expect_integer!("xg", true, Ok(None));
-        expect_integer!("b", true, Ok(None));
-        expect_integer!("o", true, Ok(None));
-        expect_integer!("x", true, Ok(None));
-        expect_integer!("-", true, Err(_)); // Invalid integers
-        expect_integer!("#", true, Err(_));
-        expect_integer!("#-", true, Err(_));
-        expect_integer!("-#", true, Err(_));
-        expect_integer!("-#-", true, Err(_));
-        expect_integer!("-#-24", true, Err(_));
-        expect_integer!("0#0", true, Err(_));
-        expect_integer!("0#24", true, Err(_));
-        expect_integer!("-0#24", true, Err(_));
-        expect_integer!("0#-24", true, Err(_));
-        expect_integer!("-0#-24", true, Err(_));
-        expect_integer!("x-", true, Err(_));
-        expect_integer!("-x", true, Err(_));
-        expect_integer!("-x-", true, Err(_));
-        expect_integer!("-x-24", true, Err(_));
-        expect_integer!("0x", true, Err(_));
-        expect_integer!("0x-", true, Err(_));
-        expect_integer!("-0x", true, Err(_));
-        expect_integer!("-0x-", true, Err(_));
-        expect_integer!("-0x-24", true, Err(_));
-        expect_integer!("0-x24", true, Err(_));
-        expect_integer!("00x4", true, Err(_));
-        expect_integer!("##", true, Err(_)); // Invalid digit for decimal base
-        expect_integer!("-##", true, Err(_));
-        expect_integer!("#b", true, Err(_));
-        expect_integer!("#-b", true, Err(_));
-        expect_integer!("-#b", true, Err(_));
-        expect_integer!("0b2", true, Err(_)); // Invalid digit for base
-        expect_integer!("0o8", true, Err(_));
-        expect_integer!("0xg", true, Err(_));
-        expect_integer!("-b2", true, Err(_));
-        expect_integer!("-o8", true, Err(_));
-        expect_integer!("-xg", true, Err(_));
-        expect_integer!("b-2", true, Err(_));
-        expect_integer!("o-8", true, Err(_));
-        expect_integer!("x-g", true, Err(_));
+        expect_integer!(true, "", Ok(None)); // Non-integer
+        expect_integer!(true, "a", Ok(None));
+        expect_integer!(true, "z", Ok(None));
+        expect_integer!(true, "+", Ok(None));
+        expect_integer!(true, ",", Ok(None));
+        expect_integer!(true, "b2", Ok(None));
+        expect_integer!(true, "o8", Ok(None));
+        expect_integer!(true, "xg", Ok(None));
+        expect_integer!(true, "b", Ok(None));
+        expect_integer!(true, "o", Ok(None));
+        expect_integer!(true, "x", Ok(None));
+        expect_integer!(true, "-", Err(_)); // Invalid integers
+        expect_integer!(true, "#", Err(_));
+        expect_integer!(true, "#-", Err(_));
+        expect_integer!(true, "-#", Err(_));
+        expect_integer!(true, "-#-", Err(_));
+        expect_integer!(true, "-#-24", Err(_));
+        expect_integer!(true, "0#0", Err(_));
+        expect_integer!(true, "0#24", Err(_));
+        expect_integer!(true, "-0#24", Err(_));
+        expect_integer!(true, "0#-24", Err(_));
+        expect_integer!(true, "-0#-24", Err(_));
+        expect_integer!(true, "x-", Err(_));
+        expect_integer!(true, "-x", Err(_));
+        expect_integer!(true, "-x-", Err(_));
+        expect_integer!(true, "-x-24", Err(_));
+        expect_integer!(true, "0x", Err(_));
+        expect_integer!(true, "0x-", Err(_));
+        expect_integer!(true, "-0x", Err(_));
+        expect_integer!(true, "-0x-", Err(_));
+        expect_integer!(true, "-0x-24", Err(_));
+        expect_integer!(true, "0-x24", Err(_));
+        expect_integer!(true, "00x4", Err(_));
+        expect_integer!(true, "##", Err(_)); // Invalid digit for decimal base
+        expect_integer!(true, "-##", Err(_));
+        expect_integer!(true, "#b", Err(_));
+        expect_integer!(true, "#-b", Err(_));
+        expect_integer!(true, "-#b", Err(_));
+        expect_integer!(true, "0b2", Err(_)); // Invalid digit for base
+        expect_integer!(true, "0o8", Err(_));
+        expect_integer!(true, "0xg", Err(_));
+        expect_integer!(true, "-b2", Err(_));
+        expect_integer!(true, "-o8", Err(_));
+        expect_integer!(true, "-xg", Err(_));
+        expect_integer!(true, "b-2", Err(_));
+        expect_integer!(true, "o-8", Err(_));
+        expect_integer!(true, "x-g", Err(_));
         // Simple bounds check (it is not supposed to be super accurate)
-        expect_integer!("x80000000", true, Err(_));
-        expect_integer!("x7fffffff", true, Ok(Some(0x7fffffff)));
-        expect_integer!("x-7fffffff", true, Ok(Some(-0x7fffffff)));
-        expect_integer!("x-80000000", true, Err(_));
+        expect_integer!(true, "x80000000", Err(_));
+        expect_integer!(true, "x7fffffff", Ok(Some(0x7fffffff)));
+        expect_integer!(true, "x-7fffffff", Ok(Some(-0x7fffffff)));
+        expect_integer!(true, "x-80000000", Err(_));
         // Decimal
-        expect_integer!("0", true, Ok(Some(0)));
-        expect_integer!("00", true, Ok(Some(0)));
-        expect_integer!("#0", true, Ok(Some(0)));
-        expect_integer!("#00", true, Ok(Some(0)));
-        expect_integer!("-#0", true, Ok(Some(0)));
-        expect_integer!("-#00", true, Ok(Some(0)));
-        expect_integer!("#-0", true, Ok(Some(0)));
-        expect_integer!("#-00", true, Ok(Some(0)));
-        expect_integer!("4", true, Ok(Some(4)));
-        expect_integer!("4284", true, Ok(Some(4284)));
-        expect_integer!("004284", true, Ok(Some(4284)));
-        expect_integer!("#4", true, Ok(Some(4)));
-        expect_integer!("#4284", true, Ok(Some(4284)));
-        expect_integer!("#004284", true, Ok(Some(4284)));
-        expect_integer!("-4", true, Ok(Some(-4)));
-        expect_integer!("-4284", true, Ok(Some(-4284)));
-        expect_integer!("-004284", true, Ok(Some(-4284)));
-        expect_integer!("-#4", true, Ok(Some(-4)));
-        expect_integer!("-#4284", true, Ok(Some(-4284)));
-        expect_integer!("-#004284", true, Ok(Some(-4284)));
-        expect_integer!("#-4", true, Ok(Some(-4)));
-        expect_integer!("#-4284", true, Ok(Some(-4284)));
-        expect_integer!("#-004284", true, Ok(Some(-4284)));
-        expect_integer!("-4", false, Err(_));
-        expect_integer!("-4284", false, Err(_));
-        expect_integer!("-004284", false, Err(_));
-        expect_integer!("-#4", false, Err(_));
-        expect_integer!("-#4284", false, Err(_));
-        expect_integer!("-#004284", false, Err(_));
-        expect_integer!("#-4", false, Err(_));
-        expect_integer!("#-4284", false, Err(_));
-        expect_integer!("#-004284", false, Err(_));
+        expect_integer!(true, "0", Ok(Some(0)));
+        expect_integer!(true, "00", Ok(Some(0)));
+        expect_integer!(true, "#0", Ok(Some(0)));
+        expect_integer!(true, "#00", Ok(Some(0)));
+        expect_integer!(true, "-#0", Ok(Some(0)));
+        expect_integer!(true, "-#00", Ok(Some(0)));
+        expect_integer!(true, "#-0", Ok(Some(0)));
+        expect_integer!(true, "#-00", Ok(Some(0)));
+        expect_integer!(true, "4", Ok(Some(4)));
+        expect_integer!(true, "4284", Ok(Some(4284)));
+        expect_integer!(true, "004284", Ok(Some(4284)));
+        expect_integer!(true, "#4", Ok(Some(4)));
+        expect_integer!(true, "#4284", Ok(Some(4284)));
+        expect_integer!(true, "#004284", Ok(Some(4284)));
+        expect_integer!(true, "-4", Ok(Some(-4)));
+        expect_integer!(true, "-4284", Ok(Some(-4284)));
+        expect_integer!(true, "-004284", Ok(Some(-4284)));
+        expect_integer!(true, "-#4", Ok(Some(-4)));
+        expect_integer!(true, "-#4284", Ok(Some(-4284)));
+        expect_integer!(true, "-#004284", Ok(Some(-4284)));
+        expect_integer!(true, "#-4", Ok(Some(-4)));
+        expect_integer!(true, "#-4284", Ok(Some(-4284)));
+        expect_integer!(true, "#-004284", Ok(Some(-4284)));
+        expect_integer!(false, "-4", Err(_));
+        expect_integer!(false, "-4284", Err(_));
+        expect_integer!(false, "-004284", Err(_));
+        expect_integer!(false, "-#4", Err(_));
+        expect_integer!(false, "-#4284", Err(_));
+        expect_integer!(false, "-#004284", Err(_));
+        expect_integer!(false, "#-4", Err(_));
+        expect_integer!(false, "#-4284", Err(_));
+        expect_integer!(false, "#-004284", Err(_));
         // Hex
-        expect_integer!("x0", true, Ok(Some(0x0)));
-        expect_integer!("x00", true, Ok(Some(0x0)));
-        expect_integer!("0x0", true, Ok(Some(0x0)));
-        expect_integer!("0x00", true, Ok(Some(0x0)));
-        expect_integer!("-x0", true, Ok(Some(0x0)));
-        expect_integer!("-x00", true, Ok(Some(0x0)));
-        expect_integer!("0x-0", true, Ok(Some(0x0)));
-        expect_integer!("0x-00", true, Ok(Some(0x0)));
-        expect_integer!("-0x0", true, Ok(Some(0x0)));
-        expect_integer!("-0x00", true, Ok(Some(0x0)));
-        expect_integer!("x4", true, Ok(Some(0x4)));
-        expect_integer!("x004", true, Ok(Some(0x4)));
-        expect_integer!("x429", true, Ok(Some(0x429)));
-        expect_integer!("0x4", true, Ok(Some(0x4)));
-        expect_integer!("0x004", true, Ok(Some(0x4)));
-        expect_integer!("0x429", true, Ok(Some(0x429)));
-        expect_integer!("-x4", true, Ok(Some(-0x4)));
-        expect_integer!("-x004", true, Ok(Some(-0x4)));
-        expect_integer!("-x429", true, Ok(Some(-0x429)));
-        expect_integer!("-0x4", true, Ok(Some(-0x4)));
-        expect_integer!("-0x004", true, Ok(Some(-0x4)));
-        expect_integer!("-0x429", true, Ok(Some(-0x429)));
-        expect_integer!("x-4", true, Ok(Some(-0x4)));
-        expect_integer!("x-004", true, Ok(Some(-0x4)));
-        expect_integer!("x-429", true, Ok(Some(-0x429)));
-        expect_integer!("-0x4", true, Ok(Some(-0x4)));
-        expect_integer!("-0x004", true, Ok(Some(-0x4)));
-        expect_integer!("-0x429", true, Ok(Some(-0x429)));
-        expect_integer!("-x4", false, Err(_));
-        expect_integer!("-x004", false, Err(_));
-        expect_integer!("-x429", false, Err(_));
-        expect_integer!("-0x4", false, Err(_));
-        expect_integer!("-0x004", false, Err(_));
-        expect_integer!("-0x429", false, Err(_));
-        expect_integer!("x-4", false, Err(_));
-        expect_integer!("x-004", false, Err(_));
-        expect_integer!("x-429", false, Err(_));
-        expect_integer!("-0x4", false, Err(_));
-        expect_integer!("-0x004", false, Err(_));
-        expect_integer!("-0x429", false, Err(_));
+        expect_integer!(true, "x0", Ok(Some(0x0)));
+        expect_integer!(true, "x00", Ok(Some(0x0)));
+        expect_integer!(true, "0x0", Ok(Some(0x0)));
+        expect_integer!(true, "0x00", Ok(Some(0x0)));
+        expect_integer!(true, "-x0", Ok(Some(0x0)));
+        expect_integer!(true, "-x00", Ok(Some(0x0)));
+        expect_integer!(true, "0x-0", Ok(Some(0x0)));
+        expect_integer!(true, "0x-00", Ok(Some(0x0)));
+        expect_integer!(true, "-0x0", Ok(Some(0x0)));
+        expect_integer!(true, "-0x00", Ok(Some(0x0)));
+        expect_integer!(true, "x4", Ok(Some(0x4)));
+        expect_integer!(true, "x004", Ok(Some(0x4)));
+        expect_integer!(true, "x429", Ok(Some(0x429)));
+        expect_integer!(true, "0x4", Ok(Some(0x4)));
+        expect_integer!(true, "0x004", Ok(Some(0x4)));
+        expect_integer!(true, "0x429", Ok(Some(0x429)));
+        expect_integer!(true, "-x4", Ok(Some(-0x4)));
+        expect_integer!(true, "-x004", Ok(Some(-0x4)));
+        expect_integer!(true, "-x429", Ok(Some(-0x429)));
+        expect_integer!(true, "-0x4", Ok(Some(-0x4)));
+        expect_integer!(true, "-0x004", Ok(Some(-0x4)));
+        expect_integer!(true, "-0x429", Ok(Some(-0x429)));
+        expect_integer!(true, "x-4", Ok(Some(-0x4)));
+        expect_integer!(true, "x-004", Ok(Some(-0x4)));
+        expect_integer!(true, "x-429", Ok(Some(-0x429)));
+        expect_integer!(true, "-0x4", Ok(Some(-0x4)));
+        expect_integer!(true, "-0x004", Ok(Some(-0x4)));
+        expect_integer!(true, "-0x429", Ok(Some(-0x429)));
+        expect_integer!(false, "-x4", Err(_));
+        expect_integer!(false, "-x004", Err(_));
+        expect_integer!(false, "-x429", Err(_));
+        expect_integer!(false, "-0x4", Err(_));
+        expect_integer!(false, "-0x004", Err(_));
+        expect_integer!(false, "-0x429", Err(_));
+        expect_integer!(false, "x-4", Err(_));
+        expect_integer!(false, "x-004", Err(_));
+        expect_integer!(false, "x-429", Err(_));
+        expect_integer!(false, "-0x4", Err(_));
+        expect_integer!(false, "-0x004", Err(_));
+        expect_integer!(false, "-0x429", Err(_));
         // Octal (0o427==0x117)
-        expect_integer!("o0", true, Ok(Some(0x0)));
-        expect_integer!("o00", true, Ok(Some(0x0)));
-        expect_integer!("0o0", true, Ok(Some(0x0)));
-        expect_integer!("0o00", true, Ok(Some(0x0)));
-        expect_integer!("-o0", true, Ok(Some(0x0)));
-        expect_integer!("-o00", true, Ok(Some(0x0)));
-        expect_integer!("o-0", true, Ok(Some(0x0)));
-        expect_integer!("o-00", true, Ok(Some(0x0)));
-        expect_integer!("-0o0", true, Ok(Some(0x0)));
-        expect_integer!("-0o00", true, Ok(Some(0x0)));
-        expect_integer!("0o-0", true, Ok(Some(0x0)));
-        expect_integer!("0o-00", true, Ok(Some(0x0)));
-        expect_integer!("o4", true, Ok(Some(0x4)));
-        expect_integer!("o004", true, Ok(Some(0x4)));
-        expect_integer!("o427", true, Ok(Some(0x117)));
-        expect_integer!("0o4", true, Ok(Some(0x4)));
-        expect_integer!("0o004", true, Ok(Some(0x4)));
-        expect_integer!("0o427", true, Ok(Some(0x117)));
-        expect_integer!("-o4", true, Ok(Some(-0x4)));
-        expect_integer!("-o004", true, Ok(Some(-0x4)));
-        expect_integer!("-o427", true, Ok(Some(-0x117)));
-        expect_integer!("-0o4", true, Ok(Some(-0x4)));
-        expect_integer!("-0o004", true, Ok(Some(-0x4)));
-        expect_integer!("-0o427", true, Ok(Some(-0x117)));
-        expect_integer!("o-4", true, Ok(Some(-0x4)));
-        expect_integer!("o-004", true, Ok(Some(-0x4)));
-        expect_integer!("o-427", true, Ok(Some(-0x117)));
-        expect_integer!("0o-4", true, Ok(Some(-0x4)));
-        expect_integer!("0o-004", true, Ok(Some(-0x4)));
-        expect_integer!("0o-427", true, Ok(Some(-0x117)));
-        expect_integer!("-o4", false, Err(_));
-        expect_integer!("-o004", false, Err(_));
-        expect_integer!("-o427", false, Err(_));
-        expect_integer!("-0o4", false, Err(_));
-        expect_integer!("-0o004", false, Err(_));
-        expect_integer!("-0o427", false, Err(_));
-        expect_integer!("o-4", false, Err(_));
-        expect_integer!("o-004", false, Err(_));
-        expect_integer!("o-427", false, Err(_));
-        expect_integer!("0o-4", false, Err(_));
-        expect_integer!("0o-004", false, Err(_));
-        expect_integer!("0o-427", false, Err(_));
+        expect_integer!(true, "o0", Ok(Some(0x0)));
+        expect_integer!(true, "o00", Ok(Some(0x0)));
+        expect_integer!(true, "0o0", Ok(Some(0x0)));
+        expect_integer!(true, "0o00", Ok(Some(0x0)));
+        expect_integer!(true, "-o0", Ok(Some(0x0)));
+        expect_integer!(true, "-o00", Ok(Some(0x0)));
+        expect_integer!(true, "o-0", Ok(Some(0x0)));
+        expect_integer!(true, "o-00", Ok(Some(0x0)));
+        expect_integer!(true, "-0o0", Ok(Some(0x0)));
+        expect_integer!(true, "-0o00", Ok(Some(0x0)));
+        expect_integer!(true, "0o-0", Ok(Some(0x0)));
+        expect_integer!(true, "0o-00", Ok(Some(0x0)));
+        expect_integer!(true, "o4", Ok(Some(0x4)));
+        expect_integer!(true, "o004", Ok(Some(0x4)));
+        expect_integer!(true, "o427", Ok(Some(0x117)));
+        expect_integer!(true, "0o4", Ok(Some(0x4)));
+        expect_integer!(true, "0o004", Ok(Some(0x4)));
+        expect_integer!(true, "0o427", Ok(Some(0x117)));
+        expect_integer!(true, "-o4", Ok(Some(-0x4)));
+        expect_integer!(true, "-o004", Ok(Some(-0x4)));
+        expect_integer!(true, "-o427", Ok(Some(-0x117)));
+        expect_integer!(true, "-0o4", Ok(Some(-0x4)));
+        expect_integer!(true, "-0o004", Ok(Some(-0x4)));
+        expect_integer!(true, "-0o427", Ok(Some(-0x117)));
+        expect_integer!(true, "o-4", Ok(Some(-0x4)));
+        expect_integer!(true, "o-004", Ok(Some(-0x4)));
+        expect_integer!(true, "o-427", Ok(Some(-0x117)));
+        expect_integer!(true, "0o-4", Ok(Some(-0x4)));
+        expect_integer!(true, "0o-004", Ok(Some(-0x4)));
+        expect_integer!(true, "0o-427", Ok(Some(-0x117)));
+        expect_integer!(false, "-o4", Err(_));
+        expect_integer!(false, "-o004", Err(_));
+        expect_integer!(false, "-o427", Err(_));
+        expect_integer!(false, "-0o4", Err(_));
+        expect_integer!(false, "-0o004", Err(_));
+        expect_integer!(false, "-0o427", Err(_));
+        expect_integer!(false, "o-4", Err(_));
+        expect_integer!(false, "o-004", Err(_));
+        expect_integer!(false, "o-427", Err(_));
+        expect_integer!(false, "0o-4", Err(_));
+        expect_integer!(false, "0o-004", Err(_));
+        expect_integer!(false, "0o-427", Err(_));
         // Binary
-        expect_integer!("b0", true, Ok(Some(0b0)));
-        expect_integer!("b00", true, Ok(Some(0b0)));
-        expect_integer!("0b0", true, Ok(Some(0b0)));
-        expect_integer!("0b00", true, Ok(Some(0b0)));
-        expect_integer!("-b0", true, Ok(Some(0b0)));
-        expect_integer!("-b00", true, Ok(Some(0b0)));
-        expect_integer!("b-0", true, Ok(Some(0b0)));
-        expect_integer!("b-00", true, Ok(Some(0b0)));
-        expect_integer!("-0b0", true, Ok(Some(0b0)));
-        expect_integer!("-0b00", true, Ok(Some(0b0)));
-        expect_integer!("0b-0", true, Ok(Some(0b0)));
-        expect_integer!("0b-00", true, Ok(Some(0b0)));
-        expect_integer!("b1", true, Ok(Some(0b1)));
-        expect_integer!("b101", true, Ok(Some(0b101)));
-        expect_integer!("b00101", true, Ok(Some(0b101)));
-        expect_integer!("0b1", true, Ok(Some(0b1)));
-        expect_integer!("0b101", true, Ok(Some(0b101)));
-        expect_integer!("0b00101", true, Ok(Some(0b101)));
-        expect_integer!("-b1", true, Ok(Some(-0b1)));
-        expect_integer!("-b101", true, Ok(Some(-0b101)));
-        expect_integer!("-b00101", true, Ok(Some(-0b101)));
-        expect_integer!("b-1", true, Ok(Some(-0b1)));
-        expect_integer!("b-101", true, Ok(Some(-0b101)));
-        expect_integer!("b-00101", true, Ok(Some(-0b101)));
-        expect_integer!("-0b1", true, Ok(Some(-0b1)));
-        expect_integer!("-0b101", true, Ok(Some(-0b101)));
-        expect_integer!("-0b00101", true, Ok(Some(-0b101)));
-        expect_integer!("0b-1", true, Ok(Some(-0b1)));
-        expect_integer!("0b-101", true, Ok(Some(-0b101)));
-        expect_integer!("0b-00101", true, Ok(Some(-0b101)));
-        expect_integer!("-b1", false, Err(_));
-        expect_integer!("-b101", false, Err(_));
-        expect_integer!("-b00101", false, Err(_));
-        expect_integer!("b-1", false, Err(_));
-        expect_integer!("b-101", false, Err(_));
-        expect_integer!("b-00101", false, Err(_));
-        expect_integer!("-0b1", false, Err(_));
-        expect_integer!("-0b101", false, Err(_));
-        expect_integer!("-0b00101", false, Err(_));
-        expect_integer!("0b-1", false, Err(_));
-        expect_integer!("0b-101", false, Err(_));
-        expect_integer!("0b-00101", false, Err(_));
+        expect_integer!(true, "b0", Ok(Some(0b0)));
+        expect_integer!(true, "b00", Ok(Some(0b0)));
+        expect_integer!(true, "0b0", Ok(Some(0b0)));
+        expect_integer!(true, "0b00", Ok(Some(0b0)));
+        expect_integer!(true, "-b0", Ok(Some(0b0)));
+        expect_integer!(true, "-b00", Ok(Some(0b0)));
+        expect_integer!(true, "b-0", Ok(Some(0b0)));
+        expect_integer!(true, "b-00", Ok(Some(0b0)));
+        expect_integer!(true, "-0b0", Ok(Some(0b0)));
+        expect_integer!(true, "-0b00", Ok(Some(0b0)));
+        expect_integer!(true, "0b-0", Ok(Some(0b0)));
+        expect_integer!(true, "0b-00", Ok(Some(0b0)));
+        expect_integer!(true, "b1", Ok(Some(0b1)));
+        expect_integer!(true, "b101", Ok(Some(0b101)));
+        expect_integer!(true, "b00101", Ok(Some(0b101)));
+        expect_integer!(true, "0b1", Ok(Some(0b1)));
+        expect_integer!(true, "0b101", Ok(Some(0b101)));
+        expect_integer!(true, "0b00101", Ok(Some(0b101)));
+        expect_integer!(true, "-b1", Ok(Some(-0b1)));
+        expect_integer!(true, "-b101", Ok(Some(-0b101)));
+        expect_integer!(true, "-b00101", Ok(Some(-0b101)));
+        expect_integer!(true, "b-1", Ok(Some(-0b1)));
+        expect_integer!(true, "b-101", Ok(Some(-0b101)));
+        expect_integer!(true, "b-00101", Ok(Some(-0b101)));
+        expect_integer!(true, "-0b1", Ok(Some(-0b1)));
+        expect_integer!(true, "-0b101", Ok(Some(-0b101)));
+        expect_integer!(true, "-0b00101", Ok(Some(-0b101)));
+        expect_integer!(true, "0b-1", Ok(Some(-0b1)));
+        expect_integer!(true, "0b-101", Ok(Some(-0b101)));
+        expect_integer!(true, "0b-00101", Ok(Some(-0b101)));
+        expect_integer!(false, "-b1", Err(_));
+        expect_integer!(false, "-b101", Err(_));
+        expect_integer!(false, "-b00101", Err(_));
+        expect_integer!(false, "b-1", Err(_));
+        expect_integer!(false, "b-101", Err(_));
+        expect_integer!(false, "b-00101", Err(_));
+        expect_integer!(false, "-0b1", Err(_));
+        expect_integer!(false, "-0b101", Err(_));
+        expect_integer!(false, "-0b00101", Err(_));
+        expect_integer!(false, "0b-1", Err(_));
+        expect_integer!(false, "0b-101", Err(_));
+        expect_integer!(false, "0b-00101", Err(_));
     }
 
     #[test]
     fn take_label_works() {
-        // My apologies for these awful macros
-        macro_rules! expect_label {
-            ( $input:expr, $($expected:tt)* ) => {{
-                eprintln!("{}", $input);
-                let mut iter = CommandIter::from($input);
-                let result = iter.take_token_label();
-                expect_label!(@expected result, $($expected)*);
-            }};
-            (@expected $result:expr, Err(_)) => {
-                assert!($result.is_err());
-            };
-            (@expected $result:expr, $expected:expr) => {
-                assert_eq!($result, $expected, stringify!($expected));
-            };
-        }
+        macro_rules! expect_label { ( $($x:tt)* ) => {
+            expect_tokens!(take_token_label(), $($x)*);
+        }}
         macro_rules! label {
             ( $name:expr $(, $offset:expr )? $(,)? ) => {
                 Label {
