@@ -1,3 +1,17 @@
+// macro_rules! dprint {
+//     ( $($tt:tt)* ) => {{
+//         eprint!(concat!("\x1b[{}m", $fmt, "\x1b[0m"), DEBUGGER_COLOR $($tt)*);
+//     }};
+// }
+macro_rules! dprintln {
+    () => {{
+        eprintln!();
+    }};
+    ( $fmt:literal $($tt:tt)* ) => {{
+        eprintln!(concat!("\x1b[{}m", $fmt, "\x1b[0m"), DEBUGGER_COLOR $($tt)*);
+    }};
+}
+
 mod command;
 mod source;
 
@@ -6,6 +20,8 @@ use command::{Command, Location, MemoryLocation};
 use source::{SourceMode, SourceReader};
 
 // TODO(feat): Use stderr for all debugger output (except in terminal mode?)
+
+const DEBUGGER_COLOR: u8 = 34;
 
 // TODO(refactor): Perhaps there is `clap` trait that can be implemented for
 // this struct, to avoid field duplication in `Command` enum
@@ -55,23 +71,21 @@ impl Debugger {
     }
 
     pub fn wait_for_action(&mut self) -> Action {
-        println!("");
+        dprintln!();
         let Some(command) = self.next_command() else {
             return Action::StopDebugger;
         };
-        println!("{:?}", command);
+        eprintln!("{:?}", command); // Never use color
 
         match command {
             Command::Continue => {
                 self.status = Status::ContinueUntilBreakpoint;
-                println!("Continuing...");
+                dprintln!("Continuing...");
             }
 
             Command::Get { location } => match location {
                 Location::Register(register) => {
-                    print!("\x1b[34m");
-                    println!("Register R{}:", register as u16);
-                    print!("\x1b[0m");
+                    dprintln!("Register R{}:", register as u16);
                     let value = *self.state().reg(register as u16);
                     Self::print_integer(value);
                 }
@@ -80,16 +94,13 @@ impl Debugger {
                         MemoryLocation::Address(address) => address,
                         MemoryLocation::PC => self.state().pc,
                         MemoryLocation::Label(_) => {
-                            eprintln!("unimplemented: labels");
+                            dprintln!("unimplemented: labels");
                             return Action::None;
                         }
                     };
 
-                    print!("\x1b[34m");
-                    println!("Memory at address 0x{:04x}:", address);
-                    print!("\x1b[0m");
+                    dprintln!("Memory at address 0x{:04x}:", address);
                     let b = self.state().mem(address);
-                    println!("b");
                     Self::print_integer(*b);
                 }
             },
@@ -104,7 +115,7 @@ impl Debugger {
             },
 
             _ => {
-                eprintln!("unimplemented");
+                dprintln!("unimplemented");
             }
         }
 
@@ -123,7 +134,7 @@ impl Debugger {
             let command = match Command::try_from(line) {
                 Ok(command) => command,
                 Err(error) => {
-                    eprintln!("{:?}", error);
+                    dprintln!("{:?}", error);
                     continue;
                 }
             };
@@ -138,8 +149,6 @@ impl Debugger {
     }
 
     fn print_integer(value: u16) {
-        print!("\x1b[34m");
-        println!("0x{:04x}\t{}", value, value);
-        print!("\x1b[0m");
+        dprintln!("0x{:04x}\t{}", value, value);
     }
 }

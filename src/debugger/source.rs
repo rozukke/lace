@@ -2,6 +2,8 @@ use std::io::{self, IsTerminal, Read, Write};
 
 use console::Key;
 
+use super::DEBUGGER_COLOR;
+
 #[allow(private_interfaces)] // Perhaps a bad practice
 #[derive(Debug)]
 pub enum SourceMode {
@@ -47,13 +49,6 @@ pub trait SourceReader {
     /// `None` indicates EOF
     /// Returned string slice MAY include leading or trailing whitespace
     fn read(&mut self) -> Option<&str>;
-
-    fn write_prompt(f: &mut impl io::Write) -> io::Result<()> {
-        write!(f, "\x1b[1;34m")?;
-        write!(f, "Command: ")?;
-        write!(f, "\x1b[0m")?;
-        Ok(())
-    }
 }
 
 impl SourceMode {
@@ -77,9 +72,9 @@ impl SourceReader for SourceMode {
             Self::Terminal(terminal) => return terminal.read(),
         };
         // Echo prompt and command for non-terminal source
-        // TODO(opt): This recreates the stdout handle each time
-        Self::write_prompt(&mut io::stdout()).unwrap();
-        println!("{}", command.unwrap_or("").trim());
+        // Equivalent code found in terminal source
+        dprintln!("\x1b[1mCommand");
+        dprintln!("{}", command.unwrap_or("").trim());
         command
     }
 }
@@ -213,9 +208,13 @@ impl Terminal {
         // Clear line, print prompt, set cursor position
         self.term.clear_line().unwrap();
 
-        Self::write_prompt(&mut self.term).unwrap();
-
-        // TODO: What in the world is this...
+        // Print prompt and current input
+        // Equivalent code found in non-terminal source
+        write!(self.term, "\x1b[1;{}m", DEBUGGER_COLOR).unwrap();
+        write!(self.term, "Command: ").unwrap();
+        write!(self.term, "\x1b[0m").unwrap();
+        // This is necessary as cannot borrow `self.term` mutably and `self.get_current()` immutably
+        // TODO(refactor): There must be a better way to do this
         let current = unsafe { &*(self.get_current() as *const str) };
         write!(self.term, "{}", current).unwrap();
 
