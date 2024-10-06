@@ -12,7 +12,7 @@ use source::{SourceMode, SourceReader};
 #[derive(Debug)]
 pub struct DebuggerOptions {
     pub minimal: bool,
-    pub input: Option<String>,
+    pub command: Option<String>,
 }
 
 #[allow(dead_code)]
@@ -48,7 +48,7 @@ impl Debugger {
         Self {
             status: Status::default(),
             minimal: opts.minimal,
-            source: SourceMode::from(opts.input),
+            source: SourceMode::from(opts.command),
             state: state as *mut RunState,
             initial_state: Box::new(state.clone()),
         }

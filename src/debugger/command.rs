@@ -638,6 +638,16 @@ mod tests {
             assert_eq!($result, $expected, stringify!($expected));
         };
     }
+    macro_rules! label {
+        ( $name:expr $(, $offset:expr )? $(,)? ) => {
+            Label {
+                name: ($name).into(),
+                offset: label!(@offset $($offset)?),
+            }
+        };
+        (@offset $offset:expr) => { $offset };
+        (@offset) => { 0 };
+    }
 
     #[test]
     fn take_argument_works() {
@@ -645,6 +655,22 @@ mod tests {
             expect_tokens!(take_argument(), $($x)*);
         }}
         expect_argument!("", Ok(None));
+        expect_argument!("   ", Ok(None));
+        expect_argument!("r0", Ok(Some(Argument::Register(Register::R0))));
+        expect_argument!("   R3  Foo", Ok(Some(Argument::Register(Register::R3))));
+        expect_argument!("123", Ok(Some(Argument::Integer(123))));
+        expect_argument!("  123  ", Ok(Some(Argument::Integer(123))));
+        expect_argument!("123 Foo", Ok(Some(Argument::Integer(123))));
+        expect_argument!("0x-853", Ok(Some(Argument::Integer(-0x853))));
+        expect_argument!("Foo", Ok(Some(Argument::Label(label!("Foo")))));
+        expect_argument!("Foo-23", Ok(Some(Argument::Label(label!("Foo", -23)))));
+        expect_argument!("  Foo 23", Ok(Some(Argument::Label(label!("Foo")))));
+    }
+
+    #[test]
+    #[should_panic]
+    fn semicolon_panics() {
+        expect_tokens!(take_argument(), "  ;  ", Err(_));
     }
 
     #[test]
@@ -657,10 +683,10 @@ mod tests {
         expect_register!("a", None);
         expect_register!("rn", None);
         expect_register!("r8", None);
-        expect_register!("r0n", None);
+        expect_register!("R0n", None);
         expect_register!("r0n", None);
         expect_register!("r0", Some(Register::R0));
-        expect_register!("r7", Some(Register::R7));
+        expect_register!("R7", Some(Register::R7));
     }
 
     #[test]
@@ -890,16 +916,6 @@ mod tests {
         macro_rules! expect_label { ( $($x:tt)* ) => {
             expect_tokens!(take_token_label(), $($x)*);
         }}
-        macro_rules! label {
-            ( $name:expr $(, $offset:expr )? $(,)? ) => {
-                Label {
-                    name: ($name).into(),
-                    offset: label!(@offset $($offset)?),
-                }
-            };
-            (@offset $offset:expr) => { $offset };
-            (@offset) => { 0 };
-        }
 
         expect_label!("", Ok(None));
         expect_label!("0x1283", Ok(None));

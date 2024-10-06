@@ -41,9 +41,9 @@ enum Command {
         /// Produce minimal debugger output
         #[arg(short, long)]
         minimal: bool,
-        /// Input for debugger commands
-        #[arg(short = 'd', long = "debugger-input")]
-        input: Option<String>,
+        /// Read debugger commands from argument
+        #[arg(short, long)]
+        command: Option<String>,
     },
     /// Create binary `.lc3` file to run later or view compiled data
     Compile {
@@ -86,10 +86,10 @@ fn main() -> miette::Result<()> {
             }
             Command::Debug {
                 name,
-                input,
+                command,
                 minimal,
             } => {
-                run(&name, Some(DebuggerOptions { input, minimal }))?;
+                run(&name, Some(DebuggerOptions { command, minimal }))?;
                 Ok(())
             }
             Command::Compile { name, dest } => {
