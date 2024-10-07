@@ -243,7 +243,7 @@ impl<'a> CommandIter<'a> {
     ///  - Decimal (optional `#`), hex (`x`/`X`), octal (`o`/`O`), and binary (`b`/`B`)
     ///  - Optional single zero before non-decimal base prefix. Eg. `0x4`
     ///  - Leading zeros after prefix. Eg. `0x0004`, `#-03`
-    ///  - Negative sign character before XOR after base prefix. Eg. `-#2`, `x-4`
+    ///  - Sign character before XOR after base prefix. Eg. `-#2`, `x+4`
     ///
     /// Returns `Ok(None)` (not an integer) for:
     ///  - Empty token
@@ -253,44 +253,67 @@ impl<'a> CommandIter<'a> {
     ///  - Violations of basic integer requirements, such as invalid digits
     ///  - Decimal base prefix `#` with zeros before it. Eg. `0#2`
     ///  - Decimal base prefix `#` with invalide or no digits after it. Eg. `#a`, `#`
-    ///  - Multiple '-' characters (before or after prefix)
-    ///  - Positive sign character '+'
-    ///  - Negative sign character '-' if `allow_sign == false`
+    ///  - Multiple sign characters (before or after prefix)
+    ///  - Sign character '-' or '+', if `allow_sign == false`
     ///  - Multiple zeros before base prefix. Eg. `00x4`
     ///  - Integers out of bounds of `i32`. (Does *NOT* check if integer fits in specific bit size)
     fn next_integer_token(&mut self, allow_sign: bool) -> Result<Option<i32>> {
         self.reset_head();
         // Don't skip whitespace
 
-        // Take '-' BEFORE prefix
-        let mut is_signed = false;
-        if self.peek().is_some_and(|ch| ch == '-') {
-            self.next();
-            if !allow_sign {
-                return Err(Error::InvalidInteger);
+        enum Sign {
+            Positive = 1,
+            Negative = -1,
+        }
+
+        let mut sign: Option<Sign> = None;
+
+        // Take sign BEFORE prefix
+        match self.peek() {
+            Some('-') => {
+                self.next();
+                sign = Some(Sign::Negative);
             }
-            is_signed = true;
+            Some('+') => {
+                self.next();
+                sign = Some(Sign::Positive);
+            }
+            _ => (),
+        }
+        if sign.is_some() && !allow_sign {
+            return Err(Error::InvalidInteger);
         }
 
         let Some((radix, has_leading_zeros, prefix_is_symbol)) = self.next_integer_prefix()? else {
-            // '-' was given, so it must be an invalid token
-            if is_signed {
+            // Sign was already given, so it must be an invalid token
+            if sign.is_some() {
                 return Err(Error::InvalidInteger);
             }
             return Ok(None);
         };
 
-        // Take '-' AFTER prefix
-        if self.peek().is_some_and(|ch| ch == '-') {
-            self.next();
-            if !allow_sign {
-                return Err(Error::InvalidInteger);
+        // Take sign AFTER prefix
+        match self.peek() {
+            Some('-') => {
+                self.next();
+                // Disallow '-x-...' and '--...'
+                if sign.is_some() {
+                    return Err(Error::InvalidInteger);
+                }
+                sign = Some(Sign::Negative);
             }
-            // Disallow '-x-...' and '--...'
-            if is_signed {
-                return Err(Error::InvalidInteger);
+            Some('+') => {
+                self.next();
+                // Disallow '-x+...' and '++...'
+                if sign.is_some() {
+                    return Err(Error::InvalidInteger);
+                }
+                sign = Some(Sign::Positive);
             }
-            is_signed = true;
+            _ => (),
+        }
+        if sign.is_some() && !allow_sign {
+            return Err(Error::InvalidInteger);
         }
 
         // TODO(refactor): This could be incorporated into the loop
@@ -299,8 +322,8 @@ impl<'a> CommandIter<'a> {
             .peek()
             .is_some_and(|ch| radix.parse_digit(ch).is_some())
         {
-            // '-', '#', or pre-prefix zeros were given, so it must be an invalid integer token
-            if is_signed || has_leading_zeros || prefix_is_symbol {
+            // Sign, '#', or pre-prefix zeros were given, so it must be an invalid integer token
+            if sign.is_some() || has_leading_zeros || prefix_is_symbol {
                 return Err(Error::InvalidInteger);
             }
             return Ok(None);
@@ -326,8 +349,8 @@ impl<'a> CommandIter<'a> {
             integer *= radix as i32;
             integer += digit as i32;
         }
-        if is_signed {
-            integer *= -1;
+        if let Some(sign) = sign {
+            integer *= sign as i32;
         }
 
         if !self.is_end_of_argument() {
@@ -353,7 +376,7 @@ impl<'a> CommandIter<'a> {
             false
         };
 
-        // '0' or '0000...' (without base prefix)
+        // Number is all zeroes (without base prefix)
         // Zeroes were taken as leading zeros
         if has_leading_zeros && self.is_end_of_argument() {
             self.reset_head();
@@ -376,12 +399,10 @@ impl<'a> CommandIter<'a> {
             Some('x' | 'X') => (Radix::Hex, true, false),
             // No prefix. Don't skip character
             Some('0'..='9') => (Radix::Decimal, false, false),
-            // Disallow '0-...'
-            Some('-') => {
-                if has_leading_zeros {
-                    return Err(Error::InvalidInteger);
-                }
-                unreachable!("sign character should have already been taken by caller");
+            Some('-' | '+') => {
+                // Disallow '0-...' and '0+...'
+                // Disallow '--...', '-+...', etc
+                return Err(Error::InvalidInteger);
             }
             // Not recognized as an integer
             _ => return Ok(None),
@@ -393,55 +414,57 @@ impl<'a> CommandIter<'a> {
         Ok(Some((radix, has_leading_zeros, prefix_is_symbol)))
     }
 
+    fn label_can_start_with(ch: char) -> bool {
+        matches!(ch, 'a'..='z' | 'A'..='Z' | '_')
+    }
+    fn label_can_contain(ch: char) -> bool {
+        matches!(ch, 'a'..='z' | 'A'..='Z' | '0'..='9' | '_')
+    }
+
     fn next_label_token(&mut self) -> Result<Option<Label>> {
         self.reset_head();
         // Don't skip whitespace
 
         // Check first character can begin a label
-        if !self
-            .next()
-            .is_some_and(|ch| matches!(ch, 'a'..='z' | 'A'..='Z' | '_'))
-        {
+        if !self.next().is_some_and(Self::label_can_start_with) {
             return Ok(None);
         };
         // Take characters until non-alphanumeric
         while let Some(ch) = self.peek() {
-            if !matches!(ch, 'a'..='z' | 'A'..='Z' | '0'..='9' | '_') {
+            if !Self::label_can_contain(ch) {
                 break;
             }
             self.next();
         }
 
         let name = self.get().to_string();
-
-        // TODO(refactor): There is a cleaner way to do this
-        let offset = match self.peek() {
-            Some('+') => {
-                self.next();
-                self.base = self.head;
-                let Some(offset) = self.next_integer_token(false)? else {
-                    return Err(Error::InvalidLabel);
-                };
-                offset
-            }
-            Some('-') => {
-                self.next();
-                self.base = self.head;
-                let Some(offset) = self.next_integer_token(false)? else {
-                    return Err(Error::InvalidLabel);
-                };
-                -offset
-            }
-            _ => 0,
-        };
-
-        let offset: i16 = resize_int(offset)?;
+        let offset = self.next_label_offset()?.unwrap_or(0);
 
         if !self.is_end_of_argument() {
             return Err(Error::InvalidLabel);
         }
         self.set_base();
         Ok(Some(Label { name, offset }))
+    }
+
+    fn next_label_offset(&mut self) -> Result<Option<i16>> {
+        // Don't reset head
+        // Don't skip whitespace
+
+        let sign = match self.peek() {
+            Some('+') => 1,
+            Some('-') => -1,
+            _ => return Ok(None),
+        };
+
+        self.next();
+        self.set_base();
+
+        let Some(offset) = self.next_integer_token(false)? else {
+            return Err(Error::InvalidLabel);
+        };
+
+        Ok(Some(resize_int(offset * sign)?))
     }
 }
 
@@ -558,7 +581,7 @@ mod tests {
         expect_integer!(true, "", Ok(None)); // Non-integer
         expect_integer!(true, "a", Ok(None));
         expect_integer!(true, "z", Ok(None));
-        expect_integer!(true, "+", Ok(None));
+        expect_integer!(true, "&", Ok(None));
         expect_integer!(true, ",", Ok(None));
         expect_integer!(true, "b2", Ok(None));
         expect_integer!(true, "o8", Ok(None));
@@ -567,6 +590,7 @@ mod tests {
         expect_integer!(true, "o", Ok(None));
         expect_integer!(true, "x", Ok(None));
         expect_integer!(true, "-", Err(_)); // Invalid integers
+        expect_integer!(true, "+", Err(_));
         expect_integer!(true, "#", Err(_));
         expect_integer!(true, "#-", Err(_));
         expect_integer!(true, "-#", Err(_));
@@ -602,6 +626,22 @@ mod tests {
         expect_integer!(true, "b-2", Err(_));
         expect_integer!(true, "o-8", Err(_));
         expect_integer!(true, "x-g", Err(_));
+        expect_integer!(true, "--4", Err(_));
+        expect_integer!(true, "-+4", Err(_));
+        expect_integer!(true, "++4", Err(_));
+        expect_integer!(true, "+-4", Err(_));
+        expect_integer!(true, "#--4", Err(_));
+        expect_integer!(true, "#-+4", Err(_));
+        expect_integer!(true, "#++4", Err(_));
+        expect_integer!(true, "#+-4", Err(_));
+        expect_integer!(true, "-#-4", Err(_));
+        expect_integer!(true, "-#+4", Err(_));
+        expect_integer!(true, "+#+4", Err(_));
+        expect_integer!(true, "+#-4", Err(_));
+        expect_integer!(true, "--#4", Err(_));
+        expect_integer!(true, "-+#4", Err(_));
+        expect_integer!(true, "++#4", Err(_));
+        expect_integer!(true, "+-#4", Err(_));
         // Simple bounds check (it is not supposed to be super accurate)
         expect_integer!(true, "x80000000", Err(_));
         expect_integer!(true, "x7fffffff", Ok(Some(0x7fffffff)));
@@ -613,39 +653,51 @@ mod tests {
         expect_integer!(true, "#0", Ok(Some(0)));
         expect_integer!(true, "#00", Ok(Some(0)));
         expect_integer!(true, "-#0", Ok(Some(0)));
+        expect_integer!(true, "+#0", Ok(Some(0)));
         expect_integer!(true, "-#00", Ok(Some(0)));
         expect_integer!(true, "#-0", Ok(Some(0)));
+        expect_integer!(true, "#+0", Ok(Some(0)));
         expect_integer!(true, "#-00", Ok(Some(0)));
         expect_integer!(true, "4", Ok(Some(4)));
+        expect_integer!(true, "+4", Ok(Some(4)));
         expect_integer!(true, "4284", Ok(Some(4284)));
         expect_integer!(true, "004284", Ok(Some(4284)));
         expect_integer!(true, "#4", Ok(Some(4)));
         expect_integer!(true, "#4284", Ok(Some(4284)));
         expect_integer!(true, "#004284", Ok(Some(4284)));
         expect_integer!(true, "-4", Ok(Some(-4)));
+        expect_integer!(true, "+4", Ok(Some(4)));
         expect_integer!(true, "-4284", Ok(Some(-4284)));
         expect_integer!(true, "-004284", Ok(Some(-4284)));
         expect_integer!(true, "-#4", Ok(Some(-4)));
+        expect_integer!(true, "+#4", Ok(Some(4)));
         expect_integer!(true, "-#4284", Ok(Some(-4284)));
         expect_integer!(true, "-#004284", Ok(Some(-4284)));
         expect_integer!(true, "#-4", Ok(Some(-4)));
+        expect_integer!(true, "#+4", Ok(Some(4)));
         expect_integer!(true, "#-4284", Ok(Some(-4284)));
         expect_integer!(true, "#-004284", Ok(Some(-4284)));
         expect_integer!(false, "-4", Err(_));
+        expect_integer!(false, "+4", Err(_));
         expect_integer!(false, "-4284", Err(_));
         expect_integer!(false, "-004284", Err(_));
+        expect_integer!(false, "+004284", Err(_));
         expect_integer!(false, "-#4", Err(_));
         expect_integer!(false, "-#4284", Err(_));
+        expect_integer!(false, "+#4284", Err(_));
         expect_integer!(false, "-#004284", Err(_));
         expect_integer!(false, "#-4", Err(_));
+        expect_integer!(false, "#+4", Err(_));
         expect_integer!(false, "#-4284", Err(_));
         expect_integer!(false, "#-004284", Err(_));
+        expect_integer!(false, "#+004284", Err(_));
         // Hex
         expect_integer!(true, "x0", Ok(Some(0x0)));
         expect_integer!(true, "x00", Ok(Some(0x0)));
         expect_integer!(true, "0x0", Ok(Some(0x0)));
         expect_integer!(true, "0x00", Ok(Some(0x0)));
         expect_integer!(true, "-x0", Ok(Some(0x0)));
+        expect_integer!(true, "+x0", Ok(Some(0x0)));
         expect_integer!(true, "-x00", Ok(Some(0x0)));
         expect_integer!(true, "0x-0", Ok(Some(0x0)));
         expect_integer!(true, "0x-00", Ok(Some(0x0)));
@@ -658,29 +710,37 @@ mod tests {
         expect_integer!(true, "0x004", Ok(Some(0x4)));
         expect_integer!(true, "0x429", Ok(Some(0x429)));
         expect_integer!(true, "-x4", Ok(Some(-0x4)));
+        expect_integer!(true, "+x4", Ok(Some(0x4)));
         expect_integer!(true, "-x004", Ok(Some(-0x4)));
         expect_integer!(true, "-x429", Ok(Some(-0x429)));
         expect_integer!(true, "-0x4", Ok(Some(-0x4)));
+        expect_integer!(true, "+0x4", Ok(Some(0x4)));
         expect_integer!(true, "-0x004", Ok(Some(-0x4)));
         expect_integer!(true, "-0x429", Ok(Some(-0x429)));
         expect_integer!(true, "x-4", Ok(Some(-0x4)));
         expect_integer!(true, "x-004", Ok(Some(-0x4)));
+        expect_integer!(true, "x+004", Ok(Some(0x4)));
         expect_integer!(true, "x-429", Ok(Some(-0x429)));
         expect_integer!(true, "-0x4", Ok(Some(-0x4)));
         expect_integer!(true, "-0x004", Ok(Some(-0x4)));
         expect_integer!(true, "-0x429", Ok(Some(-0x429)));
+        expect_integer!(true, "+0x429", Ok(Some(0x429)));
         expect_integer!(false, "-x4", Err(_));
+        expect_integer!(false, "+x4", Err(_));
         expect_integer!(false, "-x004", Err(_));
         expect_integer!(false, "-x429", Err(_));
         expect_integer!(false, "-0x4", Err(_));
         expect_integer!(false, "-0x004", Err(_));
+        expect_integer!(false, "+0x004", Err(_));
         expect_integer!(false, "-0x429", Err(_));
         expect_integer!(false, "x-4", Err(_));
         expect_integer!(false, "x-004", Err(_));
         expect_integer!(false, "x-429", Err(_));
-        expect_integer!(false, "-0x4", Err(_));
-        expect_integer!(false, "-0x004", Err(_));
-        expect_integer!(false, "-0x429", Err(_));
+        expect_integer!(false, "x+429", Err(_));
+        expect_integer!(false, "0x-4", Err(_));
+        expect_integer!(false, "0x-004", Err(_));
+        expect_integer!(false, "0x-429", Err(_));
+        expect_integer!(false, "0x+429", Err(_));
         // Octal (0o427==0x117)
         expect_integer!(true, "o0", Ok(Some(0x0)));
         expect_integer!(true, "o00", Ok(Some(0x0)));
