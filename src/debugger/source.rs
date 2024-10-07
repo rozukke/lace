@@ -16,7 +16,6 @@ pub enum SourceMode {
 #[derive(Debug)]
 struct Stdin {
     stdin: io::Stdin,
-
     /// Command must be stored somewhere to be referenced
     buffer: String,
 }
@@ -25,7 +24,7 @@ struct Stdin {
 #[derive(Debug)]
 struct Argument {
     buffer: String,
-    // Byte index
+    /// Byte index
     cursor: usize,
 }
 
@@ -35,7 +34,7 @@ struct Terminal {
     term: console::Term,
 
     buffer: String,
-    // Byte index
+    /// Byte index
     cursor: usize,
 
     history: Vec<String>,
@@ -139,8 +138,7 @@ impl SourceReader for Stdin {
         loop {
             let Some(ch) = self.read_char() else {
                 if self.buffer.is_empty() {
-                    // First character is EOF
-                    return None;
+                    return None; // First character is EOF
                 }
                 break;
             };
@@ -175,29 +173,22 @@ impl Terminal {
     }
 
     /// Run before modifying `next`
-    /// If focused on a history item, clone it to `next` and update index
+    /// If focused on a historic item, clone it to `next` and update index
     fn update_next(&mut self) {
-        debug_assert!(
-            self.history_index <= self.history.len(),
-            "index went past history"
-        );
-        if self.history_index < self.history.len() {
-            self.buffer = self
-                .history
-                .get(self.history_index)
-                .expect("checked above")
-                .clone();
-            self.history_index = self.history.len();
+        if self.is_next() {
+            return;
         }
+        self.buffer = self
+            .history
+            .get(self.history_index)
+            .expect("checked above")
+            .clone();
+        self.history_index = self.history.len();
     }
 
     /// Get next or historic command, from index
     fn get_current(&self) -> &str {
-        assert!(
-            self.history_index <= self.history.len(),
-            "index went past history"
-        );
-        if self.history_index >= self.history.len() {
+        if self.is_next() {
             &self.buffer
         } else {
             self.history.get(self.history_index).expect("checked above")
@@ -214,7 +205,7 @@ impl Terminal {
         write!(self.term, "Command: ").unwrap();
         write!(self.term, "\x1b[0m").unwrap();
         // This is necessary as cannot borrow `self.term` mutably and `self.get_current()` immutably
-        // TODO(refactor): There must be a better way to do this
+        // TODO(safety/refactor): There must be a better way to do this
         let current = unsafe { &*(self.get_current() as *const str) };
         write!(self.term, "{}", current).unwrap();
 
@@ -223,7 +214,7 @@ impl Terminal {
                 self.get_current()
                     .len()
                     .checked_sub(self.visible_cursor)
-                    .unwrap_or(0), // If invariance is violated
+                    .unwrap_or(0), // If invariance is somehow violated
             )
             .unwrap();
 
@@ -235,7 +226,8 @@ impl Terminal {
         let key = self.term.read_key().unwrap();
         match key {
             Key::Enter | Key::Char('\n') => {
-                if self.is_next() && self.buffer.is_empty() {
+                if self.is_next() && self.buffer.trim().is_empty() {
+                    self.buffer.clear();
                     println!();
                 } else {
                     self.update_next();
@@ -247,7 +239,8 @@ impl Terminal {
                 // Ignore ASCII control characters
                 '\x00'..='\x1f' | '\x7f' => (),
 
-                // Depending on terminal, this should also support pasting from clipboard
+                // Pasting should be automatically supported, since terminals simulate typing each
+                // character
                 _ => {
                     self.update_next();
                     self.buffer.insert(self.visible_cursor, ch);
@@ -257,11 +250,19 @@ impl Terminal {
 
             Key::Backspace => {
                 self.update_next();
-                if !self.buffer.is_empty() {
-                    self.buffer.pop();
+                if self.visible_cursor > 0 && self.visible_cursor <= self.get_current().len() {
+                    self.buffer.remove(self.visible_cursor - 1);
                     self.visible_cursor -= 1;
                 }
             }
+            Key::Del => {
+                self.update_next();
+                if self.visible_cursor + 1 <= self.get_current().len() {
+                    self.buffer.remove(self.visible_cursor);
+                }
+            }
+
+            // Left/right in current input
             Key::ArrowLeft => {
                 if self.visible_cursor > 0 {
                     self.visible_cursor -= 1;
@@ -272,6 +273,8 @@ impl Terminal {
                     self.visible_cursor += 1;
                 }
             }
+
+            // Back/forth through history
             Key::ArrowUp => {
                 if self.history_index > 0 {
                     self.history_index -= 1;
@@ -284,6 +287,7 @@ impl Terminal {
                     self.visible_cursor = self.get_current().len();
                 }
             }
+
             _ => (),
         }
         false
@@ -304,7 +308,7 @@ impl Terminal {
         println!();
 
         debug_assert!(
-            !self.buffer.is_empty(),
+            !self.buffer.trim().is_empty(),
             "should have looped until non-empty"
         );
 
