@@ -63,9 +63,9 @@ pub struct CommandIter<'a> {
 }
 
 impl<'a> CommandIter<'a> {
-    pub fn from(line: &'a str) -> Self {
+    pub fn from(buffer: &'a str) -> Self {
         Self {
-            buffer: line,
+            buffer,
             base: 0,
             head: 0,
         }
@@ -75,10 +75,7 @@ impl<'a> CommandIter<'a> {
         self.skip_whitespace();
         self.reset_head();
 
-        while let Some(ch) = self.peek() {
-            if !ch.is_alphanumeric() {
-                break;
-            }
+        while self.peek().is_some_and(|ch| ch.is_alphanumeric()) {
             self.next();
         }
 
@@ -90,36 +87,36 @@ impl<'a> CommandIter<'a> {
 
     pub fn next_integer(&mut self) -> Result<u16> {
         Ok(match self.next_argument()? {
-            None => return Err(Error::MissingArgument),
             Some(Argument::Integer(count)) => resize_int(count)?,
+            None => return Err(Error::MissingArgument),
             _ => return Err(Error::InvalidArgumentKind),
         })
     }
 
     pub fn next_positive_integer_or_default(&mut self) -> Result<u16> {
         Ok(match self.next_argument()? {
-            None => 1,
             Some(Argument::Integer(count)) => resize_int(count.max(1))?,
+            None => 1,
             _ => return Err(Error::InvalidArgumentKind),
         })
     }
 
     pub fn next_location(&mut self) -> Result<Location> {
         Ok(match self.next_argument()? {
-            None => return Err(Error::MissingArgument),
             Some(Argument::Register(register)) => Location::Register(register),
             Some(Argument::Integer(address)) => {
                 Location::Memory(MemoryLocation::Address(resize_int(address)?))
             }
             Some(Argument::Label(label)) => Location::Memory(MemoryLocation::Label(label)),
+            None => return Err(Error::MissingArgument),
         })
     }
 
     pub fn next_memory_location_or_default(&mut self) -> Result<MemoryLocation> {
         Ok(match self.next_argument()? {
-            None => MemoryLocation::PC,
             Some(Argument::Integer(address)) => MemoryLocation::Address(resize_int(address)?),
             Some(Argument::Label(label)) => MemoryLocation::Label(label),
+            None => MemoryLocation::PC,
             _ => return Err(Error::InvalidArgumentKind),
         })
     }
@@ -137,15 +134,6 @@ impl<'a> CommandIter<'a> {
         Ok(())
     }
 
-    /// Get next character at head, incrementing head
-    fn next(&mut self) -> Option<char> {
-        if self.head >= self.buffer.len() {
-            return None;
-        }
-        let next = self.buffer[self.head..].chars().next()?;
-        self.head += next.len_utf8();
-        Some(next)
-    }
     /// Get next character at head, WITHOUT incrementing head
     fn peek(&self) -> Option<char> {
         if self.head >= self.buffer.len() {
@@ -154,25 +142,31 @@ impl<'a> CommandIter<'a> {
         let next = self.buffer[self.head..].chars().next()?;
         Some(next)
     }
+    /// Get next character at head, incrementing head
+    fn next(&mut self) -> Option<char> {
+        let next = self.peek()?;
+        self.head += next.len_utf8();
+        Some(next)
+    }
 
-    /// Get characters between base..head, setting base <- head
+    /// Get characters between base..head, WITHOUT updating base
+    fn get(&self) -> &str {
+        assert!(self.base <= self.head, "base exceeded head");
+        &self.buffer[self.base..self.head]
+    }
+    /// Get characters between base..head, updating base
     fn take(&mut self) -> &str {
         assert!(self.base <= self.head, "base exceeded head");
         let slice = &self.buffer[self.base..self.head];
         self.set_base();
         slice
     }
-    /// Get characters between base..head, WITHOUT setting base <- head
-    fn get(&self) -> &str {
-        assert!(self.base <= self.head, "base exceeded head");
-        &self.buffer[self.base..self.head]
-    }
 
-    /// Set base <- head
+    /// Update base to head
     fn set_base(&mut self) {
         self.base = self.head;
     }
-    /// Set head <- base
+    /// Backtrack head to base
     fn reset_head(&mut self) {
         self.head = self.base;
     }
@@ -187,10 +181,7 @@ impl<'a> CommandIter<'a> {
     }
 
     fn skip_whitespace(&mut self) {
-        while let Some(ch) = self.peek() {
-            if !ch.is_whitespace() {
-                break;
-            }
+        while self.peek().is_some_and(|ch| ch.is_whitespace()) {
             self.next();
         }
         self.set_base();
@@ -223,7 +214,9 @@ impl<'a> CommandIter<'a> {
         self.reset_head();
         // Don't skip whitespace
 
-        self.next().filter(|ch| *ch == 'r' || *ch == 'R')?;
+        if !self.next().is_some_and(|ch| ch == 'r' || ch == 'R') {
+            return None;
+        }
         let register = match self.next()? {
             '0' => Register::R0,
             '1' => Register::R1,
@@ -236,6 +229,7 @@ impl<'a> CommandIter<'a> {
             _ => return None,
         };
 
+        // Possibly the start of a label
         if !self.is_end_of_argument() {
             return None;
         }
@@ -247,22 +241,22 @@ impl<'a> CommandIter<'a> {
     ///
     /// Accepts:
     ///  - Decimal (optional `#`), hex (`x`/`X`), octal (`o`/`O`), and binary (`b`/`B`)
-    ///  - Optional single zero before non-decimal base prefix. Eg. `0x4`
-    ///  - Leading zeros after prefix. Eg. `0x0004`, `#-03`
-    ///  - Sign character before XOR after base prefix. Eg. `-#2`, `x+4`
+    ///  - Optional single zero before non-decimal radix prefix. Eg. `0x4`
+    ///  - Leading zeros after prefix and sign. Eg. `0x0004`, `#-03`
+    ///  - Sign character before xor after radix prefix. Eg. `-#2`, `x+4`
     ///
     /// Returns `Ok(None)` (not an integer) for:
     ///  - Empty token
-    ///  - Non-decimal base prefix, with zero before it, and invalid digits after it. Eg. `xLabel`, `o`
+    ///  - Non-decimal radix prefix, with no zero before it, and non-digits after it. Eg. `xLabel`, `o`
     ///
     /// Returns `Err` (invalid integer and invalid token) for:
-    ///  - Violations of basic integer requirements, such as invalid digits
-    ///  - Decimal base prefix `#` with zeros before it. Eg. `0#2`
-    ///  - Decimal base prefix `#` with invalide or no digits after it. Eg. `#a`, `#`
+    ///  - Invalid digits for the given radix
+    ///  - Decimal radix prefix `#` with zeros before it. Eg. `0#2`
+    ///  - Decimal radix prefix `#` with no digits after it. Eg. `#`
     ///  - Multiple sign characters (before or after prefix)
     ///  - Missing sign character '-' or '+', if `require_sign == true`
-    ///  - Multiple zeros before base prefix. Eg. `00x4`
-    ///  - Integers out of bounds of `i32`. (Does *NOT* check if integer fits in specific bit size)
+    ///  - Multiple zeros before radix prefix. Eg. `00x4`
+    ///  - Absolute value out of bounds for `i32`. (Does *NOT* check if integer fits in specific bit size)
     fn next_integer_token(&mut self, require_sign: bool) -> Result<Option<i32>> {
         self.reset_head();
         // Don't skip whitespace
@@ -294,7 +288,6 @@ impl<'a> CommandIter<'a> {
             (Some(_), Some(_)) => return Err(Error::InvalidInteger),
         };
 
-        // TODO(refactor): This could be incorporated into the loop
         // Check next character is digit
         if !self
             .peek()
@@ -338,6 +331,7 @@ impl<'a> CommandIter<'a> {
         Ok(Some(integer))
     }
 
+    /// Should only be called by `next_token_integer`
     fn next_integer_sign(&mut self) -> Option<Sign> {
         // Don't reset head
         // Don't skip whitespace
@@ -355,55 +349,58 @@ impl<'a> CommandIter<'a> {
 
     /// Get radix from integer prefix
     /// Should only be called by `next_token_integer`
-    /// Returns radix, whether leading zeros are included, and whether base prefix is a
+    /// Returns radix, whether leading zeros are included, and whether radix prefix is a
     /// non-alphabetic symbol (i.e. `#`)
     fn next_integer_prefix(&mut self) -> Result<Option<(Radix, bool, bool)>> {
         // Don't reset head
         // Don't skip whitespace
 
         // Take single leading zero before prefix
-        let has_leading_zeros = if self.peek().is_some_and(|ch| ch == '0') {
+        let has_leading_zeros = self.peek().is_some_and(|ch| ch == '0');
+        if has_leading_zeros {
             self.next();
-            true
-        } else {
-            false
-        };
+        }
 
-        // Number is all zeroes (without base prefix)
+        // Number is all zeroes (no radix prefix)
         // Zeroes were taken as leading zeros
         if has_leading_zeros && self.is_end_of_argument() {
             self.reset_head();
             return Ok(Some((Radix::Decimal, true, false)));
         }
 
-        let (radix, next_char, prefix_is_symbol) = match self.peek() {
+        let mut next_char = true; // Whether to increment head for prefix character
+        let (radix, prefix_is_symbol) = match self.peek() {
             Some('#') => {
                 // Disallow '0#...'
                 if has_leading_zeros {
                     return Err(Error::InvalidInteger);
                 }
-                (Radix::Decimal, true, true)
+                (Radix::Decimal, true)
             }
             // Allow 'b...' or 'x...'
-            // Caller must check next characters are valid digits in the base, so as to not parse
+            // Caller must check next characters are valid digits in the radix, so as to not parse
             // non-integer tokens like 'xLabel' as integers (and fail)
-            Some('b' | 'B') => (Radix::Binary, true, false),
-            Some('o' | 'O') => (Radix::Octal, true, false),
-            Some('x' | 'X') => (Radix::Hex, true, false),
+            Some('b' | 'B') => (Radix::Binary, false),
+            Some('o' | 'O') => (Radix::Octal, false),
+            Some('x' | 'X') => (Radix::Hex, false),
             // No prefix. Don't skip character
-            Some('0'..='9') => (Radix::Decimal, false, false),
+            Some('0'..='9') => {
+                next_char = false;
+                (Radix::Decimal, false)
+            }
             Some('-' | '+') => {
                 // Disallow '0-...' and '0+...'
                 // Disallow '--...', '-+...', etc
                 return Err(Error::InvalidInteger);
             }
-            // Not recognized as an integer
+            // Not an integer
             _ => return Ok(None),
         };
-
         if next_char {
             self.next(); // Skip prefix character
         }
+
+        // Don't set base; might not be an integer yet
         Ok(Some((radix, has_leading_zeros, prefix_is_symbol)))
     }
 
@@ -423,19 +420,12 @@ impl<'a> CommandIter<'a> {
             return Ok(None);
         };
         // Take characters until non-alphanumeric
-        while let Some(ch) = self.peek() {
-            if !Self::label_can_contain(ch) {
-                break;
-            }
+        while self.peek().is_some_and(Self::label_can_contain) {
             self.next();
         }
 
         let name = self.take().to_string();
-        println!("name:{name}, {:?}", self.peek());
-        let a = self.next_integer_token(true);
-        println!("{:?}", a);
-        let a = a?;
-        let offset = resize_int(a.unwrap_or(0))?;
+        let offset = resize_int(self.next_integer_token(true)?.unwrap_or(0))?;
 
         if !self.is_end_of_argument() {
             return Err(Error::InvalidLabel);
@@ -483,7 +473,7 @@ mod tests {
 
     macro_rules! expect_tokens {
         ( $method:ident ($($args:tt)*), $input:expr, $($expected:tt)* ) => {{
-            eprintln!("{}", $input);
+            eprintln!("Test input: <{}>", $input);
             let mut iter = CommandIter::from($input);
             let result = iter.$method($($args)*);
             expect_tokens!(@expected result, $($expected)*);
@@ -520,7 +510,7 @@ mod tests {
         expect_argument!("  123  ", Ok(Some(Argument::Integer(123))));
         expect_argument!("123 Foo", Ok(Some(Argument::Integer(123))));
         expect_argument!("0x-853", Ok(Some(Argument::Integer(-0x853))));
-        expect_argument!("Foo", Ok(Some(Argument::Label(label!("Foo")))));
+        expect_argument!("Foo  ", Ok(Some(Argument::Label(label!("Foo")))));
         expect_argument!("Foo-23", Ok(Some(Argument::Label(label!("Foo", -23)))));
         expect_argument!("  Foo 23", Ok(Some(Argument::Label(label!("Foo")))));
     }
