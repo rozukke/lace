@@ -13,13 +13,12 @@ macro_rules! dprintln {
 }
 
 mod command;
+mod parse;
 mod source;
 
 use crate::runtime::RunState;
 use command::{Command, Location, MemoryLocation};
 use source::{SourceMode, SourceReader};
-
-// TODO(feat): Use stderr for all debugger output (except in terminal mode?)
 
 const DEBUGGER_COLOR: u8 = 34;
 
