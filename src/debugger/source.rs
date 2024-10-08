@@ -1,4 +1,8 @@
-use std::io::{self, IsTerminal, Read, Write};
+use std::{
+    fs::{self, File},
+    io::{self, IsTerminal, Read, Write},
+    path::Path,
+};
 
 use console::Key;
 
@@ -42,6 +46,8 @@ struct Terminal {
     history_index: usize,
     /// Visible line cursor in terminal
     visible_cursor: usize,
+
+    history_file: File,
 }
 
 pub trait SourceReader {
@@ -154,15 +160,30 @@ impl SourceReader for Stdin {
 
 impl Terminal {
     pub fn new() -> Self {
+        let mut history_file = fs::OpenOptions::new()
+            .create(true)
+            .read(true)
+            .append(true)
+            .open(Self::FILENAME)
+            .unwrap();
+
+        let mut buffer = String::new();
+        history_file.read_to_string(&mut buffer).unwrap();
+        let history: Vec<_> = buffer.lines().map(|s| s.to_string()).collect();
+        let history_index = history.len();
+
         Self {
             term: console::Term::stdout(),
             buffer: String::new(),
             cursor: 0,
-            history: Vec::new(),
-            history_index: 0,
+            history,
+            history_index,
             visible_cursor: 0,
+            history_file,
         }
     }
+
+    const FILENAME: &'static str = ".debugger_history";
 
     fn is_next(&self) -> bool {
         debug_assert!(
@@ -322,7 +343,7 @@ impl Terminal {
             .last()
             .is_some_and(|previous| previous == &self.buffer)
         {
-            self.history.push(self.buffer.clone());
+            self.push_history();
         }
         // Always reset index to next command
         self.history_index = self.history.len();
@@ -345,6 +366,11 @@ impl Terminal {
                 &rest
             }
         }
+    }
+
+    fn push_history(&mut self) {
+        self.history.push(self.buffer.clone());
+        writeln!(self.history_file, "{}", self.buffer).unwrap();
     }
 }
 
