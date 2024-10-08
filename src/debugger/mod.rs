@@ -85,8 +85,7 @@ impl Debugger {
             Command::Get { location } => match location {
                 Location::Register(register) => {
                     dprintln!("Register R{}:", register as u16);
-                    let value = *self.state().reg(register as u16);
-                    Self::print_integer(value);
+                    Self::print_integer(*self.state().reg(register as u16));
                 }
                 Location::Memory(memory_location) => {
                     let address = match memory_location {
@@ -99,17 +98,26 @@ impl Debugger {
                     };
 
                     dprintln!("Memory at address 0x{:04x}:", address);
-                    let b = self.state().mem(address);
-                    Self::print_integer(*b);
+                    Self::print_integer(*self.state().mem(address));
                 }
             },
 
             Command::Set { location, value } => match location {
                 Location::Register(register) => {
                     *self.state().reg(register as u16) = value;
+                    dprintln!("Updated register R{}", register as u16);
                 }
-                Location::Memory(_memory_location) => {
-                    todo!();
+                Location::Memory(memory_location) => {
+                    let address = match memory_location {
+                        MemoryLocation::Address(address) => address,
+                        MemoryLocation::PC => self.state().pc,
+                        MemoryLocation::Label(_) => {
+                            dprintln!("unimplemented: labels");
+                            return Action::None;
+                        }
+                    };
+                    dprintln!("Updated memory at address 0x{:04x}.", address);
+                    *self.state().mem(address) = value;
                 }
             },
 
