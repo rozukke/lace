@@ -5,6 +5,7 @@ use miette::{bail, Result, Severity};
 use crate::symbol::{Flag, Label, Register};
 
 /// Assembly intermediate representation, contains starting address and list of instructions
+#[derive(Clone)]
 pub struct Air {
     /// Memory address to start program at
     orig: Option<u16>,
@@ -65,7 +66,7 @@ impl IntoIterator for Air {
 }
 
 /// Single LC3 statement. Has optional labels.
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub enum AirStmt {
     /// Add src_reg with src_reg_imm and store in dest
     Add {
@@ -129,7 +130,7 @@ pub enum AirStmt {
 
 /// Used for ADD and AND commands as they support either 5-bit immediate values or registers as the
 /// last operand.
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub enum ImmediateOrReg {
     Reg(Register),
     Imm5(u8),
@@ -150,7 +151,7 @@ impl ImmediateOrReg {
 pub struct RawWord(pub u16);
 
 /// A line (16 bits) of assembly.
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct AsmLine {
     pub line: u16,
     pub stmt: AirStmt,
