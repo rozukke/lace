@@ -204,9 +204,13 @@ impl Terminal {
         write!(self.term, "\x1b[1;{}m", DEBUGGER_COLOR).unwrap();
         write!(self.term, "Command: ").unwrap();
         write!(self.term, "\x1b[0m").unwrap();
-        // This is necessary as cannot borrow `self.term` mutably and `self.get_current()` immutably
-        // TODO(safety/refactor): There must be a better way to do this
-        let current = unsafe { &*(self.get_current() as *const str) };
+
+        // Inline `self.get_current()` due to borrowing issues
+        let current = if self.is_next() {
+            &self.buffer
+        } else {
+            self.history.get(self.history_index).expect("checked above")
+        };
         write!(self.term, "{}", current).unwrap();
 
         self.term
