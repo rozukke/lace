@@ -24,13 +24,13 @@ pub struct RunEnvironment {
 pub(super) struct RunState {
     /// System memory - 128KB in size.
     /// Need to figure out if this would cause problems with the stack.
-    pub(super) mem: Box<[u16; MEMORY_MAX]>,
+    mem: Box<[u16; MEMORY_MAX]>,
     /// Program counter
-    pub(super) pc: u16,
+    pc: u16,
     /// 8x 16-bit registers
-    pub(super) reg: [u16; 8],
+    reg: [u16; 8],
     /// Condition code
-    pub(super) flag: RunFlag,
+    flag: RunFlag,
     /// Processor status register
     _psr: u16,
 }
@@ -62,7 +62,7 @@ impl RunEnvironment {
         debugger_opts: DebuggerOptions,
     ) -> Result<RunEnvironment> {
         let mut env = Self::try_from(air)?;
-        env.debugger = Some(Debugger::new(debugger_opts, &mut env.state));
+        env.debugger = Some(Debugger::new(debugger_opts, env.state.clone()));
         Ok(env)
     }
 
@@ -94,7 +94,7 @@ impl RunEnvironment {
         loop {
             if let Some(debugger) = &mut self.debugger {
                 loop {
-                    match debugger.wait_for_action() {
+                    match debugger.wait_for_action(&mut self.state) {
                         Action::None => (),
                         Action::Proceed => break,
                         Action::StopDebugger => {
@@ -149,6 +149,11 @@ impl RunState {
     pub(super) fn mem(&mut self, addr: u16) -> &mut u16 {
         // SAFETY: memory fits any u16 index
         unsafe { self.mem.get_unchecked_mut(addr as usize) }
+    }
+
+    #[inline]
+    pub(super) fn pc(&mut self) -> &mut u16 {
+        &mut self.pc
     }
 
     #[inline]

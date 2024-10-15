@@ -37,7 +37,6 @@ pub struct Debugger {
     source: SourceMode,
 
     // TODO(refactor): Make this good
-    state: *mut RunState,
     initial_state: Box<RunState>,
 }
 
@@ -59,17 +58,16 @@ pub enum Action {
 }
 
 impl Debugger {
-    pub(super) fn new(opts: DebuggerOptions, state: &mut RunState) -> Self {
+    pub(super) fn new(opts: DebuggerOptions, initial_state: RunState) -> Self {
         Self {
             status: Status::default(),
             minimal: opts.minimal,
             source: SourceMode::from(opts.command),
-            state: state as *mut RunState,
-            initial_state: Box::new(state.clone()),
+            initial_state: Box::new(initial_state),
         }
     }
 
-    pub fn wait_for_action(&mut self) -> Action {
+    pub(super) fn wait_for_action(&mut self, state: &mut RunState) -> Action {
         dprintln!();
         let Some(command) = self.next_command() else {
             return Action::StopDebugger;
@@ -85,12 +83,12 @@ impl Debugger {
             Command::Get { location } => match location {
                 Location::Register(register) => {
                     dprintln!("Register R{}:", register as u16);
-                    Self::print_integer(*self.state().reg(register as u16));
+                    Self::print_integer(*state.reg(register as u16));
                 }
                 Location::Memory(memory_location) => {
                     let address = match memory_location {
                         MemoryLocation::Address(address) => address,
-                        MemoryLocation::PC => self.state().pc,
+                        MemoryLocation::PC => *state.pc(),
                         MemoryLocation::Label(_) => {
                             dprintln!("unimplemented: labels");
                             return Action::None;
@@ -98,26 +96,26 @@ impl Debugger {
                     };
 
                     dprintln!("Memory at address 0x{:04x}:", address);
-                    Self::print_integer(*self.state().mem(address));
+                    Self::print_integer(*state.mem(address));
                 }
             },
 
             Command::Set { location, value } => match location {
                 Location::Register(register) => {
-                    *self.state().reg(register as u16) = value;
+                    *state.reg(register as u16) = value;
                     dprintln!("Updated register R{}", register as u16);
                 }
                 Location::Memory(memory_location) => {
                     let address = match memory_location {
                         MemoryLocation::Address(address) => address,
-                        MemoryLocation::PC => self.state().pc,
+                        MemoryLocation::PC => *state.pc(),
                         MemoryLocation::Label(_) => {
                             dprintln!("unimplemented: labels");
                             return Action::None;
                         }
                     };
                     dprintln!("Updated memory at address 0x{:04x}.", address);
-                    *self.state().mem(address) = value;
+                    *state.mem(address) = value;
                 }
             },
 
@@ -148,11 +146,6 @@ impl Debugger {
 
             return Some(command);
         }
-    }
-
-    fn state(&mut self) -> &mut RunState {
-        // TODO: safety
-        unsafe { &mut *self.state }
     }
 
     fn print_integer(value: u16) {
