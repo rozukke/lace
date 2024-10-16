@@ -93,16 +93,13 @@ impl RunEnvironment {
     pub fn run(&mut self) {
         loop {
             if let Some(debugger) = &mut self.debugger {
-                loop {
-                    match debugger.wait_for_action(&mut self.state) {
-                        Action::None => (),
-                        Action::Proceed => break,
-                        Action::StopDebugger => {
-                            self.debugger = None;
-                            break;
-                        }
-                        Action::QuitProgram => return,
+                match debugger.wait_for_action(&mut self.state) {
+                    Action::Proceed => break,
+                    Action::StopDebugger => {
+                        self.debugger = None;
+                        break;
                     }
+                    Action::QuitProgram => return,
                 }
             }
             if self.state.pc >= 0xFE00 {

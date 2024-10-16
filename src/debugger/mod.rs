@@ -51,7 +51,6 @@ pub enum Status {
 
 #[derive(Debug)]
 pub enum Action {
-    None,
     Proceed,
     StopDebugger,
     QuitProgram,
@@ -68,9 +67,17 @@ impl Debugger {
     }
 
     pub(super) fn wait_for_action(&mut self, state: &mut RunState) -> Action {
+        loop {
+            if let Some(action) = self.next_action(state) {
+                break action;
+            }
+        }
+    }
+
+    fn next_action(&mut self, state: &mut RunState) -> Option<Action> {
         dprintln!();
         let Some(command) = self.next_command() else {
-            return Action::StopDebugger;
+            return Some(Action::StopDebugger); // EOF
         };
         eprintln!("{:?}", command); // Never use color
 
@@ -91,7 +98,7 @@ impl Debugger {
                         MemoryLocation::PC => *state.pc(),
                         MemoryLocation::Label(_) => {
                             dprintln!("unimplemented: labels");
-                            return Action::None;
+                            return None;
                         }
                     };
 
@@ -111,7 +118,7 @@ impl Debugger {
                         MemoryLocation::PC => *state.pc(),
                         MemoryLocation::Label(_) => {
                             dprintln!("unimplemented: labels");
-                            return Action::None;
+                            return None;
                         }
                     };
                     dprintln!("Updated memory at address 0x{:04x}.", address);
@@ -124,10 +131,10 @@ impl Debugger {
             }
         }
 
-        Action::None
+        None
     }
 
-    // Returns `None` on EOF
+    /// Returns `None` on EOF
     fn next_command(&mut self) -> Option<Command> {
         // Loop until valid command or EOF
         loop {
