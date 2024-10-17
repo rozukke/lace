@@ -7,9 +7,7 @@ pub enum Command {
     Step {
         count: u16,
     },
-    Next {
-        count: u16,
-    },
+    Next,
     Continue,
     Finish,
     Quit,
@@ -96,10 +94,7 @@ impl TryFrom<&str> for Command {
                 let count = iter.next_positive_integer_or_default()?;
                 Self::Step { count }
             }
-            "next" | "n" => {
-                let count = iter.next_positive_integer_or_default()?;
-                Self::Next { count }
-            }
+            "next" | "n" => Self::Next,
             "get" | "g" => {
                 let location = iter.next_location()?;
                 Self::Get { location }

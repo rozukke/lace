@@ -45,11 +45,14 @@ pub struct Debugger {
 pub enum Status {
     #[default]
     WaitForAction,
-    ContinueUntilZero {
+    Step {
         count: u16,
     },
-    ContinueUntilBreakpoint,
-    ContinueUntilEndOfSubroutine,
+    Next {
+        return_addr: u16,
+    },
+    Continue,
+    Finish,
 }
 
 #[derive(Debug)]
@@ -57,6 +60,27 @@ pub enum Action {
     Proceed,
     StopDebugger,
     ExitProgram,
+}
+
+#[derive(Debug)]
+enum RelevantInstr {
+    /// Return from a subroutine
+    /// Used by `Finish`
+    Ret,
+    /// Halt
+    /// Used by `Continue` and `Finish`
+    TrapHalt,
+}
+
+fn parse_relevant_instruction(instr: u16) -> Option<RelevantInstr> {
+    let opcode = instr >> 12;
+    match opcode {
+        // `RET` is `JMP R7`
+        0xC if (instr >> 6) & 0b111 == 7 => Some(RelevantInstr::Ret),
+        // `HALT` is `TRAP 0x25`
+        0xF if instr & 0xFF == 0x25 => Some(RelevantInstr::TrapHalt),
+        _ => None,
+    }
 }
 
 impl Debugger {
@@ -70,6 +94,18 @@ impl Debugger {
     }
 
     pub(super) fn wait_for_action(&mut self, state: &mut RunState) -> Action {
+        let pc = *state.pc();
+        // 0xFFFF signifies a HALT so don't warn for that
+        if pc >= 0xFE00 && pc < 0xFFFF {
+            dprintln!("WARNING: Program counter entered device address space");
+            return Action::Proceed;
+        }
+
+        let instr = parse_relevant_instruction(*state.mem(pc));
+        println!("Instruction: {:?}", instr);
+
+        // TODO: Handle HALT
+
         loop {
             println!("{:?}", self.status);
             match &mut self.status {
@@ -80,14 +116,39 @@ impl Debugger {
                     return action;
                 }
 
-                Status::ContinueUntilZero { count: 0 | 1 } => self.status = Status::WaitForAction,
-                Status::ContinueUntilZero { count } => *count -= 1,
+                Status::Step { count: 0 } => self.status = Status::WaitForAction,
+                Status::Step { count } => *count -= 1,
 
-                Status::ContinueUntilBreakpoint => {
-                    // TODO
+                Status::Next { return_addr } => {
+                    if state.pc() == return_addr {
+                        self.status = Status::WaitForAction;
+                    }
                 }
-                Status::ContinueUntilEndOfSubroutine => {
-                    // TODO
+
+                Status::Continue => {
+                    // TODO(feat): Breakpoints
+                    match instr {
+                        Some(RelevantInstr::TrapHalt) => {
+                            dprintln!("HALT reached. Pausing execution.");
+                            self.status = Status::WaitForAction;
+                        }
+                        _ => (),
+                    }
+                }
+                Status::Finish => {
+                    // TODO(feat): Breakpoints
+                    match instr {
+                        Some(RelevantInstr::TrapHalt) => {
+                            dprintln!("HALT reached. Pausing execution.");
+                            self.status = Status::WaitForAction;
+                        }
+                        Some(RelevantInstr::Ret) => {
+                            dprintln!("RET reached. Pausing execution.");
+                            // Execute `RET` before prompting command again
+                            self.status = Status::Step { count: 0 };
+                        }
+                        _ => (),
+                    }
                 }
             }
             return Action::Proceed;
@@ -103,12 +164,17 @@ impl Debugger {
 
         match command {
             Command::Continue => {
-                self.status = Status::ContinueUntilBreakpoint;
+                self.status = Status::Continue;
                 dprintln!("Continuing...");
             }
 
             Command::Step { count } => {
-                self.status = Status::ContinueUntilZero { count };
+                self.status = Status::Step { count: count - 1 };
+            }
+            Command::Next => {
+                self.status = Status::Next {
+                    return_addr: *state.pc() + 1,
+                };
             }
 
             Command::Get { location } => match location {

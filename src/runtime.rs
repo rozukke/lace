@@ -101,6 +101,7 @@ impl RunEnvironment {
                 }
             }
             println!("Run...");
+
             if self.state.pc >= 0xFE00 {
                 // Entering device address space
                 break;
