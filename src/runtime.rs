@@ -92,16 +92,15 @@ impl RunEnvironment {
     /// Run with preset memory
     pub fn run(&mut self) {
         loop {
+            println!("\nAt: 0x{:04x}", self.state.pc);
             if let Some(debugger) = &mut self.debugger {
                 match debugger.wait_for_action(&mut self.state) {
-                    Action::Proceed => break,
-                    Action::StopDebugger => {
-                        self.debugger = None;
-                        break;
-                    }
-                    Action::QuitProgram => return,
+                    Action::Proceed => (),
+                    Action::StopDebugger => self.debugger = None,
+                    Action::ExitProgram => return,
                 }
             }
+            println!("Run...");
             if self.state.pc >= 0xFE00 {
                 // Entering device address space
                 break;

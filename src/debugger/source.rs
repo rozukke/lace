@@ -1,7 +1,6 @@
 use std::{
     fs::{self, File},
     io::{self, IsTerminal, Read, Write},
-    path::Path,
 };
 
 use console::Key;
@@ -78,8 +77,8 @@ impl SourceReader for SourceMode {
         };
         // Echo prompt and command for non-terminal source
         // Equivalent code found in terminal source
-        dprintln!("\x1b[1mCommand");
-        dprintln!("{}", command.unwrap_or("").trim());
+        dprint!("\x1b[1mCommand: ");
+        dprintln!("{}", command.unwrap_or("\x1b[3m(end of input)").trim());
         command
     }
 }

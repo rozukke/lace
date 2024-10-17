@@ -1,8 +1,8 @@
-// macro_rules! dprint {
-//     ( $($tt:tt)* ) => {{
-//         eprint!(concat!("\x1b[{}m", $fmt, "\x1b[0m"), DEBUGGER_COLOR $($tt)*);
-//     }};
-// }
+macro_rules! dprint {
+    ( $fmt:literal $($tt:tt)* ) => {{
+        eprint!(concat!("\x1b[{}m", $fmt, "\x1b[0m"), DEBUGGER_COLOR $($tt)*);
+    }};
+}
 macro_rules! dprintln {
     () => {{
         eprintln!();
@@ -45,6 +45,9 @@ pub struct Debugger {
 pub enum Status {
     #[default]
     WaitForAction,
+    ContinueUntilZero {
+        count: u16,
+    },
     ContinueUntilBreakpoint,
     ContinueUntilEndOfSubroutine,
 }
@@ -53,7 +56,7 @@ pub enum Status {
 pub enum Action {
     Proceed,
     StopDebugger,
-    QuitProgram,
+    ExitProgram,
 }
 
 impl Debugger {
@@ -68,9 +71,26 @@ impl Debugger {
 
     pub(super) fn wait_for_action(&mut self, state: &mut RunState) -> Action {
         loop {
-            if let Some(action) = self.next_action(state) {
-                break action;
+            println!("{:?}", self.status);
+            match &mut self.status {
+                Status::WaitForAction => {
+                    let Some(action) = self.next_action(state) else {
+                        continue;
+                    };
+                    return action;
+                }
+
+                Status::ContinueUntilZero { count: 0 | 1 } => self.status = Status::WaitForAction,
+                Status::ContinueUntilZero { count } => *count -= 1,
+
+                Status::ContinueUntilBreakpoint => {
+                    // TODO
+                }
+                Status::ContinueUntilEndOfSubroutine => {
+                    // TODO
+                }
             }
+            return Action::Proceed;
         }
     }
 
@@ -85,6 +105,10 @@ impl Debugger {
             Command::Continue => {
                 self.status = Status::ContinueUntilBreakpoint;
                 dprintln!("Continuing...");
+            }
+
+            Command::Step { count } => {
+                self.status = Status::ContinueUntilZero { count };
             }
 
             Command::Get { location } => match location {
@@ -126,6 +150,11 @@ impl Debugger {
                 }
             },
 
+            Command::Registers => Self::print_registers(state),
+
+            Command::Quit => return Some(Action::StopDebugger),
+            Command::Exit => return Some(Action::ExitProgram),
+
             _ => {
                 dprintln!("unimplemented");
             }
@@ -153,6 +182,16 @@ impl Debugger {
 
             return Some(command);
         }
+    }
+
+    fn print_registers(state: &mut RunState) {
+        dprintln!("----------------------");
+        dprintln!("| Registers:");
+        for i in 0..8 {
+            dprint!("| R{}  ", i);
+            Self::print_integer(*state.reg(i));
+        }
+        dprintln!("----------------------");
     }
 
     fn print_integer(value: u16) {
