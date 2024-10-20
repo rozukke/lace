@@ -71,7 +71,8 @@ impl<'a> CommandIter<'a> {
         }
     }
 
-    pub fn next_command_name(&mut self) -> Result<&str> {
+    /// Used for both main command and subcommand (such as `break add`)
+    pub fn next_command_name(&mut self) -> Option<&str> {
         self.skip_whitespace();
         self.reset_head();
 
@@ -80,9 +81,9 @@ impl<'a> CommandIter<'a> {
         }
 
         if self.get().is_empty() {
-            return Err(Error::MissingCommandName);
+            return None;
         }
-        Ok(self.take())
+        Some(self.take())
     }
 
     pub fn next_integer(&mut self) -> Result<u16> {
@@ -207,7 +208,7 @@ impl<'a> CommandIter<'a> {
         if let Some(label) = self.next_label_token()? {
             return Ok(Some(Argument::Label(label)));
         }
-        Err(Error::InvalidArgument)
+        Err(Error::InvalidArgumentToken)
     }
 
     fn next_register(&mut self) -> Option<Register> {

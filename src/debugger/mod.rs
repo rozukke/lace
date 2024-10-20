@@ -108,21 +108,28 @@ impl Debugger {
 
         loop {
             println!("{:?}", self.status);
-            match &mut self.status {
+            return match &mut self.status {
                 Status::WaitForAction => {
                     let Some(action) = self.next_action(state) else {
                         continue;
                     };
-                    return action;
+                    action
                 }
 
-                Status::Step { count: 0 } => self.status = Status::WaitForAction,
-                Status::Step { count } => *count -= 1,
+                Status::Step { count } => {
+                    if *count > 0 {
+                        *count -= 1;
+                    } else {
+                        self.status = Status::WaitForAction;
+                    }
+                    Action::Proceed
+                }
 
                 Status::Next { return_addr } => {
                     if state.pc() == return_addr {
                         self.status = Status::WaitForAction;
                     }
+                    Action::Proceed
                 }
 
                 Status::Continue => {
@@ -134,7 +141,9 @@ impl Debugger {
                         }
                         _ => (),
                     }
+                    Action::Proceed
                 }
+
                 Status::Finish => {
                     // TODO(feat): Breakpoints
                     match instr {
@@ -149,9 +158,9 @@ impl Debugger {
                         }
                         _ => (),
                     }
+                    Action::Proceed
                 }
-            }
-            return Action::Proceed;
+            };
         }
     }
 
@@ -160,12 +169,18 @@ impl Debugger {
         let Some(command) = self.next_command() else {
             return Some(Action::StopDebugger); // EOF
         };
-        eprintln!("{:?}", command); // Never use color
 
         match command {
+            Command::Quit => return Some(Action::StopDebugger),
+            Command::Exit => return Some(Action::ExitProgram),
+
             Command::Continue => {
                 self.status = Status::Continue;
                 dprintln!("Continuing...");
+            }
+            Command::Finish => {
+                self.status = Status::Finish;
+                dprintln!("Finishing subroutine...");
             }
 
             Command::Step { count } => {
@@ -218,12 +233,13 @@ impl Debugger {
 
             Command::Registers => Self::print_registers(state),
 
-            Command::Quit => return Some(Action::StopDebugger),
-            Command::Exit => return Some(Action::ExitProgram),
+            Command::Reset => dprintln!("unimplemented: reset"),
+            Command::Source { .. } => dprintln!("unimplemented: source"),
+            Command::Eval { .. } => dprintln!("unimplemented: eval"),
 
-            _ => {
-                dprintln!("unimplemented");
-            }
+            Command::BreakAdd { .. } => dprintln!("unimplemented: break add"),
+            Command::BreakRemove { .. } => dprintln!("unimplemented: break remove"),
+            Command::BreakList { .. } => dprintln!("unimplemented: break list"),
         }
 
         None
@@ -241,7 +257,8 @@ impl Debugger {
             let command = match Command::try_from(line) {
                 Ok(command) => command,
                 Err(error) => {
-                    dprintln!("{:?}", error);
+                    dprintln!("{}", error);
+                    dprintln!("Type `help` for a list of commands.");
                     continue;
                 }
             };

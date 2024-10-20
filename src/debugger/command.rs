@@ -1,3 +1,5 @@
+use std::fmt;
+
 use super::parse::CommandIter;
 use crate::symbol::Register;
 
@@ -62,15 +64,33 @@ pub enum EvalInstruction {}
 // TODO(refactor): Rename these variants
 #[derive(Debug, PartialEq)]
 pub enum Error {
-    MissingCommandName,
     InvalidCommandName,
+    InvalidSubcommand,
+    MissingSubcommand,
     MissingArgument,
     InvalidArgumentKind,
     TooManyArguments,
-    InvalidArgument,
+    InvalidArgumentToken,
     InvalidInteger,
     InvalidLabel,
     IntegerTooLarge,
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidCommandName => write!(f, "Not a command."),
+            Self::InvalidSubcommand => write!(f, "Invalid subcommand."),
+            Self::MissingSubcommand => write!(f, "Missing subcommand."),
+            Self::MissingArgument => write!(f, "Missing argument for command."),
+            Self::InvalidArgumentKind => write!(f, "Invalid argument type for command."),
+            Self::TooManyArguments => write!(f, "Too many arguments for command."),
+            Self::InvalidArgumentToken => write!(f, "Malformed argument."),
+            Self::InvalidInteger => write!(f, "Malformed integer argument."),
+            Self::InvalidLabel => write!(f, "Malformed label argument."),
+            Self::IntegerTooLarge => write!(f, "Integer argument too large for command."),
+        }
+    }
 }
 
 impl TryFrom<&str> for Command {
@@ -81,7 +101,24 @@ impl TryFrom<&str> for Command {
 
         // TODO(fix): Check bounds for integer arguments
         // TODO(feat): Add more aliases (such as undocumented typo aliases)
-        let name = iter.next_command_name()?;
+
+        let name = match iter.next_command_name() {
+            Some(name) => name,
+            None => {
+                // Command source should always return a string containing non-whitespace
+                // characters, so initial command name should always exist.
+                // Only panic in debug mode.
+                #[cfg(debug_assertions)]
+                {
+                    panic!("assertion failed: missing command name.");
+                }
+                #[cfg(not(debug_assertions))]
+                {
+                    ""
+                }
+            }
+        };
+
         let command = match name.to_lowercase().as_str() {
             "continue" | "c" => Self::Continue,
             "finish" | "f" => Self::Finish,
@@ -111,7 +148,9 @@ impl TryFrom<&str> for Command {
             }
 
             "break" | "b" => {
-                let subname = iter.next_command_name()?;
+                let Some(subname) = iter.next_command_name() else {
+                    return Err(Error::MissingSubcommand);
+                };
                 match subname.to_lowercase().as_str() {
                     "list" | "l" => Self::BreakList,
                     "add" | "a" => {
@@ -122,7 +161,7 @@ impl TryFrom<&str> for Command {
                         let location = iter.next_memory_location_or_default()?;
                         Self::BreakRemove { location }
                     }
-                    _ => return Err(Error::InvalidCommandName),
+                    _ => return Err(Error::InvalidSubcommand),
                 }
             }
             "breaklist" | "bl" => Self::BreakList,
