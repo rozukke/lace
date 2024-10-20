@@ -103,7 +103,7 @@ pub struct Label {
 pub enum EvalInstruction {}
 
 // TODO(refactor): Rename these variants
-// TODO(opt): Most `String` fields could be `&str`
+// TODO(opt): Most `String` fields could be `&str` (with difficulty, no doubt)
 #[derive(Debug, PartialEq)]
 pub enum Error {
     InvalidCommandName { name: String },
@@ -145,83 +145,15 @@ impl fmt::Display for Error {
     }
 }
 
-fn next_command_name(iter: &mut CommandIter) -> Result<CommandName, Error> {
-    let name = match iter.next_command_name() {
-        Some(name) => name,
-        None => {
-            // Command source should always return a string containing non-whitespace
-            // characters, so initial command name should always exist.
-            // Only panic in debug mode.
-            #[cfg(debug_assertions)]
-            {
-                panic!("assertion failed: missing command name.");
-            }
-            #[cfg(not(debug_assertions))]
-            {
-                ""
-            }
-        }
-    };
-
-    let name = match name.to_lowercase().as_str() {
-        "continue" | "c" => CommandName::Continue,
-        "finish" | "f" => CommandName::Finish,
-        "exit" | "e" => CommandName::Exit,
-        "quit" | "q" => CommandName::Quit,
-        "registers" | "r" => CommandName::Registers,
-        "reset" => CommandName::Reset,
-        "step" | "t" => CommandName::Step,
-        "next" | "n" => CommandName::Next,
-        "get" | "g" => CommandName::Get,
-        "set" | "s" => CommandName::Set,
-        "source" => CommandName::Source,
-        "breaklist" | "bl" => CommandName::BreakList,
-        "breakadd" | "ba" => CommandName::BreakAdd,
-        "breakremove" | "br" => CommandName::BreakRemove,
-        "break" | "b" => {
-            let name = name.to_string();
-            let Some(subname) = iter.next_command_name() else {
-                return Err(Error::MissingSubcommand { name });
-            };
-            match subname.to_lowercase().as_str() {
-                "list" | "l" => CommandName::BreakList,
-                "add" | "a" => CommandName::BreakAdd,
-                "remove" | "r" => CommandName::BreakRemove,
-                _ => {
-                    return Err(Error::InvalidSubcommand {
-                        name,
-                        subname: subname.to_string(),
-                    });
-                }
-            }
-        }
-        "eval" => {
-            eprintln!("unimplemented: eval command");
-            return Err(Error::InvalidCommandName {
-                name: "eval".to_string(),
-            });
-        }
-        _ => {
-            return Err(Error::InvalidCommandName {
-                name: name.to_string(),
-            })
-        }
-    };
-
-    Ok(name)
-}
-
 impl TryFrom<&str> for Command {
     type Error = Error;
 
     fn try_from(line: &str) -> std::result::Result<Self, Self::Error> {
         let mut iter = CommandIter::from(line);
 
-        // TODO(fix): Check bounds for integer arguments
-        // TODO(feat): Add more aliases (such as undocumented typo aliases)
+        // TODO(fix): Check bounds-checking for integer arguments?
 
-        let name = next_command_name(&mut iter)?;
-
+        let name = iter.get_command_name()?;
         let command = match name {
             CommandName::Continue => Self::Continue,
             CommandName::Finish => Self::Finish,

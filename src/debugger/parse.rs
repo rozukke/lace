@@ -71,19 +71,63 @@ impl<'a> CommandIter<'a> {
         }
     }
 
-    /// Used for both main command and subcommand (such as `break add`)
-    pub fn next_command_name(&mut self) -> Option<&str> {
-        self.skip_whitespace();
-        self.reset_head();
-
-        while self.peek().is_some_and(|ch| ch.is_alphanumeric()) {
-            self.next();
-        }
-
-        if self.get().is_empty() {
-            return None;
-        }
-        Some(self.take())
+    pub fn get_command_name(&mut self) -> Result<CommandName> {
+        let name = match self.next_command_name_part() {
+            Some(name) => name,
+            None => {
+                // Command source should always return a string containing non-whitespace
+                // characters, so initial command name should always exist.
+                // Only panic in debug mode.
+                #[cfg(debug_assertions)]
+                {
+                    panic!("assertion failed: missing command name.");
+                }
+                #[cfg(not(debug_assertions))]
+                {
+                    ""
+                }
+            }
+        };
+        // TODO(feat): Add more aliases (such as undocumented typo aliases)
+        Ok(match name.to_lowercase().as_str() {
+            "continue" | "c" => CommandName::Continue,
+            "finish" | "f" => CommandName::Finish,
+            "exit" | "e" => CommandName::Exit,
+            "quit" | "q" => CommandName::Quit,
+            "registers" | "r" => CommandName::Registers,
+            "reset" => CommandName::Reset,
+            "step" | "t" => CommandName::Step,
+            "next" | "n" => CommandName::Next,
+            "get" | "g" => CommandName::Get,
+            "set" | "s" => CommandName::Set,
+            "source" => CommandName::Source,
+            "eval" => CommandName::Eval,
+            "breaklist" | "bl" => CommandName::BreakList,
+            "breakadd" | "ba" => CommandName::BreakAdd,
+            "breakremove" | "br" => CommandName::BreakRemove,
+            "break" | "b" => {
+                let name = name.to_string();
+                let Some(subname) = self.next_command_name_part() else {
+                    return Err(Error::MissingSubcommand { name });
+                };
+                match subname.to_lowercase().as_str() {
+                    "list" | "l" => CommandName::BreakList,
+                    "add" | "a" => CommandName::BreakAdd,
+                    "remove" | "r" => CommandName::BreakRemove,
+                    _ => {
+                        return Err(Error::InvalidSubcommand {
+                            name,
+                            subname: subname.to_string(),
+                        });
+                    }
+                }
+            }
+            _ => {
+                return Err(Error::InvalidCommandName {
+                    name: name.to_string(),
+                })
+            }
+        })
     }
 
     pub fn next_integer(&mut self, name: CommandName) -> Result<u16> {
@@ -186,6 +230,21 @@ impl<'a> CommandIter<'a> {
             self.next();
         }
         self.set_base();
+    }
+
+    /// Used for both main command and subcommand (such as `break add`)
+    fn next_command_name_part(&mut self) -> Option<&str> {
+        self.skip_whitespace();
+        self.reset_head();
+
+        while self.peek().is_some_and(|ch| ch.is_alphanumeric()) {
+            self.next();
+        }
+
+        if self.get().is_empty() {
+            return None;
+        }
+        Some(self.take())
     }
 
     fn next_argument(&mut self) -> Result<Option<Argument>> {
@@ -445,7 +504,7 @@ mod tests {
         let line = "  name  -54  r3 0x5812 Foo name2  Bar+0x04 4209";
         let mut iter = CommandIter::from(line);
 
-        assert_eq!(iter.next_command_name(), Ok("name"));
+        assert_eq!(iter.next_command_name_part(), Ok("name"));
         assert_eq!(iter.next_argument(), Ok(Some(Argument::Integer(-54))));
         assert_eq!(
             iter.next_argument(),
@@ -459,7 +518,7 @@ mod tests {
                 offset: 0,
             })))
         );
-        assert_eq!(iter.next_command_name(), Ok("name2"));
+        assert_eq!(iter.next_command_name_part(), Ok("name2"));
         assert_eq!(
             iter.next_argument(),
             Ok(Some(Argument::Label(Label {
