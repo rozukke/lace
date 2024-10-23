@@ -121,6 +121,20 @@ pub enum AirStmt {
         dest_reg: Register,
         offset: u8,
     },
+    /// Push onto stack (extended dialect)
+    Push {
+        src_reg: Register,
+    },
+    /// Pop from stack (extended dialect)
+    Pop {
+        dest_reg: Register,
+    },
+    /// Jump to subroutine and push onto stack (extended dialect)
+    Call {
+        dest_label: Label,
+    },
+    /// Return from subroutine using stack (extended dialect)
+    Rets,
     /// A raw value created during preprocessing
     RawWord { val: RawWord },
     /// Jump to address at index trap_vect of the trap table
@@ -183,6 +197,7 @@ impl AsmLine {
             AirStmt::StoreInd {
                 ref mut dest_label, ..
             } => dest_label,
+            AirStmt::Call { ref mut dest_label } => dest_label,
             _ => return Ok(()),
         };
         *inner_label = inner_label.clone().filled()?;
@@ -307,6 +322,46 @@ impl AsmLine {
                 raw |= (*src_reg as u16) << 9;
                 raw |= (*dest_reg as u16) << 6;
                 raw |= *offset as u16;
+                Ok(raw)
+            }
+            // In order to be able to do push, pop, call and rets with the same instruction, a new format
+            // must be used where there are two specifier bits (one to specify if it's subroutine call related,
+            // and the second to specify if it's a push operation, i.e. call and push) as below:
+            //
+            //  1     2  3  4  5    6
+            // [1101][1][1][0][000][000000]
+            //
+            // Explanation:
+            // 1. Opcode
+            // 2. 1 if call/rets, 0 if push/pop
+            // 3. 1 if call/push, 0 if rets/pop
+            // 4. Offset starts here when call
+            // 5. Base pointer located here when push/pop, continued offset when call
+            // 6. Continued offset when call
+            //
+            // There are 10 bits of offset precision when using a call instruction.
+            // There also isn't really a way to work around this setup if other instructions 
+            // are to be left untouched.
+            AirStmt::Push { src_reg } => {
+                let mut raw = 0xD000;
+                raw |= 0x0400;
+                raw |= (*src_reg as u16) << 6;
+                Ok(raw)
+            }
+            AirStmt::Pop { dest_reg } => {
+                let mut raw = 0xD000;
+                raw |= (*dest_reg as u16) << 6;
+                Ok(raw)
+            }
+            AirStmt::Call { dest_label } => {
+                let mut raw = 0xD000;
+                raw |= 0x0C00;
+                raw |= self.bit_offs(dest_label, 10)?;
+                Ok(raw)
+            }
+            AirStmt::Rets => {
+                let mut raw = 0xD000;
+                raw |= 0x0800;
                 Ok(raw)
             }
             AirStmt::RawWord { val: bytes } => Ok(bytes.0),

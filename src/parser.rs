@@ -199,6 +199,20 @@ impl AsmParser {
     fn parse_instr(&mut self, kind: InstrKind) -> Result<AirStmt> {
         use crate::symbol::InstrKind;
         match kind {
+            InstrKind::Push => {
+                let src_reg = self.expect_reg()?;
+                Ok(AirStmt::Push { src_reg })
+            }
+            InstrKind::Pop => {
+                let dest_reg = self.expect_reg()?;
+                Ok(AirStmt::Pop { dest_reg })
+            }
+            InstrKind::Call => {
+                let label_tok = self.expect(TokenKind::Label)?;
+                let dest_label = Label::try_fill(self.get_span(label_tok.span));
+                Ok(AirStmt::Call { dest_label })
+            }
+            InstrKind::Rets => Ok(AirStmt::Rets),
             InstrKind::Add => {
                 let dest = self.expect_reg()?;
                 let src_reg = self.expect_reg()?;
