@@ -504,7 +504,7 @@ mod tests {
         let line = "  name  -54  r3 0x5812 Foo name2  Bar+0x04 4209";
         let mut iter = CommandIter::from(line);
 
-        assert_eq!(iter.next_command_name_part(), Ok("name"));
+        assert_eq!(iter.next_command_name_part(), Some("name"));
         assert_eq!(iter.next_argument(), Ok(Some(Argument::Integer(-54))));
         assert_eq!(
             iter.next_argument(),
@@ -518,7 +518,7 @@ mod tests {
                 offset: 0,
             })))
         );
-        assert_eq!(iter.next_command_name_part(), Ok("name2"));
+        assert_eq!(iter.next_command_name_part(), Some("name2"));
         assert_eq!(
             iter.next_argument(),
             Ok(Some(Argument::Label(Label {
