@@ -105,9 +105,13 @@ impl RunEnvironment {
                     Action::Proceed => (),
                     Action::StopDebugger => {
                         self.debugger = None;
+                        dprintln!("Stopping debugger.");
                         continue; // Not technically necessary
                     }
-                    Action::ExitProgram => return,
+                    Action::ExitProgram => {
+                        dprintln!("Exiting program.");
+                        return;
+                    }
                 }
                 // If still stuck on HALT
                 // Never *execute* HALT while debugger is active

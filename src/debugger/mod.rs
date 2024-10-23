@@ -39,6 +39,8 @@ pub struct Debugger {
 
     // TODO(refactor): Make this good
     initial_state: Box<RunState>,
+
+    breakpoints: Vec<u16>,
 }
 
 #[allow(dead_code)]
@@ -95,6 +97,7 @@ impl Debugger {
             minimal: opts.minimal,
             source: SourceMode::from(opts.command),
             initial_state: Box::new(initial_state),
+            breakpoints: Vec::new(),
         }
     }
 
@@ -110,11 +113,18 @@ impl Debugger {
         let instr = RelevantInstr::try_from(*state.mem(pc)).ok();
         println!("Instruction: {:?}", instr);
 
-        // Always break from `continue`/`next`/`step` if HALT is reached
-        if instr == Some(RelevantInstr::TrapHalt) {
+        // Always break from `continue|finish|step|next` on a breakpoint or HALT
+        // Breaking on `RET` (for `finish`) is handled later
+        // Likewise for completing `step` or `next`
+        if self.breakpoints.contains(&pc) {
+            dprintln!("Breakpoint reached. Pausing execution.");
+            self.status = Status::WaitForAction;
+        } else if instr == Some(RelevantInstr::TrapHalt) {
             dprintln!("HALT reached. Pausing execution.");
             self.status = Status::WaitForAction;
         }
+
+        // TODO(fix): Only pause at breakpoint the first time it's encountered.
 
         return self.wait_for_single_action(state, instr);
     }
@@ -124,6 +134,7 @@ impl Debugger {
         state: &mut RunState,
         instr: Option<RelevantInstr>,
     ) -> Action {
+        // `HALT` and breakpoints should be already handled by caller
         loop {
             println!("{:?}", self.status);
             match &mut self.status {
@@ -133,7 +144,6 @@ impl Debugger {
                         return action;
                     }
                 }
-
                 Status::Step { count } => {
                     if *count > 0 {
                         *count -= 1;
@@ -142,33 +152,24 @@ impl Debugger {
                     }
                     return Action::Proceed;
                 }
-
                 Status::Next { return_addr } => {
                     if state.pc() == return_addr {
                         self.status = Status::WaitForAction;
                     }
                     return Action::Proceed;
                 }
-
                 Status::Continue => {
-                    // TODO(feat): Breakpoints
-                    // Halt already handled
                     return Action::Proceed;
                 }
-
                 Status::Finish => {
-                    // TODO(feat): Breakpoints
-                    // Halt already handled
-                    match instr {
-                        Some(RelevantInstr::Ret) => {
-                            dprintln!("RET reached. Pausing execution.");
-                            // Execute `RET` before prompting command again
-                            self.status = Status::Step { count: 0 };
-                        }
-                        _ => return Action::Proceed,
+                    if instr == Some(RelevantInstr::Ret) {
+                        dprintln!("RET reached. Pausing execution.");
+                        // Execute `RET` before prompting command again
+                        self.status = Status::Step { count: 0 };
                     }
+                    return Action::Proceed;
                 }
-            };
+            }
         }
     }
 
@@ -248,9 +249,49 @@ impl Debugger {
             Command::Source { .. } => dprintln!("unimplemented: source"),
             Command::Eval { .. } => dprintln!("unimplemented: eval"),
 
-            Command::BreakAdd { .. } => dprintln!("unimplemented: break add"),
-            Command::BreakRemove { .. } => dprintln!("unimplemented: break remove"),
-            Command::BreakList { .. } => dprintln!("unimplemented: break list"),
+            Command::BreakAdd { location } => {
+                let address = match location {
+                    MemoryLocation::Address(address) => address,
+                    MemoryLocation::PC => *state.pc(),
+                    MemoryLocation::Label(_) => {
+                        dprintln!("unimplemented: labels");
+                        return None;
+                    }
+                };
+                if self.breakpoints.contains(&address) {
+                    dprintln!("Breakpoint already exists at 0x{:04x}", address);
+                } else {
+                    self.breakpoints.push(address);
+                    dprintln!("Added breakpoint at 0x{:04x}", address);
+                }
+            }
+            Command::BreakRemove { location } => {
+                let address = match location {
+                    MemoryLocation::Address(address) => address,
+                    MemoryLocation::PC => *state.pc(),
+                    MemoryLocation::Label(_) => {
+                        dprintln!("unimplemented: labels");
+                        return None;
+                    }
+                };
+                if remove_item_if_exists(&mut self.breakpoints, address) {
+                    dprintln!("Removed breakpoint at 0x{:04x}", address);
+                } else {
+                    dprintln!("No breakpoint exists at 0x{:04x}", address);
+                }
+            }
+            Command::BreakList => {
+                if self.breakpoints.is_empty() {
+                    dprintln!("No breakpoints exist");
+                } else {
+                    dprintln!("Breakpoints:");
+                    for breakpoint in &self.breakpoints {
+                        dprintln!("0x{:04x}", breakpoint);
+                        // TODO(feat): This could print the instruction at the address, similar to
+                        // `source` command
+                    }
+                }
+            }
         }
 
         None
@@ -291,4 +332,13 @@ impl Debugger {
     fn print_integer(value: u16) {
         dprintln!("0x{:04x}\t{}", value, value);
     }
+}
+
+/// Removes every instance of `item` from `vec`
+///
+/// Returns whether `item` was found in `vec`
+fn remove_item_if_exists<T: PartialEq>(vec: &mut Vec<T>, item: T) -> bool {
+    let initial_len = vec.len();
+    vec.retain(|x| x != &item);
+    initial_len != vec.len()
 }
