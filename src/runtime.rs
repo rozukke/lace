@@ -8,7 +8,7 @@ use std::{
 
 use crate::{
     debugger::{Action, Debugger, DebuggerOptions, RelevantInstr},
-    Air,
+    dprintln, Air,
 };
 use colored::Colorize;
 use console::Term;
@@ -95,8 +95,12 @@ impl RunEnvironment {
     /// Run with preset memory
     pub fn run(&mut self) {
         loop {
-            println!("\nAt: 0x{:04x}", self.state.pc);
             if let Some(debugger) = &mut self.debugger {
+                // TODO(feat): This newline is often unneccessary
+                // A better option would be to keep track of whether stdout cursor is on a new line
+                // And only print \n if not
+                dprintln!();
+                dprintln!("\nProgram counter at: 0x{:04x}", self.state.pc);
                 match debugger.wait_for_action(&mut self.state) {
                     Action::Proceed => (),
                     Action::StopDebugger => {

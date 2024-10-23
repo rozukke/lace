@@ -7,6 +7,7 @@ pub use air::Air;
 // Running
 mod runtime;
 pub use runtime::RunEnvironment;
+#[macro_use]
 mod debugger;
 pub use debugger::DebuggerOptions;
 

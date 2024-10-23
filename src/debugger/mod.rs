@@ -1,14 +1,15 @@
 macro_rules! dprint {
     ( $fmt:literal $($tt:tt)* ) => {{
-        eprint!(concat!("\x1b[{}m", $fmt, "\x1b[0m"), DEBUGGER_COLOR $($tt)*);
+        eprint!(concat!("\x1b[{}m", $fmt, "\x1b[0m"), $crate::debugger::DEBUGGER_COLOR $($tt)*);
     }};
 }
+#[macro_export]
 macro_rules! dprintln {
     () => {{
         eprintln!();
     }};
     ( $fmt:literal $($tt:tt)* ) => {{
-        eprintln!(concat!("\x1b[{}m", $fmt, "\x1b[0m"), DEBUGGER_COLOR $($tt)*);
+        eprintln!(concat!("\x1b[{}m", $fmt, "\x1b[0m"), $crate::debugger::DEBUGGER_COLOR $($tt)*);
     }};
 }
 
@@ -20,7 +21,7 @@ use crate::runtime::RunState;
 use command::{Command, Location, MemoryLocation};
 use source::{SourceMode, SourceReader};
 
-const DEBUGGER_COLOR: u8 = 34;
+pub const DEBUGGER_COLOR: u8 = 34;
 
 // TODO(refactor): Perhaps there is `clap` trait that can be implemented for
 // this struct, to avoid field duplication in `Command` enum
@@ -172,7 +173,6 @@ impl Debugger {
     }
 
     fn next_action(&mut self, state: &mut RunState) -> Option<Action> {
-        dprintln!();
         let Some(command) = self.next_command() else {
             return Some(Action::StopDebugger); // EOF
         };
@@ -242,7 +242,7 @@ impl Debugger {
 
             Command::Reset => {
                 *state = *self.initial_state.clone();
-                println!("RESET TO INITIAL STATE");
+                dprintln!("RESET TO INITIAL STATE");
             }
 
             Command::Source { .. } => dprintln!("unimplemented: source"),
