@@ -338,6 +338,10 @@ impl Cursor<'_> {
             "st" => Instr(St),
             "sti" => Instr(Sti),
             "str" => Instr(Str),
+            "pop" => Instr(Pop),
+            "push" => Instr(Push),
+            "call" => Instr(Call),
+            "rets" => Instr(Rets),
             _ => TokenKind::Label,
         }
     }
