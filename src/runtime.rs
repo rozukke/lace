@@ -6,7 +6,10 @@ use std::{
     u16, u32, u8, usize,
 };
 
-use crate::{debugger::Action, Air, Debugger, DebuggerOptions};
+use crate::{
+    debugger::{Action, Debugger, DebuggerOptions, RelevantInstr},
+    Air,
+};
 use colored::Colorize;
 use console::Term;
 use miette::Result;
@@ -96,16 +99,30 @@ impl RunEnvironment {
             if let Some(debugger) = &mut self.debugger {
                 match debugger.wait_for_action(&mut self.state) {
                     Action::Proceed => (),
-                    Action::StopDebugger => self.debugger = None,
+                    Action::StopDebugger => {
+                        self.debugger = None;
+                        continue; // Not technically necessary
+                    }
                     Action::ExitProgram => return,
                 }
+                // If still stuck on HALT
+                // Never *execute* HALT while debugger is active
+                // Wait for pc to change, such as `reset` command
+                // Or `exit` or `quit`
+                if RelevantInstr::try_from(self.state.mem[self.state.pc as usize])
+                    == Ok(RelevantInstr::TrapHalt)
+                {
+                    continue;
+                }
             }
-            println!("Run...");
 
             if self.state.pc >= 0xFE00 {
                 // Entering device address space
                 break;
             }
+            println!("EXECUTING ONE INSTRUCTION!");
+            // TODO(refactor): Could this line be moved to top of loop? It shouldn't cause out of
+            // bounds access I don't think.
             let instr = self.state.mem[self.state.pc as usize];
             let opcode = (instr >> 12) as usize;
             // PC incremented before instruction is performed

@@ -62,8 +62,8 @@ pub enum Action {
     ExitProgram,
 }
 
-#[derive(Debug)]
-enum RelevantInstr {
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum RelevantInstr {
     /// Return from a subroutine
     /// Used by `Finish`
     Ret,
@@ -72,14 +72,18 @@ enum RelevantInstr {
     TrapHalt,
 }
 
-fn parse_relevant_instruction(instr: u16) -> Option<RelevantInstr> {
-    let opcode = instr >> 12;
-    match opcode {
-        // `RET` is `JMP R7`
-        0xC if (instr >> 6) & 0b111 == 7 => Some(RelevantInstr::Ret),
-        // `HALT` is `TRAP 0x25`
-        0xF if instr & 0xFF == 0x25 => Some(RelevantInstr::TrapHalt),
-        _ => None,
+impl TryFrom<u16> for RelevantInstr {
+    type Error = ();
+
+    fn try_from(instr: u16) -> Result<Self, Self::Error> {
+        let opcode = instr >> 12;
+        match opcode {
+            // `RET` is `JMP R7`
+            0xC if (instr >> 6) & 0b111 == 7 => Ok(RelevantInstr::Ret),
+            // `HALT` is `TRAP 0x25`
+            0xF if instr & 0xFF == 0x25 => Ok(RelevantInstr::TrapHalt),
+            _ => Err(()),
+        }
     }
 }
 
@@ -95,25 +99,38 @@ impl Debugger {
 
     pub(super) fn wait_for_action(&mut self, state: &mut RunState) -> Action {
         let pc = *state.pc();
+
         // 0xFFFF signifies a HALT so don't warn for that
         if pc >= 0xFE00 && pc < 0xFFFF {
             dprintln!("WARNING: Program counter entered device address space");
             return Action::Proceed;
         }
 
-        let instr = parse_relevant_instruction(*state.mem(pc));
+        let instr = RelevantInstr::try_from(*state.mem(pc)).ok();
         println!("Instruction: {:?}", instr);
 
-        // TODO: Handle HALT
+        // Always break from `continue`/`next`/`step` if HALT is reached
+        if instr == Some(RelevantInstr::TrapHalt) {
+            dprintln!("HALT reached. Pausing execution.");
+            self.status = Status::WaitForAction;
+        }
 
+        return self.wait_for_single_action(state, instr);
+    }
+
+    fn wait_for_single_action(
+        &mut self,
+        state: &mut RunState,
+        instr: Option<RelevantInstr>,
+    ) -> Action {
         loop {
             println!("{:?}", self.status);
-            return match &mut self.status {
+            match &mut self.status {
                 Status::WaitForAction => {
-                    let Some(action) = self.next_action(state) else {
-                        continue;
-                    };
-                    action
+                    // Continue loop until action is given
+                    if let Some(action) = self.next_action(state) {
+                        return action;
+                    }
                 }
 
                 Status::Step { count } => {
@@ -122,43 +139,33 @@ impl Debugger {
                     } else {
                         self.status = Status::WaitForAction;
                     }
-                    Action::Proceed
+                    return Action::Proceed;
                 }
 
                 Status::Next { return_addr } => {
                     if state.pc() == return_addr {
                         self.status = Status::WaitForAction;
                     }
-                    Action::Proceed
+                    return Action::Proceed;
                 }
 
                 Status::Continue => {
                     // TODO(feat): Breakpoints
-                    match instr {
-                        Some(RelevantInstr::TrapHalt) => {
-                            dprintln!("HALT reached. Pausing execution.");
-                            self.status = Status::WaitForAction;
-                        }
-                        _ => (),
-                    }
-                    Action::Proceed
+                    // Halt already handled
+                    return Action::Proceed;
                 }
 
                 Status::Finish => {
                     // TODO(feat): Breakpoints
+                    // Halt already handled
                     match instr {
-                        Some(RelevantInstr::TrapHalt) => {
-                            dprintln!("HALT reached. Pausing execution.");
-                            self.status = Status::WaitForAction;
-                        }
                         Some(RelevantInstr::Ret) => {
                             dprintln!("RET reached. Pausing execution.");
                             // Execute `RET` before prompting command again
                             self.status = Status::Step { count: 0 };
                         }
-                        _ => (),
+                        _ => return Action::Proceed,
                     }
-                    Action::Proceed
                 }
             };
         }
@@ -233,7 +240,11 @@ impl Debugger {
 
             Command::Registers => Self::print_registers(state),
 
-            Command::Reset => dprintln!("unimplemented: reset"),
+            Command::Reset => {
+                *state = *self.initial_state.clone();
+                println!("RESET TO INITIAL STATE");
+            }
+
             Command::Source { .. } => dprintln!("unimplemented: source"),
             Command::Eval { .. } => dprintln!("unimplemented: eval"),
 
