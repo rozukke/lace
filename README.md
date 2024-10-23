@@ -21,6 +21,17 @@ a different LC3 virtual machine to test them out until that is implemented.
 - `fmt`: **(planned)** formats your *.asm* file to fit my arbitrary style guide.
 - `clean`: **(planned)** used to clean debug artifacts that will be implemented in the future.
 
+## Instruction set extension
+LC3 is unfortunately limited in terms of functionality, with the absence of a stack being the most painful missing feature.
+Luckily, LC3 also comes with a spare opcode (0b1101/0xD), which I have used to implement stack-based instructions on top 
+of the existing set. The new instructions are:
+- `call` - call a subroutine using a label with 10 bits of precision, and push program counter to stack (usage: `call label`)
+- `rets` - pop address off the stack and set program counter to its value (usage: `rets` after calling subroutine)
+- `push` - push the contents of a register onto the stack (usage: `push r0`)
+- `pop` - pop the top value of the stack off into a register (usage: `pop r0` after pushing)
+
+Please note that these instructions will only function when using the `lace` virtual machine and `run` command.
+
 ## Traps
 There are a few extra traps that should make debugging a lot nicer! Please note that they will not perform as expected when you run
 your binaries with other virtual machines.
@@ -29,7 +40,6 @@ your binaries with other virtual machines.
 
 ## Work in progress
 There are several features and fixes under development:
-- Putsp trap
 - Showing multiple errors per compilation
 - Different number formats for console output
 - File formatting
@@ -50,6 +60,18 @@ cd lace
 cargo install --path .
 ```
 You should, as a result, have the `lace` binary available in your PATH.
+
+## Examples
+Some examples are available under the *tests/files* directory for testing purposes. You can run them with LC3, e.g.
+`lace run tests/files/hw.asm`.
+
+## Contributors
+A huge thank you to [@dxrcy](https://github.com/dxrcy) for various additions and bugfixes, including continued work
+on the debugger implementation!
+
+<a href="https://github.com/rozukke/lace/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=rozukke/lace" />
+</a>
 
 ## License
 Copyright (c) 2024 Artemis Rosman

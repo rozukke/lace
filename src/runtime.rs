@@ -84,7 +84,7 @@ impl RunEnvironment {
             state: RunState {
                 mem: Box::new(mem),
                 pc: orig as u16,
-                reg: [0; 8],
+                reg: [0, 0, 0, 0, 0, 0, 0, 0xFDFF],
                 flag: RunFlag::Uninit,
                 _psr: 0,
             },
@@ -142,22 +142,22 @@ impl RunEnvironment {
 
 impl RunState {
     const OP_TABLE: [fn(&mut RunState, u16); 16] = [
-        Self::br,   // 0x0
-        Self::add,  // 0x1
-        Self::ld,   // 0x2
-        Self::st,   // 0x3
-        Self::jsr,  // 0x4
-        Self::and,  // 0x5
-        Self::ldr,  // 0x6
-        Self::str,  // 0x7
-        Self::rti,  // 0x8
-        Self::not,  // 0x9
-        Self::ldi,  // 0xA
-        Self::sti,  // 0xB
-        Self::jmp,  // 0xC
-        Self::nul,  // 0xD
-        Self::lea,  // 0xE
-        Self::trap, // 0xF
+        Self::br,    // 0x0
+        Self::add,   // 0x1
+        Self::ld,    // 0x2
+        Self::st,    // 0x3
+        Self::jsr,   // 0x4
+        Self::and,   // 0x5
+        Self::ldr,   // 0x6
+        Self::str,   // 0x7
+        Self::rti,   // 0x8
+        Self::not,   // 0x9
+        Self::ldi,   // 0xA
+        Self::sti,   // 0xB
+        Self::jmp,   // 0xC
+        Self::stack, // 0xD
+        Self::lea,   // 0xE
+        Self::trap,  // 0xF
     ];
 
     #[inline]
@@ -199,8 +199,46 @@ impl RunState {
         }
     }
 
-    fn nul(&mut self, _instr: u16) {
-        panic!("You called a reserved instruction. Halting...")
+    fn stack(&mut self, instr: u16) {
+        // Bit to determine call/ret or push/pop
+        if instr & 0x0800 != 0 {
+            // Call
+            if instr & 0x0400 != 0 {
+                self.push_val(self.pc);
+                self.pc = self.pc.wrapping_add(Self::s_ext(instr, 10));
+            }
+            // Ret
+            else {
+                self.pc = self.pop_val();
+            }
+        } else {
+            let reg = (instr >> 6) & 0b111;
+            // Push
+            if instr & 0x0400 != 0 {
+                let val = *self.reg(reg);
+                self.push_val(val);
+            }
+            // Pop
+            else {
+                let val = self.pop_val();
+                *self.reg(reg) = val;
+            }
+        }
+    }
+
+    fn push_val(&mut self, val: u16) {
+        // Decrement stack
+        *self.reg(7) -= 1;
+        let sp = *self.reg(7);
+        // Save onto stack
+        *self.mem(sp) = val;
+    }
+
+    fn pop_val(&mut self) -> u16 {
+        let sp = *self.reg(7);
+        let val = *self.mem(sp);
+        *self.reg(7) += 1;
+        val
     }
 
     fn add(&mut self, instr: u16) {
