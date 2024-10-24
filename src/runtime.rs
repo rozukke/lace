@@ -117,15 +117,16 @@ impl RunState {
     }
 
     #[inline]
-    fn s_ext(val: u16, bits: u32) -> u16 {
-        let val = val & (2u16.pow(bits) - 1);
-        if val & 2u16.pow(bits - 1) == 0 {
-            // positive
-            val
-        } else {
-            // negative
-            val | !(2u16.pow(bits) - 1)
-        }
+    fn s_ext(mut val: u16, bits: u32) -> u16 {
+        debug_assert!(bits > 0 && bits < 16);
+        // Sign bit
+        let sign = val & (1u16 << (bits - 1));
+        // Bits lower than sign bit
+        val &= (1u16 << bits) - 1;
+        // Positive sign will always result in an extension of 0x0000
+        // Negative sign will will set all upper bits and sign bit to 1
+        let sign_extension = (!sign).wrapping_add(1); // sign * -1
+        val | sign_extension
     }
 
     #[inline]
@@ -385,5 +386,93 @@ fn read_input() -> u8 {
         let mut buf = [0; 1];
         stdin().read_exact(&mut buf).unwrap();
         buf[0]
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn s_ext() {
+        fn expect(input: u16, bits: u32, expected: u16) {
+            let actual = RunState::s_ext(input, bits);
+            if actual != expected {
+                std::panic!(
+                    "\ns_ext(0x{input:04x}, {bits})\n  Expected: 0x{expected:04x}\n    Actual: 0x{actual:04x}\n"
+                );
+            }
+        }
+
+        expect(0x0000, 15, 0x0000);
+        expect(0x0000, 1, 0x0000);
+
+        expect(0x0001, 15, 0x0001);
+        expect(0x0001, 2, 0x0001);
+        expect(0x0001, 1, 0xffff);
+
+        expect(0x00ff, 15, 0x00ff);
+        expect(0x00ff, 9, 0x00ff);
+        expect(0x00ff, 8, 0xffff);
+        expect(0x00ff, 7, 0xffff);
+
+        expect(0x0100, 15, 0x0100);
+        expect(0x0100, 10, 0x0100);
+        expect(0x0100, 9, 0xff00);
+        expect(0x0100, 8, 0x0000);
+
+        expect(0x03ff, 15, 0x03ff);
+        expect(0x03ff, 11, 0x03ff);
+        expect(0x03ff, 10, 0xffff);
+        expect(0x03ff, 7, 0xffff);
+
+        expect(0x0400, 15, 0x0400);
+        expect(0x0400, 12, 0x0400);
+        expect(0x0400, 11, 0xfc00);
+        expect(0x0400, 10, 0x0000);
+
+        expect(0x07ff, 15, 0x07ff);
+        expect(0x07ff, 12, 0x07ff);
+        expect(0x07ff, 11, 0xffff);
+        expect(0x07ff, 7, 0xffff);
+
+        expect(0x0fff, 15, 0x0fff);
+        expect(0x0fff, 13, 0x0fff);
+        expect(0x0fff, 12, 0xffff);
+        expect(0x0fff, 11, 0xffff);
+
+        expect(0x1000, 15, 0x1000);
+        expect(0x1000, 14, 0x1000);
+        expect(0x1000, 13, 0xf000);
+        expect(0x1000, 12, 0x0000);
+        expect(0x1000, 11, 0x0000);
+
+        expect(0x1fff, 15, 0x1fff);
+        expect(0x1fff, 14, 0x1fff);
+        expect(0x1fff, 13, 0xffff);
+
+        expect(0x3000, 15, 0x3000);
+        expect(0x3000, 14, 0xf000);
+        expect(0x3000, 13, 0xf000);
+        expect(0x3000, 12, 0x0000);
+
+        expect(0x3fff, 15, 0x3fff);
+        expect(0x3fff, 14, 0xffff);
+        expect(0x3fff, 11, 0xffff);
+
+        expect(0x7000, 15, 0xf000);
+        expect(0x7000, 13, 0xf000);
+        expect(0x7000, 12, 0x0000);
+
+        expect(0x7fff, 15, 0xffff);
+        expect(0x7fff, 11, 0xffff);
+
+        expect(0xfffe, 15, 0xfffe);
+        expect(0xfffe, 9, 0xfffe);
+        expect(0xfffe, 2, 0xfffe);
+        expect(0xfffe, 1, 0x0000);
+
+        expect(0xffff, 15, 0xffff);
+        expect(0xffff, 1, 0xffff);
     }
 }
