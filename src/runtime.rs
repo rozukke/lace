@@ -122,10 +122,9 @@ impl RunState {
         // Sign bit
         let sign = val & (1u16 << (bits - 1));
         // Bits lower than sign bit
-        // Positive input: all bits unset; 0x0000
-        // Negative input: sign bit and above will be set, lower bits will be reset
-        //      Eg. bits=14 -> 0xE000
         val &= (1u16 << bits) - 1;
+        // Positive sign will always result in an extension of 0x0000
+        // Negative sign will will set all upper bits and sign bit to 1
         let sign_extension = (!sign).wrapping_add(1); // sign * -1
         val | sign_extension
     }
