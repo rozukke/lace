@@ -117,17 +117,17 @@ impl RunState {
     }
 
     #[inline]
-    fn s_ext(val: u16, bits: u32) -> u16 {
+    fn s_ext(mut val: u16, bits: u32) -> u16 {
         debug_assert!(bits > 0 && bits < 16);
         // Sign bit
         let sign = val & (1u16 << (bits - 1));
         // Bits lower than sign bit
-        let magnitude = val & ((1u16 << bits) - 1);
         // Positive input: all bits unset; 0x0000
         // Negative input: sign bit and above will be set, lower bits will be reset
         //      Eg. bits=14 -> 0xE000
+        val &= (1u16 << bits) - 1;
         let sign_extension = (!sign).wrapping_add(1); // sign * -1
-        magnitude | sign_extension
+        val | sign_extension
     }
 
     #[inline]
