@@ -426,10 +426,11 @@ mod test {
             for (i, expected) in expecteds.iter().enumerate() {
                 let bits = 15 - i as u32;
                 let actual = RunState::s_ext(*input, bits);
-                assert_eq!(
-                    actual, *expected,
-                    "s_ext(0x{expected:04x}, {bits}) == 0x{actual:04x}"
-                );
+                if actual != *expected {
+                    std::panic!(
+                        "\ns_ext(0x{input:04x}, {bits})\n  Expected: 0x{expected:04x}\n    Actual: 0x{actual:04x}\n"
+                    );
+                }
             }
         }
     }
