@@ -41,6 +41,7 @@ pub struct Debugger {
     initial_state: Box<RunState>,
 
     breakpoints: Vec<u16>,
+    current_breakpoint: Option<u16>,
 }
 
 #[allow(dead_code)]
@@ -98,6 +99,7 @@ impl Debugger {
             source: SourceMode::from(opts.command),
             initial_state: Box::new(initial_state),
             breakpoints: Vec::new(),
+            current_breakpoint: None,
         }
     }
 
@@ -116,12 +118,16 @@ impl Debugger {
         // Always break from `continue|finish|step|next` on a breakpoint or HALT
         // Breaking on `RET` (for `finish`) is handled later
         // Likewise for completing `step` or `next`
-        if self.breakpoints.contains(&pc) {
+        if self.breakpoints.contains(&pc) && self.current_breakpoint != Some(pc) {
             dprintln!("Breakpoint reached. Pausing execution.");
+            self.current_breakpoint = Some(pc);
             self.status = Status::WaitForAction;
-        } else if instr == Some(RelevantInstr::TrapHalt) {
-            dprintln!("HALT reached. Pausing execution.");
-            self.status = Status::WaitForAction;
+        } else {
+            self.current_breakpoint = None;
+            if instr == Some(RelevantInstr::TrapHalt) {
+                dprintln!("HALT reached. Pausing execution.");
+                self.status = Status::WaitForAction;
+            }
         }
 
         // TODO(fix): Only pause at breakpoint the first time it's encountered.
