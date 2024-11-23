@@ -153,7 +153,7 @@ impl RunEnvironment {
                 // Entering device address space
                 break;
             }
-            dprintln!("-- executing one instruction!");
+            dprintln!("\x1b[2m-- executing one instruction!");
 
             let instr = self.state.mem[self.state.pc as usize];
             let opcode = (instr >> 12) as usize;
