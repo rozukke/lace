@@ -182,6 +182,11 @@ impl Debugger {
             Command::Quit => return Some(Action::StopDebugger),
             Command::Exit => return Some(Action::ExitProgram),
 
+            Command::Help => {
+                dprintln!("-- LACE DEBUGGER --");
+                dprintln!("um idk figure it out yourself.");
+            }
+
             Command::Continue => {
                 self.status = Status::Continue;
                 dprintln!("Continuing...");

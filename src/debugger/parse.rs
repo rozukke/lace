@@ -90,6 +90,7 @@ impl<'a> CommandIter<'a> {
         };
         // TODO(feat): Add more aliases (such as undocumented typo aliases)
         Ok(match name.to_lowercase().as_str() {
+            "help" | "h" => CommandName::Help,
             "continue" | "c" => CommandName::Continue,
             "finish" | "f" => CommandName::Finish,
             "exit" | "e" => CommandName::Exit,

@@ -6,6 +6,7 @@ use crate::symbol::Register;
 #[allow(dead_code)]
 #[derive(Debug)]
 pub enum Command {
+    Help,
     Step {
         count: u16,
     },
@@ -39,6 +40,7 @@ pub enum Command {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum CommandName {
+    Help,
     Step,
     Next,
     Continue,
@@ -59,6 +61,7 @@ pub(super) enum CommandName {
 impl fmt::Display for CommandName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Help => write!(f, "help"),
             Self::Step => write!(f, "step"),
             Self::Next => write!(f, "next"),
             Self::Continue => write!(f, "continue"),
@@ -155,6 +158,7 @@ impl TryFrom<&str> for Command {
 
         let name = iter.get_command_name()?;
         let command = match name {
+            CommandName::Help => Self::Help,
             CommandName::Continue => Self::Continue,
             CommandName::Finish => Self::Finish,
             CommandName::Exit => Self::Exit,
