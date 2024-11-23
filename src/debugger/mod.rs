@@ -117,7 +117,7 @@ impl Debugger {
         }
 
         let instr = RelevantInstr::try_from(*state.mem(pc)).ok();
-        println!("Instruction: {:?}", instr);
+        dprintln!("-- Instruction: {:?}", instr);
 
         // Always break from `continue|finish|step|next` on a breakpoint or HALT
         // Breaking on `RET` (for `finish`) is handled later
@@ -146,7 +146,7 @@ impl Debugger {
     ) -> Action {
         // `HALT` and breakpoints should be already handled by caller
         loop {
-            println!("{:?}", self.status);
+            dprintln!("-- {:?}", self.status);
             match &mut self.status {
                 Status::WaitForAction => {
                     // Continue loop until action is given

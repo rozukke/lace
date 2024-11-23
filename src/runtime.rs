@@ -141,8 +141,7 @@ impl RunEnvironment {
                 }
                 // If still stuck on HALT
                 // Never *execute* HALT while debugger is active
-                // Wait for pc to change, such as `reset` command
-                // Or `exit` or `quit`
+                // Wait for pc to change, such as `reset`, `exit`, or `quit`
                 if RelevantInstr::try_from(self.state.mem[self.state.pc as usize])
                     == Ok(RelevantInstr::TrapHalt)
                 {
@@ -154,9 +153,8 @@ impl RunEnvironment {
                 // Entering device address space
                 break;
             }
-            println!("EXECUTING ONE INSTRUCTION!");
-            // TODO(refactor): Could this line be moved to top of loop? It shouldn't cause out of
-            // bounds access I don't think.
+            dprintln!("-- executing one instruction!");
+
             let instr = self.state.mem[self.state.pc as usize];
             let opcode = (instr >> 12) as usize;
             // PC incremented before instruction is performed
