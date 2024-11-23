@@ -1,15 +1,20 @@
 macro_rules! dprint {
     ( $fmt:literal $($tt:tt)* ) => {{
         eprint!(concat!("\x1b[{}m", $fmt, "\x1b[0m"), $crate::debugger::DEBUGGER_COLOR $($tt)*);
+        // Hopefully this will be overwritten by `dprintln!`
+        // ...otherwise the above printed line should be inspected, similar to `print_char!`
+        crate::runtime::terminal_cursor::set_line_start(true);
     }};
 }
 #[macro_export]
 macro_rules! dprintln {
     () => {{
         eprintln!();
+        crate::runtime::terminal_cursor::set_line_start(true);
     }};
     ( $fmt:literal $($tt:tt)* ) => {{
         eprintln!(concat!("\x1b[{}m", $fmt, "\x1b[0m"), $crate::debugger::DEBUGGER_COLOR $($tt)*);
+        crate::runtime::terminal_cursor::set_line_start(true);
     }};
 }
 
