@@ -37,8 +37,7 @@ pub struct Debugger {
     minimal: bool,
     source: SourceMode,
 
-    // TODO(refactor): Make this good
-    initial_state: Box<RunState>,
+    initial_state: RunState,
 
     breakpoints: Vec<u16>,
     current_breakpoint: Option<u16>,
@@ -97,7 +96,7 @@ impl Debugger {
             status: Status::default(),
             minimal: opts.minimal,
             source: SourceMode::from(opts.command),
-            initial_state: Box::new(initial_state),
+            initial_state,
             breakpoints: Vec::new(),
             current_breakpoint: None,
         }
@@ -118,6 +117,8 @@ impl Debugger {
         // Always break from `continue|finish|step|next` on a breakpoint or HALT
         // Breaking on `RET` (for `finish`) is handled later
         // Likewise for completing `step` or `next`
+        //
+        // Remember if previous cycle paused on the same breakpoint. If so, don't break now.
         if self.breakpoints.contains(&pc) && self.current_breakpoint != Some(pc) {
             dprintln!("Breakpoint reached. Pausing execution.");
             self.current_breakpoint = Some(pc);
@@ -129,8 +130,6 @@ impl Debugger {
                 self.status = Status::WaitForAction;
             }
         }
-
-        // TODO(fix): Only pause at breakpoint the first time it's encountered.
 
         return self.wait_for_single_action(state, instr);
     }
@@ -253,7 +252,7 @@ impl Debugger {
             Command::Registers => Self::print_registers(state),
 
             Command::Reset => {
-                *state = *self.initial_state.clone();
+                *state = self.initial_state.clone();
                 dprintln!("RESET TO INITIAL STATE");
             }
 
