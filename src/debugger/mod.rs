@@ -22,8 +22,8 @@ mod command;
 mod parse;
 mod source;
 
-use crate::runtime::RunState;
-use command::{Command, Location, MemoryLocation};
+use crate::{runtime::RunState, symbol::with_symbol_table};
+use command::{Command, Label, Location, MemoryLocation};
 use source::{SourceMode, SourceReader};
 
 pub const DEBUGGER_COLOR: u8 = 34;
@@ -220,16 +220,8 @@ impl Debugger {
                     dprintln!("Register R{}:", register as u16);
                     Self::print_integer(*state.reg(register as u16));
                 }
-                Location::Memory(memory_location) => {
-                    let address = match memory_location {
-                        MemoryLocation::Address(address) => address,
-                        MemoryLocation::PC => *state.pc(),
-                        MemoryLocation::Label(_) => {
-                            dprintln!("unimplemented: labels");
-                            return None;
-                        }
-                    };
-
+                Location::Memory(location) => {
+                    let address = self.resolve_location_address(state, &location)?;
                     dprintln!("Memory at address 0x{:04x}:", address);
                     Self::print_integer(*state.mem(address));
                 }
@@ -240,15 +232,8 @@ impl Debugger {
                     *state.reg(register as u16) = value;
                     dprintln!("Updated register R{}", register as u16);
                 }
-                Location::Memory(memory_location) => {
-                    let address = match memory_location {
-                        MemoryLocation::Address(address) => address,
-                        MemoryLocation::PC => *state.pc(),
-                        MemoryLocation::Label(_) => {
-                            dprintln!("unimplemented: labels");
-                            return None;
-                        }
-                    };
+                Location::Memory(location) => {
+                    let address = self.resolve_location_address(state, &location)?;
                     dprintln!("Updated memory at address 0x{:04x}.", address);
                     *state.mem(address) = value;
                 }
@@ -265,14 +250,7 @@ impl Debugger {
             Command::Eval { .. } => dprintln!("unimplemented: eval"),
 
             Command::BreakAdd { location } => {
-                let address = match location {
-                    MemoryLocation::Address(address) => address,
-                    MemoryLocation::PC => *state.pc(),
-                    MemoryLocation::Label(_) => {
-                        dprintln!("unimplemented: labels");
-                        return None;
-                    }
-                };
+                let address = self.resolve_location_address(state, &location)?;
                 if self.breakpoints.contains(&address) {
                     dprintln!("Breakpoint already exists at 0x{:04x}", address);
                 } else {
@@ -281,14 +259,7 @@ impl Debugger {
                 }
             }
             Command::BreakRemove { location } => {
-                let address = match location {
-                    MemoryLocation::Address(address) => address,
-                    MemoryLocation::PC => *state.pc(),
-                    MemoryLocation::Label(_) => {
-                        dprintln!("unimplemented: labels");
-                        return None;
-                    }
-                };
+                let address = self.resolve_location_address(state, &location)?;
                 if remove_item_if_exists(&mut self.breakpoints, address) {
                     dprintln!("Removed breakpoint at 0x{:04x}", address);
                 } else {
@@ -347,6 +318,46 @@ impl Debugger {
     fn print_integer(value: u16) {
         dprintln!("0x{:04x}\t{}", value, value);
     }
+
+    fn resolve_location_address(
+        &mut self,
+        state: &mut RunState,
+        location: &MemoryLocation,
+    ) -> Option<u16> {
+        match location {
+            MemoryLocation::Address(address) => Some(*address),
+            MemoryLocation::PC => Some(*state.pc()),
+            MemoryLocation::Label(label) => self.resolve_label_address(label),
+        }
+    }
+
+    fn resolve_label_address(&mut self, label: &Label) -> Option<u16> {
+        let Some(address) = get_label_address(&label.name) else {
+            dprintln!("Label not found named `{}`", label.name);
+            return None;
+        };
+
+        // Check address in user program area
+        let orig = self.orig() as i16;
+        let address = address as i16 + label.offset + orig;
+        if address < orig || (address as u16) >= 0xFE00 {
+            dprintln!("Label address + offset is out of bounds of memory");
+            return None;
+        };
+
+        dprintln!("Label `{}` is at address 0x{:04x}", label.name, address);
+        Some(address as u16)
+    }
+
+    fn orig(&mut self) -> u16 {
+        *self.initial_state.pc()
+    }
+}
+
+fn get_label_address(name: &str) -> Option<u16> {
+    with_symbol_table(|sym| sym.get(name).copied())
+        // Account for PC being incremented before instruction is executed
+        .map(|addr| addr - 1)
 }
 
 /// Removes every instance of `item` from `vec`
