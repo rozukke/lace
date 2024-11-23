@@ -1,0 +1,62 @@
+------- LACE DEBUGGER -------
+Available Commands:
+
+    * help
+        Show this message.
+
+    * step (t) <COUNT?>
+        Execute next instruction or jump into subroutine.
+          - COUNT: Integer (default: 1)
+
+    * next (n) <COUNT?>
+        Execute next instruction or whole subroutine.
+          - COUNT: Integer (default: 1)
+
+    * continue (c)
+        Continue execution until breakpoint or `HALT`.
+
+    * finish (f)
+        Continue execution until end of subroutine, breakpoint, or `HALT`.
+
+    * get (g) <LOCATION>
+        Print the value at a register, address, or label.
+          - LOCATION: Register | Address+ | Label+
+
+    * set (s) <LOCATION> <VALUE>
+        Set the value at a register, address, or label.
+          - LOCATION: Register | Address+ | Label+
+          - VALUE: Integer
+
+    * registers (r)
+        Print the value of all registers.
+
+    * break add (ba) <LOCATION?>
+        Add breakpoint at an address/label/PC.
+          - LOCATION: Address(offset?) | Label+ (default: PC)
+
+    * break remove (br) <LOCATION?>
+        Remove breakpoint at an address/label/PC.
+          - LOCATION: Address+ | Label+ (default: PC)
+
+    * break list (bl)
+        List all breakpoints.
+
+    * reset
+        Reset all memory and registers to original state.
+
+    * source <COUNT?> <LOCATION?>
+        Print corresponding line and line number of source code from address/label/PC.
+          - COUNT: Integer (default: 1)
+          - LOCATION: Address+ | Label+ (default: PC)
+
+    * eval
+        Simulate an instruction. Note that labels cannot be created or modified.
+          - Instruction: OPCODE OPERANDS...
+
+    * quit (q)
+        Stop debugger and continue execution as normal.
+
+    * exit (e)
+        Exit debugger and simulator.
+
+Note: Address+ and Label+ arguments can include an offset, eg. `HelloWorld+4`

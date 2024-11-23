@@ -193,8 +193,7 @@ impl Debugger {
             Command::Exit => return Some(Action::ExitProgram),
 
             Command::Help => {
-                dprintln!("-- LACE DEBUGGER --");
-                dprintln!("um idk figure it out yourself.");
+                dprintln!("\n{}", include_str!("./help.txt"));
             }
 
             Command::Continue => {
