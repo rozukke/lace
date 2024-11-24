@@ -1,6 +1,6 @@
 use std::{
     fs::{self, File},
-    io::{self, IsTerminal, Read, Write},
+    io::{self, BufRead, BufReader, IsTerminal, Read, Write},
 };
 
 use console::Key;
@@ -205,11 +205,10 @@ impl Terminal {
     }
 
     fn read_history_file(file: &mut File) -> Vec<String> {
-        // TODO(opt): Avoid allocating extra string
-        let mut buffer = String::new();
-        file.read_to_string(&mut buffer)
-            .expect("Failed to read history file");
-        buffer.lines().map(|s| s.to_string()).collect()
+        BufReader::new(file)
+            .lines()
+            .map(|result| result.expect("Error reading history file"))
+            .collect()
     }
 
     fn is_next(&self) -> bool {
