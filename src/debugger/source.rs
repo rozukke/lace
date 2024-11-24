@@ -159,16 +159,11 @@ impl SourceReader for Stdin {
 
 impl Terminal {
     pub fn new() -> Self {
-        let mut history_file = fs::OpenOptions::new()
-            .create(true)
-            .read(true)
-            .append(true)
-            .open(Self::FILENAME)
-            .unwrap();
+        // TODO(feat/error): Handle file errors better
 
-        let mut buffer = String::new();
-        history_file.read_to_string(&mut buffer).unwrap();
-        let history: Vec<_> = buffer.lines().map(|s| s.to_string()).collect();
+        let mut history_file = Self::get_history_file();
+
+        let history = Self::read_history_file(&mut history_file);
         let history_index = history.len();
 
         Self {
@@ -182,7 +177,40 @@ impl Terminal {
         }
     }
 
-    const FILENAME: &'static str = ".debugger_history";
+    const FILE_NAME: &str = "lace-debugger-history";
+
+    fn get_history_file() -> File {
+        let parent_dir = dirs_next::cache_dir().unwrap_or_else(|| {
+            panic!("Cannot retrieve user cache directory");
+        });
+        assert!(
+            parent_dir.is_dir(),
+            "History file parent is not a directory"
+        );
+
+        let file_path = parent_dir.join(Self::FILE_NAME);
+        assert!(
+            !file_path.exists() || file_path.is_file(),
+            "History file exists but is not a file"
+        );
+
+        let file = fs::OpenOptions::new()
+            .create(true)
+            .read(true)
+            .append(true)
+            .open(file_path)
+            .unwrap();
+
+        file
+    }
+
+    fn read_history_file(file: &mut File) -> Vec<String> {
+        // TODO(opt): Avoid allocating extra string
+        let mut buffer = String::new();
+        file.read_to_string(&mut buffer)
+            .expect("Failed to read history file");
+        buffer.lines().map(|s| s.to_string()).collect()
+    }
 
     fn is_next(&self) -> bool {
         debug_assert!(
