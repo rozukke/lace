@@ -22,7 +22,6 @@ pub struct DebuggerOptions {
 #[allow(dead_code)]
 pub struct Debugger {
     status: Status,
-    minimal: bool,
     source: SourceMode,
 
     initial_state: RunState,
@@ -79,10 +78,12 @@ impl TryFrom<u16> for RelevantInstr {
 }
 
 impl Debugger {
+    /// Should only be called *once* per process
     pub(super) fn new(opts: DebuggerOptions, initial_state: RunState) -> Self {
+        print::set_is_minimal(opts.minimal);
+
         Self {
             status: Status::default(),
-            minimal: opts.minimal,
             source: SourceMode::from(opts.command),
             initial_state,
             breakpoints: Vec::new(),
