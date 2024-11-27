@@ -6,27 +6,13 @@ use colored::{ColoredString, Colorize as _};
 use crate::runtime::terminal_cursor;
 
 thread_local! {
-    static IS_MINIMAL: RefCell<Option<bool>> = const { RefCell::new(None) };
+    static IS_MINIMAL: RefCell<bool> = const { RefCell::new(false) };
 }
-
 pub fn set_is_minimal(value: bool) {
-    IS_MINIMAL.with(|minimal| {
-        let mut minimal = minimal.borrow_mut();
-        debug_assert!(
-            minimal.is_none(),
-            "tried to initialize IS_MINIMAL multiple times"
-        );
-        *minimal = Some(value)
-    });
+    IS_MINIMAL.with(|minimal| *minimal.borrow_mut() = value);
 }
-
-pub fn is_minimal() -> bool {
-    IS_MINIMAL.with(|minimal| {
-        let minimal = minimal.borrow();
-        minimal.unwrap_or_else(|| {
-            panic!("tried to access IS_MINIMAL before initialization");
-        })
-    })
+fn is_minimal() -> bool {
+    IS_MINIMAL.with(|minimal| *minimal.borrow())
 }
 
 pub fn write(f: &mut impl io::Write, string: String) -> Result<(), io::Error> {
