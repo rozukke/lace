@@ -106,8 +106,14 @@ impl RunState {
 
     #[inline]
     fn reg(&mut self, reg: u16) -> &mut u16 {
+        let value = self.reg.get_mut(reg as usize);
+        debug_assert!(
+            value.is_some(),
+            "tried to access invalid register 'r{}'",
+            reg
+        );
         // SAFETY: Should only be indexed with values that are & 0b111
-        unsafe { self.reg.get_unchecked_mut(reg as usize) }
+        unsafe { value.unwrap_unchecked() }
     }
 
     #[inline]
