@@ -6,6 +6,7 @@ use std::{
 use console::Key;
 
 use super::DEBUGGER_COLOR;
+use crate::{dprint, dprintln};
 
 #[allow(private_interfaces)] // Perhaps a bad practice
 #[derive(Debug)]
