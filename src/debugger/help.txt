@@ -1,62 +1,62 @@
-------- LACE DEBUGGER -------
+-------[1m LACE DEBUGGER [0m-------
 Available Commands:
 
-    * help
+    [1mhelp[0m
         Show this message.
 
-    * step (t) <COUNT?>
+    [1mstep[0m (t) [3mCOUNT?[0m
         Execute next instruction or jump into subroutine.
-          - COUNT: Integer (default: 1)
+          - [3mCOUNT[0m: Integer (default: 1)
 
-    * next (n) <COUNT?>
+    [1mnext[0m (n) [3mCOUNT?[0m
         Execute next instruction or whole subroutine.
-          - COUNT: Integer (default: 1)
+          - [3mCOUNT[0m: Integer (default: 1)
 
-    * continue (c)
+    [1mcontinue[0m (c)
         Continue execution until breakpoint or `HALT`.
 
-    * finish (f)
+    [1mfinish[0m (f)
         Continue execution until end of subroutine, breakpoint, or `HALT`.
 
-    * get (g) <LOCATION>
+    [1mget[0m (g) [3mLOCATION[0m
         Print the value at a register, address, or label.
-          - LOCATION: Register | Address+ | Label+
+          - [3mLOCATION[0m: Register | Address+ | Label+
 
-    * set (s) <LOCATION> <VALUE>
+    [1mset[0m (s) [3mLOCATION VALUE[0m
         Set the value at a register, address, or label.
-          - LOCATION: Register | Address+ | Label+
-          - VALUE: Integer
+          - [3mLOCATION[0m: Register | Address+ | Label+
+          - [3mVALUE[0m: Integer
 
-    * registers (r)
+    [1mregisters[0m (r)
         Print the value of all registers.
 
-    * break add (ba) <LOCATION?>
+    [1mbreak add[0m (ba) [3mLOCATION?[0m
         Add breakpoint at an address/label/PC.
-          - LOCATION: Address(offset?) | Label+ (default: PC)
+          - [3mLOCATION[0m: Address+ | Label+ (default: PC)
 
-    * break remove (br) <LOCATION?>
+    [1mbreak remove[0m (br) [3mLOCATION?[0m
         Remove breakpoint at an address/label/PC.
-          - LOCATION: Address+ | Label+ (default: PC)
+          - [3mLOCATION[0m: Address+ | Label+ (default: PC)
 
-    * break list (bl)
+    [1mbreak list[0m (bl)
         List all breakpoints.
 
-    * reset
+    [1mreset[0m
         Reset all memory and registers to original state.
 
-    * source <COUNT?> <LOCATION?>
+    [1msource[0m [3mCOUNT? LOCATION?[0m
         Print corresponding line and line number of source code from address/label/PC.
-          - COUNT: Integer (default: 1)
-          - LOCATION: Address+ | Label+ (default: PC)
+          - [3mCOUNT[0m: Integer (default: 1)
+          - [3mLOCATION[0m: Address+ | Label+ (default: PC)
 
-    * eval
+    [1meval[0m
         Simulate an instruction. Note that labels cannot be created or modified.
           - Instruction: OPCODE OPERANDS...
 
-    * quit (q)
+    [1mquit[0m (q)
         Stop debugger and continue execution as normal.
 
-    * exit (e)
+    [1mexit[0m (e)
         Exit debugger and simulator.
 
-Note: Address+ and Label+ arguments can include an offset, eg. `HelloWorld+4`
+[1mNote:[0m Address+ and Label+ arguments can include an offset, eg. `HelloWorld+4`
