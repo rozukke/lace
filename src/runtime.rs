@@ -105,7 +105,18 @@ impl RunState {
     }
 
     #[inline]
-    fn reg(&mut self, reg: u16) -> &mut u16 {
+    fn reg(&self, reg: u16) -> u16 {
+        let value = self.reg.get(reg as usize);
+        debug_assert!(
+            value.is_some(),
+            "tried to access invalid register 'r{}'",
+            reg
+        );
+        // SAFETY: Should only be indexed with values that are & 0b111
+        unsafe { *value.unwrap_unchecked() }
+    }
+    #[inline]
+    fn reg_mut(&mut self, reg: u16) -> &mut u16 {
         let value = self.reg.get_mut(reg as usize);
         debug_assert!(
             value.is_some(),
@@ -117,7 +128,12 @@ impl RunState {
     }
 
     #[inline]
-    fn mem(&mut self, addr: u16) -> &mut u16 {
+    fn mem(&self, addr: u16) -> u16 {
+        // SAFETY: memory fits any u16 index
+        unsafe { *self.mem.get_unchecked(addr as usize) }
+    }
+    #[inline]
+    fn mem_mut(&mut self, addr: u16) -> &mut u16 {
         // SAFETY: memory fits any u16 index
         unsafe { self.mem.get_unchecked_mut(addr as usize) }
     }
@@ -160,29 +176,29 @@ impl RunState {
             let reg = (instr >> 6) & 0b111;
             // Push
             if instr & 0x0400 != 0 {
-                let val = *self.reg(reg);
+                let val = self.reg(reg);
                 self.push_val(val);
             }
             // Pop
             else {
                 let val = self.pop_val();
-                *self.reg(reg) = val;
+                *self.reg_mut(reg) = val;
             }
         }
     }
 
     fn push_val(&mut self, val: u16) {
         // Decrement stack
-        *self.reg(7) -= 1;
-        let sp = *self.reg(7);
+        *self.reg_mut(7) -= 1;
+        let sp = self.reg(7);
         // Save onto stack
-        *self.mem(sp) = val;
+        *self.mem_mut(sp) = val;
     }
 
     fn pop_val(&mut self) -> u16 {
-        let sp = *self.reg(7);
-        let val = *self.mem(sp);
-        *self.reg(7) += 1;
+        let sp = self.reg(7);
+        let val = self.mem(sp);
+        *self.reg_mut(7) += 1;
         val
     }
 
@@ -190,36 +206,36 @@ impl RunState {
         let dr = (instr >> 9) & 0b111;
         let sr = (instr >> 6) & 0b111;
 
-        let val1 = *self.reg(sr);
+        let val1 = self.reg(sr);
         // Check if imm
         let val2 = if instr & 0b100000 == 0 {
             // reg
-            *self.reg(instr & 0b111)
+            self.reg(instr & 0b111)
         } else {
             // imm
             Self::s_ext(instr, 5)
         };
         let res = val1.wrapping_add(val2);
         self.set_flags(res);
-        *self.reg(dr) = res;
+        *self.reg_mut(dr) = res;
     }
 
     fn and(&mut self, instr: u16) {
         let dr = (instr >> 9) & 0b111;
         let sr = (instr >> 6) & 0b111;
 
-        let val1 = *self.reg(sr);
+        let val1 = self.reg(sr);
         // Check if imm
         let val2 = if instr & 0b100000 == 0 {
             // reg
-            *self.reg(instr & 0b111)
+            self.reg(instr & 0b111)
         } else {
             // imm
             Self::s_ext(instr, 5)
         };
         let res = val1 & val2;
         self.set_flags(res);
-        *self.reg(dr) = res;
+        *self.reg_mut(dr) = res;
     }
 
     fn br(&mut self, instr: u16) {
@@ -231,15 +247,15 @@ impl RunState {
 
     fn jmp(&mut self, instr: u16) {
         let br = (instr >> 6) & 0b111;
-        self.pc = *self.reg(br)
+        self.pc = self.reg(br)
     }
 
     fn jsr(&mut self, instr: u16) {
-        *self.reg(7) = self.pc;
+        *self.reg_mut(7) = self.pc;
         if instr & 0x800 == 0 {
             // reg
             let br = (instr >> 6) & 0b111;
-            self.pc = *self.reg(br)
+            self.pc = self.reg(br)
         } else {
             // offs
             self.pc = self.pc.wrapping_add(Self::s_ext(instr, 11))
@@ -248,40 +264,40 @@ impl RunState {
 
     fn ld(&mut self, instr: u16) {
         let dr = (instr >> 9) & 0b111;
-        let val = *self.mem(self.pc.wrapping_add(Self::s_ext(instr, 9)));
-        *self.reg(dr) = val;
+        let val = self.mem(self.pc.wrapping_add(Self::s_ext(instr, 9)));
+        *self.reg_mut(dr) = val;
         self.set_flags(val);
     }
 
     fn ldi(&mut self, instr: u16) {
         let dr = (instr >> 9) & 0b111;
-        let ptr = *self.mem(self.pc.wrapping_add(Self::s_ext(instr, 9)));
-        let val = *self.mem(ptr);
-        *self.reg(dr) = val;
+        let ptr = self.mem(self.pc.wrapping_add(Self::s_ext(instr, 9)));
+        let val = self.mem(ptr);
+        *self.reg_mut(dr) = val;
         self.set_flags(val);
     }
 
     fn ldr(&mut self, instr: u16) {
         let dr = (instr >> 9) & 0b111;
         let br = (instr >> 6) & 0b111;
-        let ptr = *self.reg(br);
-        let val = *self.mem(ptr.wrapping_add(Self::s_ext(instr, 6)));
-        *self.reg(dr) = val;
+        let ptr = self.reg(br);
+        let val = self.mem(ptr.wrapping_add(Self::s_ext(instr, 6)));
+        *self.reg_mut(dr) = val;
         self.set_flags(val);
     }
 
     fn lea(&mut self, instr: u16) {
         let dr = (instr >> 9) & 0b111;
         let val = self.pc.wrapping_add(Self::s_ext(instr, 9));
-        *self.reg(dr) = val;
+        *self.reg_mut(dr) = val;
         self.set_flags(val);
     }
 
     fn not(&mut self, instr: u16) {
         let dr = (instr >> 9) & 0b111;
         let sr = (instr >> 6) & 0b111;
-        let val = !*self.reg(sr);
-        *self.reg(dr) = val;
+        let val = !self.reg(sr);
+        *self.reg_mut(dr) = val;
         self.set_flags(val);
     }
 
@@ -291,23 +307,23 @@ impl RunState {
 
     fn st(&mut self, instr: u16) {
         let sr = (instr >> 9) & 0b111;
-        let val = *self.reg(sr);
-        *self.mem(self.pc.wrapping_add(Self::s_ext(instr, 9))) = val;
+        let val = *self.reg_mut(sr);
+        *self.mem_mut(self.pc.wrapping_add(Self::s_ext(instr, 9))) = val;
     }
 
     fn sti(&mut self, instr: u16) {
         let sr = (instr >> 9) & 0b111;
-        let val = *self.reg(sr);
-        let ptr = *self.mem(self.pc.wrapping_add(Self::s_ext(instr, 9)));
-        *self.mem(ptr) = val;
+        let val = self.reg(sr);
+        let ptr = self.mem(self.pc.wrapping_add(Self::s_ext(instr, 9)));
+        *self.mem_mut(ptr) = val;
     }
 
     fn str(&mut self, instr: u16) {
         let sr = (instr >> 9) & 0b111;
         let br = (instr >> 6) & 0b111;
-        let ptr = *self.reg(br);
-        let val = *self.reg(sr);
-        *self.mem(ptr.wrapping_add(Self::s_ext(instr, 6))) = val;
+        let ptr = self.reg(br);
+        let val = self.reg(sr);
+        *self.mem_mut(ptr.wrapping_add(Self::s_ext(instr, 6))) = val;
     }
 
     fn trap(&mut self, instr: u16) {
@@ -315,19 +331,19 @@ impl RunState {
         match trap_vect {
             // getc
             0x20 => {
-                *self.reg(0) = read_input() as u16;
+                *self.reg_mut(0) = read_input() as u16;
             }
             // out
             0x21 => {
-                let chr = (*self.reg(0) & 0xFF) as u8 as char;
+                let chr = (self.reg(0) & 0xFF) as u8 as char;
                 print!("{chr}");
                 stdout().flush().unwrap();
             }
             // puts
             0x22 => {
                 // could probably rewrite with iterators but idk if worth
-                for addr in *self.reg(0).. {
-                    let chr_raw = *self.mem(addr);
+                for addr in self.reg(0).. {
+                    let chr_raw = self.mem(addr);
                     let chr_ascii = (chr_raw & 0xFF) as u8 as char;
                     if chr_ascii == '\0' {
                         break;
@@ -339,14 +355,14 @@ impl RunState {
             // in
             0x23 => {
                 let ch = read_input();
-                *self.reg(0) = ch as u16;
+                *self.reg_mut(0) = ch as u16;
                 print!("{}", ch);
                 stdout().flush().unwrap();
             }
             // putsp
             0x24 => {
-                'string: for addr in *self.reg(0).. {
-                    let chr_raw = *self.mem(addr);
+                'string: for addr in self.reg(0).. {
+                    let chr_raw = self.mem(addr);
                     for chr in [chr_raw >> 8, chr_raw & 0xFF] {
                         let chr_ascii = chr as u8 as char;
                         if chr_ascii == '\0' {
@@ -364,7 +380,7 @@ impl RunState {
             }
             // putn
             0x26 => {
-                let val = *self.reg(0);
+                let val = self.reg(0);
                 println!("{val}");
             }
             // reg
