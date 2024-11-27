@@ -4,7 +4,7 @@ mod source;
 
 mod print;
 #[doc(hidden)]
-pub use print::print as _print;
+pub use print::{print as _print, write as _write};
 
 use crate::{dprint, dprintln};
 use crate::{runtime::RunState, symbol::with_symbol_table};
