@@ -147,3 +147,14 @@ pub fn parse_lit_range(span: Span, src: &'static str, bits: Bits) -> Report {
     )
     .with_source_code(src)
 }
+
+pub fn parse_stack_extension_not_enabled(instr: &str, span: Span, src: &'static str) -> Report {
+    miette!(
+        severity = Severity::Error,
+        code = "parse::stack_extension_not_enabled",
+        help = "this instruction requires the non-standard 'stack' extension\nrun with `LACE_STACK=1` to enable",
+        labels = vec![LabeledSpan::at(span, "non-standard instruction")],
+        "Non-standard '{}' instruction used without 'stack' extension enabled", instr
+    )
+    .with_source_code(src)
+}

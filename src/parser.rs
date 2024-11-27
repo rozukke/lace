@@ -3,10 +3,7 @@ use std::{borrow::Cow, fmt::Display, iter::Peekable, vec::IntoIter};
 use miette::Result;
 
 use crate::{
-    air::{Air, AirStmt, ImmediateOrReg, RawWord},
-    env, error,
-    lexer::{cursor::Cursor, LiteralKind, Token, TokenKind},
-    symbol::{DirKind, InstrKind, Label, Register, Span, TrapKind},
+    air::{Air, AirStmt, ImmediateOrReg, RawWord}, env, error, lexer::{cursor::Cursor, LiteralKind, Token, TokenKind}, symbol::{DirKind, InstrKind, Label, Register, Span, TrapKind}
 };
 
 /// Replaces raw value directives .fill, .blkw, .stringz with equivalent raw bytes
@@ -444,7 +441,9 @@ impl AsmParser {
 
     fn expect_stack_enabled(&self, instr_name: &str, span: Span) -> Result<()> {
         if !env::is_stack_enabled() {
-            panic!("stack is not enabled");
+            return Err(error::parse_stack_extension_not_enabled(
+                instr_name, span, self.src,
+            ));
         }
         Ok(())
     }
