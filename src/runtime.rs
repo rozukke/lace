@@ -6,7 +6,7 @@ use std::{
     u16, u32, u8, usize,
 };
 
-use crate::Air;
+use crate::{env, Air};
 use colored::Colorize;
 use console::Term;
 use miette::Result;
@@ -139,6 +139,17 @@ impl RunState {
     }
 
     fn stack(&mut self, instr: u16) {
+        if !env::is_stack_enabled() {
+            eprintln!(
+                "\
+                You called a reserved instruction.\n\
+                Note: Run with `LACE_STACK=1` to enable stack features.\n\
+                Halting...\
+                "
+            );
+            std::process::exit(1);
+        }
+
         // Bit to determine call/ret or push/pop
         if instr & 0x0800 != 0 {
             // Call
@@ -166,6 +177,10 @@ impl RunState {
     }
 
     fn push_val(&mut self, val: u16) {
+        debug_assert!(
+            env::is_stack_enabled(),
+            "caller should have ensured stack features are enabled",
+        );
         // Decrement stack
         *self.reg(7) -= 1;
         let sp = *self.reg(7);
@@ -174,6 +189,10 @@ impl RunState {
     }
 
     fn pop_val(&mut self) -> u16 {
+        debug_assert!(
+            env::is_stack_enabled(),
+            "caller should have ensured stack features are enabled",
+        );
         let sp = *self.reg(7);
         let val = *self.mem(sp);
         *self.reg(7) += 1;
