@@ -5,7 +5,7 @@ use std::{
 
 use console::Key;
 
-use super::DEBUGGER_COLOR;
+use super::print::DEBUGGER_COLOR;
 use crate::{dprint, dprintln};
 
 #[allow(private_interfaces)] // Perhaps a bad practice
@@ -249,6 +249,7 @@ impl Terminal {
 
         // Print prompt and current input
         // Equivalent code found in non-terminal source
+        // TODO: Don't use color if `--minimal`
         write!(self.term, "\x1b[1;{}m", DEBUGGER_COLOR).unwrap();
         write!(self.term, "Command: ").unwrap();
         write!(self.term, "\x1b[0m").unwrap();

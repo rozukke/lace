@@ -11,8 +11,6 @@ use crate::{runtime::RunState, symbol::with_symbol_table};
 use command::{Command, Label, Location, MemoryLocation};
 use source::{SourceMode, SourceReader};
 
-pub const DEBUGGER_COLOR: u8 = 34;
-
 // TODO(refactor): Perhaps there is `clap` trait that can be implemented for
 // this struct, to avoid field duplication in `Command` enum
 #[derive(Debug)]

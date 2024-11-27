@@ -2,6 +2,8 @@ use colored::{ColoredString, Colorize as _};
 
 use crate::runtime::terminal_cursor;
 
+pub const DEBUGGER_COLOR: u8 = 34;
+
 pub fn print(string: String) {
     let is_line_start = string.chars().next_back() == Some('\n');
 
