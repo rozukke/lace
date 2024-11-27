@@ -4,7 +4,7 @@ use miette::Result;
 
 use crate::{
     air::{Air, AirStmt, ImmediateOrReg, RawWord},
-    error,
+    env, error,
     lexer::{cursor::Cursor, LiteralKind, Token, TokenKind},
     symbol::{DirKind, InstrKind, Label, Register, Span, TrapKind},
 };
@@ -166,7 +166,7 @@ impl AsmParser {
                         self.air.set_orig(orig)?;
                         continue;
                     }
-                    TokenKind::Instr(instr_kind) => self.parse_instr(instr_kind)?,
+                    TokenKind::Instr(instr_kind) => self.parse_instr(instr_kind, tok.span)?,
                     TokenKind::Trap(trap_kind) => self.parse_trap(trap_kind)?,
                     TokenKind::Byte(val) => self.parse_byte(val),
                     // Does not exist in preprocessed token stream
@@ -196,23 +196,29 @@ impl AsmParser {
     }
 
     /// Process several tokens to form valid AIR statement
-    fn parse_instr(&mut self, kind: InstrKind) -> Result<AirStmt> {
+    fn parse_instr(&mut self, kind: InstrKind, span: Span) -> Result<AirStmt> {
         use crate::symbol::InstrKind;
         match kind {
             InstrKind::Push => {
+                self.expect_stack_enabled("push", span)?;
                 let src_reg = self.expect_reg()?;
                 Ok(AirStmt::Push { src_reg })
             }
             InstrKind::Pop => {
+                self.expect_stack_enabled("push", span)?;
                 let dest_reg = self.expect_reg()?;
                 Ok(AirStmt::Pop { dest_reg })
             }
             InstrKind::Call => {
+                self.expect_stack_enabled("push", span)?;
                 let label_tok = self.expect(TokenKind::Label)?;
                 let dest_label = Label::try_fill(self.get_span(label_tok.span));
                 Ok(AirStmt::Call { dest_label })
             }
-            InstrKind::Rets => Ok(AirStmt::Rets),
+            InstrKind::Rets => {
+                self.expect_stack_enabled("push", span)?;
+                Ok(AirStmt::Rets)
+            }
             InstrKind::Add => {
                 let dest = self.expect_reg()?;
                 let src_reg = self.expect_reg()?;
@@ -434,6 +440,13 @@ impl AsmParser {
             },
             None => return Err(error::parse_eof(self.src)),
         }
+    }
+
+    fn expect_stack_enabled(&self, instr_name: &str, span: Span) -> Result<()> {
+        if !env::is_stack_enabled() {
+            panic!("stack is not enabled");
+        }
+        Ok(())
     }
 }
 
