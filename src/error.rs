@@ -152,9 +152,14 @@ pub fn parse_stack_extension_not_enabled(instr: &str, span: Span, src: &'static 
     miette!(
         severity = Severity::Error,
         code = "parse::stack_extension_not_enabled",
-        help = "this instruction requires the non-standard 'stack' extension\nrun with `LACE_STACK=1` to enable",
+        help = "\
+        this instruction requires the non-standard 'stack' extension\n\
+        run with `LACE_STACK=1` to enable\n\
+        note: this identifier cannot be used as a label\
+        ",
         labels = vec![LabeledSpan::at(span, "non-standard instruction")],
-        "Non-standard '{}' instruction used without 'stack' extension enabled", instr
+        "Non-standard '{}' instruction used without 'stack' extension enabled",
+        instr
     )
     .with_source_code(src)
 }
