@@ -471,19 +471,19 @@ mod test {
     // .FILL TEST
     #[test]
     fn preproc_fill() {
-        let res = preprocess("temp .fill x3000").unwrap();
+        let (res, _) = preprocess("temp .fill x3000").unwrap();
         assert!(res[1].kind == TokenKind::Byte(0x3000))
     }
 
     #[test]
     fn preproc_fill_neg() {
-        let res = preprocess("temp .fill #-35").unwrap();
+        let (res, _) = preprocess("temp .fill #-35").unwrap();
         assert!(res[1].kind == TokenKind::Byte(-35i16 as u16))
     }
 
     #[test]
     fn preproc_fill_dec() {
-        let res = preprocess("temp .fill #3500").unwrap();
+        let (res, _) = preprocess("temp .fill #3500").unwrap();
         assert!(res[1].kind == TokenKind::Byte(3500))
     }
 
@@ -494,7 +494,7 @@ mod test {
 
     #[test]
     fn preproc_fill_nolabel() {
-        let res = preprocess(".fill x1").unwrap();
+        let (res, _) = preprocess(".fill x1").unwrap();
         assert!(res[0].kind == TokenKind::Byte(1))
     }
 
@@ -503,6 +503,7 @@ mod test {
     fn preproc_blkw_basic() {
         let res = preprocess("temp .blkw x2")
             .unwrap()
+            .0
             .iter()
             .map(|tok| tok.kind.clone())
             .collect::<Vec<TokenKind>>();
@@ -510,6 +511,7 @@ mod test {
 
         let res = preprocess("temp .blkw #3")
             .unwrap()
+            .0
             .iter()
             .map(|tok| tok.kind.clone())
             .collect::<Vec<TokenKind>>();
@@ -529,7 +531,7 @@ mod test {
 
     #[test]
     fn preproc_blkw_nolabel() {
-        let res = preprocess(".blkw #1").unwrap();
+        let (res, _) = preprocess(".blkw #1").unwrap();
         assert!(res[0].kind == TokenKind::Byte(0))
     }
 
@@ -537,7 +539,7 @@ mod test {
     #[test]
     fn preproc_stringz_escaped() {
         // .blkw "\"hello\"\n" => "hello"
-        let res = preprocess(r#"temp .stringz "\"hello\n\"""#).unwrap();
+        let (res, _) = preprocess(r#"temp .stringz "\"hello\n\"""#).unwrap();
         let expected = "\"hello\n\"\0"
             .chars()
             .map(|c| Token::byte(c as u16))
@@ -548,7 +550,7 @@ mod test {
     #[test]
     fn preproc_stringz_standard() {
         // .blkw "hello" => hello
-        let res = preprocess(r#"temp .stringz "hello""#).unwrap();
+        let (res, _) = preprocess(r#"temp .stringz "hello""#).unwrap();
         let expected = "hello\0"
             .chars()
             .map(|c| Token::byte(c as u16))
@@ -563,7 +565,7 @@ mod test {
 
     #[test]
     fn preproc_stringz_nolabel() {
-        let res = preprocess(r#".stringz "ok""#).unwrap();
+        let (res, _) = preprocess(r#".stringz "ok""#).unwrap();
         assert!(res[0].kind == TokenKind::Byte('o' as u16));
         assert!(res[1].kind == TokenKind::Byte('k' as u16));
     }
@@ -571,7 +573,7 @@ mod test {
     // Regression
     #[test]
     fn preproc_empty_lines() {
-        let toks = preprocess(
+        let (toks, _) = preprocess(
             r#"
         r0
 
