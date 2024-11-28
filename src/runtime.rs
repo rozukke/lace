@@ -74,7 +74,7 @@ pub(super) enum RunFlag {
 
 impl RunEnvironment {
     // Not generic because of miette error
-    pub fn try_from(air: Air) -> Result<RunEnvironment> {
+    pub fn try_from(air: &Air) -> Result<RunEnvironment> {
         let orig = air.orig().unwrap_or(0x3000);
         let mut air_array: Vec<u16> = Vec::with_capacity(air.len() + 1);
 
@@ -87,17 +87,19 @@ impl RunEnvironment {
     }
 
     pub fn try_from_with_debugger(
-        air: Air,
+        air: Air, // Takes ownership of breakpoints
         debugger_opts: DebuggerOptions,
     ) -> Result<RunEnvironment> {
-        // TODO(opt): Remove clone
-        let mut breakpoints = air.breakpoints.clone();
+        let mut env = Self::try_from(&air)?;
+
+        let orig = air.orig().unwrap_or(0x3000);
+        let mut breakpoints = air.breakpoints;
         for breakpoint in breakpoints.iter_mut() {
-            *breakpoint += air.orig().unwrap_or(0x3000);
+            *breakpoint += orig;
         }
 
-        let mut env = Self::try_from(air)?;
         env.debugger = Some(Debugger::new(debugger_opts, env.state.clone(), breakpoints));
+
         Ok(env)
     }
 

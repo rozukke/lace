@@ -109,7 +109,7 @@ fn main() -> miette::Result<()> {
                 }
 
                 // Write lines
-                for stmt in air {
+                for stmt in &air {
                     let _ = file.write(&stmt.emit()?.to_be_bytes());
                 }
 
@@ -251,8 +251,8 @@ fn run(name: &PathBuf, debugger_opts: Option<DebuggerOptions>) -> Result<()> {
                 let contents = StaticSource::new(fs::read_to_string(&name).into_diagnostic()?);
                 let air = assemble(&contents)?;
                 match debugger_opts {
-                    None => RunEnvironment::try_from(air.clone())?,
-                    Some(opts) => RunEnvironment::try_from_with_debugger(air.clone(), opts)?,
+                    None => RunEnvironment::try_from(&air)?,
+                    Some(opts) => RunEnvironment::try_from_with_debugger(air, opts)?,
                 }
             }
             _ => {

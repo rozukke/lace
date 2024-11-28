@@ -59,12 +59,12 @@ impl Air {
     }
 }
 
-impl IntoIterator for Air {
-    type Item = AsmLine;
-    type IntoIter = std::vec::IntoIter<Self::Item>;
+impl<'a> IntoIterator for &'a Air {
+    type Item = &'a AsmLine;
+    type IntoIter = std::slice::Iter<'a, AsmLine>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.ast.into_iter()
+        (&self.ast).into_iter()
     }
 }
 
