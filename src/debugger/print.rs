@@ -2,7 +2,7 @@ use std::io;
 
 use colored::{ColoredString, Colorize as _};
 
-use crate::runtime::terminal_cursor;
+use crate::runtime::terminal_line_start;
 
 pub(super) mod is_minimal {
     use std::cell::RefCell;
@@ -40,7 +40,7 @@ pub fn write(f: &mut impl io::Write, string: String) -> Result<(), io::Error> {
 pub fn print(string: String) {
     let is_line_start = string.chars().next_back() == Some('\n');
     write(&mut io::stderr(), string).expect("write to stderr should not fail");
-    terminal_cursor::set_line_start(is_line_start);
+    terminal_line_start::set(is_line_start);
 }
 
 #[macro_export]

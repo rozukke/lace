@@ -17,17 +17,17 @@ use miette::Result;
 /// LC3 can address 128KB of memory.
 pub(crate) const MEMORY_MAX: usize = 0x10000;
 
-pub(super) mod terminal_cursor {
+pub(super) mod terminal_line_start {
     use std::cell::RefCell;
 
     thread_local! {
-        static IS_LINE_START: RefCell<bool> = const { RefCell::new(true) };
+        static VALUE: RefCell<bool> = const { RefCell::new(true) };
     }
-    pub fn is_line_start() -> bool {
-        IS_LINE_START.with(|is_line_start| *is_line_start.borrow())
+    pub fn set(new_value: bool) {
+        VALUE.with(|value| *value.borrow_mut() = new_value);
     }
-    pub fn set_line_start(new_value: bool) {
-        IS_LINE_START.with(|is_line_start| *is_line_start.borrow_mut() = new_value);
+    pub fn get() -> bool {
+        VALUE.with(|value| *value.borrow())
     }
 }
 
@@ -35,7 +35,7 @@ macro_rules! print_char {
     ( $char:expr ) => {{
         let ch = ($char);
         std::print!("{}", ch);
-        terminal_cursor::set_line_start(ch == '\n');
+        terminal_line_start::set(ch == '\n');
     }};
 }
 
@@ -127,7 +127,7 @@ impl RunEnvironment {
     pub fn run(&mut self) {
         loop {
             if let Some(debugger) = &mut self.debugger {
-                if !terminal_cursor::is_line_start() {
+                if !terminal_line_start::get() {
                     dprintln!();
                 }
                 dprintln!();
@@ -170,7 +170,7 @@ impl RunEnvironment {
             RunState::OP_TABLE[opcode](&mut self.state, instr);
         }
 
-        if !terminal_cursor::is_line_start() {
+        if !terminal_line_start::get() {
             println!();
         }
     }
