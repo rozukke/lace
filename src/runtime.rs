@@ -23,15 +23,11 @@ pub(super) mod terminal_cursor {
     thread_local! {
         static IS_LINE_START: RefCell<bool> = const { RefCell::new(true) };
     }
-
     pub fn is_line_start() -> bool {
-        IS_LINE_START.with(|value| *value.borrow())
+        IS_LINE_START.with(|is_line_start| *is_line_start.borrow())
     }
     pub fn set_line_start(new_value: bool) {
-        IS_LINE_START.with(|value| {
-            let mut value = value.borrow_mut();
-            *value = new_value;
-        });
+        IS_LINE_START.with(|is_line_start| *is_line_start.borrow_mut() = new_value);
     }
 }
 
