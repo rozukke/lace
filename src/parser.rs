@@ -12,8 +12,9 @@ use crate::{
 /// Replaces raw value directives .fill, .blkw, .stringz with equivalent raw bytes
 /// Returns a 'final' vector of tokens. This is easier than working with an iterator that can
 /// either return a single token or a Vec of tokens.
-pub fn preprocess(src: &'static str) -> Result<Vec<Token>> {
+pub fn preprocess(src: &'static str) -> Result<(Vec<Token>, Vec<u16>)> {
     let mut res: Vec<Token> = Vec::new();
+    let mut breakpoints = Vec::new();
     let mut cur = Cursor::new(src);
 
     loop {
@@ -67,13 +68,16 @@ pub fn preprocess(src: &'static str) -> Result<Vec<Token>> {
                     _ => return Err(error::preproc_no_str(val.span, src)),
                 }
             }
+            TokenKind::Dir(DirKind::Break) => {
+                breakpoints.push(res.len() as u16);
+            }
             // Eliminated during preprocessing
             TokenKind::Comment | TokenKind::Whitespace => continue,
             TokenKind::Eof | TokenKind::Dir(DirKind::End) => break,
             _ => res.push(dir),
         }
     }
-    Ok(res)
+    Ok((res, breakpoints))
 }
 
 fn unescape(s: &str) -> Cow<str> {
@@ -123,11 +127,11 @@ impl AsmParser {
     /// Preprocesses tokens, otherwise will go into unreachable code. Input should
     /// contain no whitespace or comments.
     pub fn new(src: &'static str) -> Result<Self> {
-        let toks = preprocess(src)?;
+        let (toks, breakpoints) = preprocess(src)?;
         Ok(AsmParser {
             src,
             toks: toks.into_iter().peekable(),
-            air: Air::new(),
+            air: Air::new(breakpoints),
             line: 1,
         })
     }

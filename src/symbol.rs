@@ -274,6 +274,7 @@ pub enum DirKind {
     Stringz,
     Blkw,
     Fill,
+    Break,
 }
 
 /// Newtype representing an offset from a particular address.

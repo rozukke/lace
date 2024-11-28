@@ -79,14 +79,18 @@ impl TryFrom<u16> for RelevantInstr {
 
 impl Debugger {
     /// Should only be called *once* per process
-    pub(super) fn new(opts: DebuggerOptions, initial_state: RunState) -> Self {
+    pub(super) fn new(
+        opts: DebuggerOptions,
+        initial_state: RunState,
+        breakpoints: Vec<u16>,
+    ) -> Self {
         print::set_is_minimal(opts.minimal);
 
         Self {
             status: Status::default(),
             source: SourceMode::from(opts.command),
             initial_state,
-            breakpoints: Vec::new(),
+            breakpoints,
             current_breakpoint: None,
         }
     }

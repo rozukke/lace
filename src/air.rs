@@ -11,13 +11,16 @@ pub struct Air {
     orig: Option<u16>,
     /// AIR
     ast: Vec<AsmLine>,
+
+    pub breakpoints: Vec<u16>,
 }
 
 impl Air {
-    pub fn new() -> Self {
+    pub fn new(breakpoints: Vec<u16>) -> Self {
         Air {
             orig: None,
             ast: Vec::new(),
+            breakpoints,
         }
     }
 
@@ -123,17 +126,11 @@ pub enum AirStmt {
         offset: u8,
     },
     /// Push onto stack (extended dialect)
-    Push {
-        src_reg: Register,
-    },
+    Push { src_reg: Register },
     /// Pop from stack (extended dialect)
-    Pop {
-        dest_reg: Register,
-    },
+    Pop { dest_reg: Register },
     /// Jump to subroutine and push onto stack (extended dialect)
-    Call {
-        dest_label: Label,
-    },
+    Call { dest_label: Label },
     /// Return from subroutine using stack (extended dialect)
     Rets,
     /// A raw value created during preprocessing
@@ -341,7 +338,7 @@ impl AsmLine {
             // 6. Continued offset when call
             //
             // There are 10 bits of offset precision when using a call instruction.
-            // There also isn't really a way to work around this setup if other instructions 
+            // There also isn't really a way to work around this setup if other instructions
             // are to be left untouched.
             AirStmt::Push { src_reg } => {
                 let mut raw = 0xD000;

@@ -90,8 +90,14 @@ impl RunEnvironment {
         air: Air,
         debugger_opts: DebuggerOptions,
     ) -> Result<RunEnvironment> {
+        // TODO(opt): Remove clone
+        let mut breakpoints = air.breakpoints.clone();
+        for breakpoint in breakpoints.iter_mut() {
+            *breakpoint += air.orig().unwrap_or(0x3000);
+        }
+
         let mut env = Self::try_from(air)?;
-        env.debugger = Some(Debugger::new(debugger_opts, env.state.clone()));
+        env.debugger = Some(Debugger::new(debugger_opts, env.state.clone(), breakpoints));
         Ok(env)
     }
 

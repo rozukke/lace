@@ -306,6 +306,7 @@ impl Cursor<'_> {
             ".stringz" => Some(Dir(Stringz)),
             ".blkw" => Some(Dir(Blkw)),
             ".fill" => Some(Dir(Fill)),
+            ".break" => Some(Dir(Break)),
             _ => None,
         }
     }
