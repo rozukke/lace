@@ -84,7 +84,7 @@ impl Debugger {
         initial_state: RunState,
         breakpoints: Vec<u16>,
     ) -> Self {
-        print::set_is_minimal(opts.minimal);
+        print::is_minimal::set(opts.minimal);
 
         Self {
             status: Status::default(),

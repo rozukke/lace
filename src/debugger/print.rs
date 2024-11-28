@@ -1,24 +1,26 @@
-use std::cell::RefCell;
 use std::io;
 
 use colored::{ColoredString, Colorize as _};
 
 use crate::runtime::terminal_cursor;
 
-thread_local! {
-    static IS_MINIMAL: RefCell<bool> = const { RefCell::new(false) };
-}
-/// May be called multiple times
-pub fn set_is_minimal(value: bool) {
-    IS_MINIMAL.with(|minimal| *minimal.borrow_mut() = value);
-}
-/// May be called before `set_is_minimal`
-fn is_minimal() -> bool {
-    IS_MINIMAL.with(|minimal| *minimal.borrow())
+pub(super) mod is_minimal {
+    use std::cell::RefCell;
+    thread_local! {
+        static VALUE: RefCell<bool> = const { RefCell::new(false) };
+    }
+    /// May be called multiple times
+    pub fn set(new_value: bool) {
+        VALUE.with(|value| *value.borrow_mut() = new_value);
+    }
+    /// May be called before `set_is_minimal`
+    pub(super) fn get() -> bool {
+        VALUE.with(|value| *value.borrow())
+    }
 }
 
 pub fn write(f: &mut impl io::Write, string: String) -> Result<(), io::Error> {
-    if !is_minimal() {
+    if !is_minimal::get() {
         write!(f, "{}", ColoredString::from(string).blue())?;
         return Ok(());
     }
