@@ -60,6 +60,9 @@ impl RunState {
         let raw = &raw[1..];
 
         mem[orig..orig + raw.len()].clone_from_slice(&raw);
+        // Add `HALT` at end of code and data
+        // Prevents PC running through no-ops to the end of memory
+        mem[orig + raw.len()] = 0xF025;
 
         Ok(RunState {
             mem: Box::new(mem),
@@ -92,9 +95,11 @@ impl RunState {
     /// Run with preset memory
     pub fn run(&mut self) {
         loop {
+            if self.pc == u16::MAX {
+                break; // Halt was triggered
+            }
             if self.pc >= 0xFE00 {
-                // Entering device address space
-                break;
+                panic!("Program counter entered device address space");
             }
             let instr = self.mem[self.pc as usize];
             let opcode = (instr >> 12) as usize;
