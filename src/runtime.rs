@@ -173,6 +173,10 @@ impl RunEnvironment {
             self.state.pc += 1;
             RunState::OP_TABLE[opcode](&mut self.state, instr);
         }
+
+        if !terminal_cursor::is_line_start() {
+            println!();
+        }
     }
 }
 
