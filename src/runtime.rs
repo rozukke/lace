@@ -166,10 +166,10 @@ impl RunEnvironment {
                 }
             }
 
-            if self.pc == u16::MAX {
+            if self.state.pc == u16::MAX {
                 break; // Halt was triggered
             }
-            if self.pc >= 0xFE00 {
+            if self.state.pc >= 0xFE00 {
                 exception!("entered protected memory area >= 0xFE00");
             }
 
@@ -217,7 +217,7 @@ impl RunState {
         unsafe { *self.reg.get_unchecked(reg as usize) }
     }
     #[inline]
-    fn reg_mut(&mut self, reg: u16) -> &mut u16 {
+    pub(super) fn reg_mut(&mut self, reg: u16) -> &mut u16 {
         debug_assert!(reg < 8, "tried to access invalid register 'r{}'", reg);
         // SAFETY: Should only be indexed with values that are & 0b111
         unsafe { self.reg.get_unchecked_mut(reg as usize) }
@@ -229,11 +229,12 @@ impl RunState {
         unsafe { *self.mem.get_unchecked(addr as usize) }
     }
     #[inline]
-    fn mem_mut(&mut self, addr: u16) -> &mut u16 {
+    pub(super) fn mem_mut(&mut self, addr: u16) -> &mut u16 {
         // SAFETY: memory fits any u16 index
         unsafe { self.mem.get_unchecked_mut(addr as usize) }
     }
 
+    // TODO(refactor): Separate into `pc` and `pc_mut`
     #[inline]
     pub(super) fn pc(&mut self) -> &mut u16 {
         &mut self.pc

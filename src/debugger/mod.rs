@@ -104,7 +104,7 @@ impl Debugger {
             return Action::Proceed;
         }
 
-        let instr = RelevantInstr::try_from(*state.mem(pc)).ok();
+        let instr = RelevantInstr::try_from(state.mem(pc)).ok();
         dprintln!("\x1b[2m-- Instruction: {:?}", instr);
 
         // Always break from `continue|finish|step|next` on a breakpoint or HALT
@@ -205,24 +205,24 @@ impl Debugger {
             Command::Get { location } => match location {
                 Location::Register(register) => {
                     dprintln!("Register R{}:", register as u16);
-                    Self::print_integer(*state.reg(register as u16));
+                    Self::print_integer(*state.reg_mut(register as u16));
                 }
                 Location::Memory(location) => {
                     let address = self.resolve_location_address(state, &location)?;
                     dprintln!("Memory at address 0x{:04x}:", address);
-                    Self::print_integer(*state.mem(address));
+                    Self::print_integer(*state.mem_mut(address));
                 }
             },
 
             Command::Set { location, value } => match location {
                 Location::Register(register) => {
-                    *state.reg(register as u16) = value;
+                    *state.reg_mut(register as u16) = value;
                     dprintln!("Updated register R{}", register as u16);
                 }
                 Location::Memory(location) => {
                     let address = self.resolve_location_address(state, &location)?;
                     dprintln!("Updated memory at address 0x{:04x}.", address);
-                    *state.mem(address) = value;
+                    *state.mem_mut(address) = value;
                 }
             },
 
@@ -292,12 +292,12 @@ impl Debugger {
         }
     }
 
-    fn print_registers(state: &mut RunState) {
+    fn print_registers(state: &RunState) {
         dprintln!("----------------------");
         dprintln!("| Registers:");
         for i in 0..8 {
             dprint!("| R{}  ", i);
-            Self::print_integer(*state.reg(i));
+            Self::print_integer(state.reg(i));
         }
         dprintln!("----------------------");
     }
@@ -306,6 +306,7 @@ impl Debugger {
         dprintln!("0x{:04x}\t{}", value, value);
     }
 
+    // TODO(refactor): Use `&self`
     fn resolve_location_address(
         &mut self,
         state: &mut RunState,
@@ -318,6 +319,7 @@ impl Debugger {
         }
     }
 
+    // TODO(refactor): Use `&self`
     fn resolve_label_address(&mut self, label: &Label) -> Option<u16> {
         let Some(address) = get_label_address(&label.name) else {
             dprintln!("Label not found named `{}`", label.name);
@@ -336,6 +338,7 @@ impl Debugger {
         Some(address as u16)
     }
 
+    // TODO(refactor): Use `&self`
     fn orig(&mut self) -> u16 {
         *self.initial_state.pc()
     }
