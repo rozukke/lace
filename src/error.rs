@@ -54,6 +54,22 @@ pub fn lex_unknown(span: Span, src: &'static str) -> Report {
     .with_source_code(src)
 }
 
+pub fn lex_stack_extension_not_enabled(instr: &str, span: Span, src: &'static str) -> Report {
+    miette!(
+        severity = Severity::Error,
+        code = "lex::stack_extension_not_enabled",
+        help = "\
+        this instruction requires the non-standard 'stack' extension\n\
+        run with `LACE_STACK=1` to enable\n\
+        note: this identifier cannot be used as a label\
+        ",
+        labels = vec![LabeledSpan::at(span, "non-standard instruction")],
+        "Non-standard '{}' instruction used without 'stack' extension enabled",
+        instr
+    )
+    .with_source_code(src)
+}
+
 // Preprocessor errors
 
 pub fn preproc_bad_lit(span: Span, src: &'static str, is_present: bool) -> Report {
