@@ -14,3 +14,5 @@ pub use symbol::{reset_state, StaticSource};
 
 mod error;
 mod lexer;
+
+pub mod env;

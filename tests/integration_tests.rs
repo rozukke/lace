@@ -23,6 +23,7 @@ fn runs_hello_world() {
 fn runs_stack_example() {
     let mut cmd = Command::cargo_bin("lace").unwrap();
     cmd.arg("run").arg("tests/files/stack.asm");
+    cmd.env("LACE_STACK", "1");
 
     cmd.assert()
         .success()
@@ -35,6 +36,7 @@ fn runs_stack_example() {
 fn runs_recursive_fibonacci_example() {
     let mut cmd = Command::cargo_bin("lace").unwrap();
     cmd.arg("run").arg("tests/files/fibonacci.asm");
+    cmd.env("LACE_STACK", "1");
 
     // Hardcoded 23rd fibonacci number
     cmd.assert()
