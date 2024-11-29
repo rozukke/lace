@@ -5,9 +5,9 @@ use std::{i16, u16};
 
 use miette::Result;
 
-use crate::error;
 use crate::lexer::cursor::Cursor;
 use crate::symbol::{DirKind, Flag, InstrKind, Register, Span, SrcOffset, TrapKind};
+use crate::{env, error};
 
 pub mod cursor;
 
@@ -146,7 +146,7 @@ impl Cursor<'_> {
                     self.bump();
                     self.hex()?
                 }
-                _ => self.ident(),
+                _ => self.ident()?,
             },
             // Register literals
             'r' | 'R' => match self.first() {
@@ -162,13 +162,13 @@ impl Cursor<'_> {
                         // SAFETY: c is always valid
                         TokenKind::Reg(Register::from_str(&c.to_string()).unwrap())
                     } else {
-                        self.ident()
+                        self.ident()?
                     }
                 }
-                _ => self.ident(),
+                _ => self.ident()?,
             },
             // Check only after other identifier-likes
-            c if is_id(c) => self.ident(),
+            c if is_id(c) => self.ident()?,
             // Decimal literal
             '#' => self.dec()?,
             // Directive
@@ -210,7 +210,7 @@ impl Cursor<'_> {
                             e,
                         ))
                     }
-                    _ => return Ok(self.ident()),
+                    _ => return Ok(self.ident()?),
                 },
             },
         };
@@ -282,18 +282,18 @@ impl Cursor<'_> {
         }
     }
 
-    fn ident(&mut self) -> TokenKind {
+    fn ident(&mut self) -> Result<TokenKind> {
         let ident_start = self.abs_pos() - 1;
         self.take_while(is_id);
         let ident = self
             .get_range(ident_start..self.abs_pos())
             .to_ascii_lowercase();
 
-        let mut token_kind = self.check_instruction(&ident);
+        let mut token_kind = self.check_instruction(&ident, ident_start)?;
         if token_kind == TokenKind::Label {
             token_kind = self.check_trap(&ident);
         }
-        token_kind
+        Ok(token_kind)
     }
 
     /// Expects lowercase
@@ -312,10 +312,21 @@ impl Cursor<'_> {
     }
 
     /// Expects lowercase
-    fn check_instruction(&self, ident: &str) -> TokenKind {
+    fn check_instruction(&self, ident: &str, start_pos: usize) -> Result<TokenKind> {
         use InstrKind::*;
         use TokenKind::Instr;
-        match ident {
+
+        if matches!(ident, "pop" | "push" | "call" | "rets") {
+            if !env::is_stack_enabled() {
+                return Err(error::lex_stack_extension_not_enabled(
+                    ident,
+                    Span::new(SrcOffset(start_pos), self.pos_in_token()),
+                    self.src(),
+                ));
+            }
+        }
+
+        Ok(match ident {
             "add" => Instr(Add),
             "and" => Instr(And),
             "br" => Instr(Br(Flag::Nzp)),
@@ -344,7 +355,7 @@ impl Cursor<'_> {
             "call" => Instr(Call),
             "rets" => Instr(Rets),
             _ => TokenKind::Label,
-        }
+        })
     }
 
     /// Expects lowercase

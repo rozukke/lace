@@ -77,6 +77,7 @@ enum Command {
 fn main() -> miette::Result<()> {
     use MsgColor::*;
     let args = Args::parse();
+    lace::env::init();
 
     if let Some(command) = args.command {
         match command {
