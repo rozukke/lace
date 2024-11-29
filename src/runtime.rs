@@ -234,10 +234,9 @@ impl RunState {
         unsafe { self.mem.get_unchecked_mut(addr as usize) }
     }
 
-    // TODO(refactor): Separate into `pc` and `pc_mut`
     #[inline]
-    pub(super) fn pc(&mut self) -> &mut u16 {
-        &mut self.pc
+    pub(super) fn pc(&self) -> u16 {
+        self.pc
     }
 
     #[inline]

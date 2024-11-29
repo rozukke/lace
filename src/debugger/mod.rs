@@ -96,7 +96,7 @@ impl Debugger {
     }
 
     pub(super) fn wait_for_action(&mut self, state: &mut RunState) -> Action {
-        let pc = *state.pc();
+        let pc = state.pc();
 
         // 0xFFFF signifies a HALT so don't warn for that
         if pc >= 0xFE00 && pc < 0xFFFF {
@@ -151,7 +151,7 @@ impl Debugger {
                     return Action::Proceed;
                 }
                 Status::Next { return_addr } => {
-                    if state.pc() == return_addr {
+                    if state.pc() == *return_addr {
                         self.status = Status::WaitForAction;
                     }
                     return Action::Proceed;
@@ -198,7 +198,7 @@ impl Debugger {
             }
             Command::Next => {
                 self.status = Status::Next {
-                    return_addr: *state.pc() + 1,
+                    return_addr: state.pc() + 1,
                 };
             }
 
@@ -306,21 +306,19 @@ impl Debugger {
         dprintln!("0x{:04x}\t{}", value, value);
     }
 
-    // TODO(refactor): Use `&self`
     fn resolve_location_address(
-        &mut self,
+        &self,
         state: &mut RunState,
         location: &MemoryLocation,
     ) -> Option<u16> {
         match location {
             MemoryLocation::Address(address) => Some(*address),
-            MemoryLocation::PC => Some(*state.pc()),
+            MemoryLocation::PC => Some(state.pc()),
             MemoryLocation::Label(label) => self.resolve_label_address(label),
         }
     }
 
-    // TODO(refactor): Use `&self`
-    fn resolve_label_address(&mut self, label: &Label) -> Option<u16> {
+    fn resolve_label_address(&self, label: &Label) -> Option<u16> {
         let Some(address) = get_label_address(&label.name) else {
             dprintln!("Label not found named `{}`", label.name);
             return None;
@@ -338,9 +336,8 @@ impl Debugger {
         Some(address as u16)
     }
 
-    // TODO(refactor): Use `&self`
-    fn orig(&mut self) -> u16 {
-        *self.initial_state.pc()
+    fn orig(&self) -> u16 {
+        self.initial_state.pc()
     }
 }
 
