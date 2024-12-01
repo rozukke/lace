@@ -1,12 +1,12 @@
 use std::{
     cmp::Ordering,
     i16,
-    io::{stdin, stdout, IsTerminal, Read, Write},
+    io::{self, stdin, stdout, IsTerminal, Read, Write},
     u16, u32, u8, usize,
 };
 
 use crate::{
-    debugger::{Action, Debugger, DebuggerOptions, RelevantInstr},
+    debugger::{print_registers, Action, Debugger, DebuggerOptions, RelevantInstr},
     dprintln, env, Air,
 };
 use colored::Colorize;
@@ -505,12 +505,7 @@ impl RunState {
             }
             // reg
             0x27 => {
-                println!("\n------ Registers ------");
-                for (i, reg) in self.reg.iter().enumerate() {
-                    println!("r{i}: {reg:.>#19}");
-                    // println!("r{i}: {reg:.>#19b}");
-                }
-                println!("-----------------------");
+                print_registers(&mut io::stdout(), &self);
             }
             // unknown
             _ => exception!(
