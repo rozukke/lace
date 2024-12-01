@@ -206,12 +206,12 @@ impl Debugger {
             Command::Get { location } => match location {
                 Location::Register(register) => {
                     dprintln!("Register R{}:", register as u16);
-                    Self::print_integer(*state.reg_mut(register as u16));
+                    print_integer(*state.reg_mut(register as u16));
                 }
                 Location::Memory(location) => {
                     let address = self.resolve_location_address(state, &location)?;
                     dprintln!("Memory at address 0x{:04x}:", address);
-                    Self::print_integer(*state.mem_mut(address));
+                    print_integer(*state.mem_mut(address));
                 }
             },
 
@@ -227,7 +227,7 @@ impl Debugger {
                 }
             },
 
-            Command::Registers => Self::print_registers(state),
+            Command::Registers => print_registers(state),
 
             Command::Reset => {
                 *state = self.initial_state.clone();
@@ -293,26 +293,6 @@ impl Debugger {
         }
     }
 
-    // TODO(refactor): Separate from `Debugger` struct
-    fn print_registers(state: &RunState) {
-        dprintln!("----------------------");
-        dprintln!("| Registers:");
-        for i in 0..8 {
-            dprint!("| R{}  ", i);
-            Self::print_integer(state.reg(i));
-        }
-        dprintln!("----------------------");
-    }
-
-    fn print_integer(value: u16) {
-        dprint!("0x{:04x}", value);
-        dprint!("\t{}", value);
-        dprint!("\t{}", value as i16);
-        dprint!("\t");
-        print_char(value);
-        dprintln!();
-    }
-
     fn resolve_location_address(
         &self,
         state: &mut RunState,
@@ -346,6 +326,25 @@ impl Debugger {
     fn orig(&self) -> u16 {
         self.initial_state.pc()
     }
+}
+
+fn print_registers(state: &RunState) {
+    dprintln!("----------------------");
+    dprintln!("| Registers:");
+    for i in 0..8 {
+        dprint!("| R{}  ", i);
+        print_integer(state.reg(i));
+    }
+    dprintln!("----------------------");
+}
+
+fn print_integer(value: u16) {
+    dprint!("0x{:04x}", value);
+    dprint!("\t{}", value);
+    dprint!("\t{}", value as i16);
+    dprint!("\t");
+    print_char(value);
+    dprintln!();
 }
 
 fn print_char(value: u16) {
