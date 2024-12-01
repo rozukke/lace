@@ -35,6 +35,13 @@ impl Token {
     pub fn nullbyte() -> Self {
         Token::byte(0)
     }
+
+    pub fn breakpoint(span: Span) -> Self {
+        Token {
+            kind: TokenKind::BreakPoint,
+            span,
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -57,6 +64,7 @@ pub enum TokenKind {
     Reg(Register),
     /// Preprocessor raw values
     Byte(u16),
+    BreakPoint,
     Whitespace,
     Comment,
     Eof,
@@ -71,8 +79,12 @@ impl Display for TokenKind {
             TokenKind::Lit(_) => "literal",
             TokenKind::Dir(_) => "preprocessor directive",
             TokenKind::Reg(_) => "register",
-            TokenKind::Whitespace | TokenKind::Comment | TokenKind::Eof | TokenKind::Byte(_) => {
-                unreachable!("whitespace, comment, eof, byte attempted to be displayed")
+            TokenKind::Whitespace
+            | TokenKind::Comment
+            | TokenKind::Eof
+            | TokenKind::Byte(_)
+            | TokenKind::BreakPoint => {
+                unreachable!("whitespace, comment, eof, byte, breakpoitn attempted to be displayed")
             }
         };
         f.write_str(lit)

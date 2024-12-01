@@ -16,11 +16,11 @@ pub struct Air {
 }
 
 impl Air {
-    pub fn new(breakpoints: Vec<u16>) -> Self {
+    pub fn new() -> Self {
         Air {
             orig: None,
             ast: Vec::new(),
-            breakpoints,
+            breakpoints: Vec::new(),
         }
     }
 
