@@ -332,34 +332,35 @@ impl Debugger {
 }
 
 pub fn print_registers(f: &mut impl io::Write, state: &RunState) {
-    writeln!(f, "----------------------").unwrap();
-    writeln!(f, "|     HEX\tINT\tUINT\tCHAR").unwrap();
+    writeln!(f, "--------------------------------------").unwrap();
+    writeln!(f, "|        HEX     INT    UINT    CHAR |").unwrap();
     for i in 0..8 {
         write!(f, "| R{}  ", i).unwrap();
         print_integer(f, state.reg(i));
+        writeln!(f, " |").unwrap();
     }
-    writeln!(f, "----------------------").unwrap();
+    writeln!(f, "--------------------------------------").unwrap();
 }
 
 fn print_integer(f: &mut impl io::Write, value: u16) {
-    write!(f, "0x{:04x}", value).unwrap();
-    write!(f, "\t{}", value).unwrap();
-    write!(f, "\t{}", value as i16).unwrap();
-    write!(f, "\t").unwrap();
+    write!(f, "0x{:04x}  ", value).unwrap();
+    write!(f, "{:-6}  ", value).unwrap();
+    write!(f, "{:-6}  ", value as i16).unwrap();
     print_char(f, value);
-    writeln!(f).unwrap();
 }
 
 fn print_char(f: &mut impl io::Write, value: u16) {
+    write!(f, "   ").unwrap();
+    // Print 3 characters
     match value {
         // ASCII control characters which are arbitrarily considered significant
         0x00 => write!(f, "NUL"),
-        0x08 => write!(f, "BS"),
-        0x09 => write!(f, "HT"),
-        0x0a => write!(f, "LF"),
-        0x0b => write!(f, "VT"),
-        0x0c => write!(f, "FF"),
-        0x0d => write!(f, "CR"),
+        0x08 => write!(f, "BS "),
+        0x09 => write!(f, "HT "),
+        0x0a => write!(f, "LF "),
+        0x0b => write!(f, "VT "),
+        0x0c => write!(f, "FF "),
+        0x0d => write!(f, "CR "),
         0x1b => write!(f, "ESC"),
         0x7f => write!(f, "DEL"),
 
@@ -367,14 +368,14 @@ fn print_char(f: &mut impl io::Write, value: u16) {
         0x20 => write!(f, "[_]"),
 
         // Printable ASCII characters
-        0x21..=0x7e => write!(f, "{}", value as u8 as char),
+        0x21..=0x7e => write!(f, "{:-6}", value as u8 as char),
 
         // Any ASCII character not already matched (unimportant control characters)
         0x00..=0x7f => write!(f, "***"),
         // Any non-ASCII character
         0x0080.. => write!(f, "---"),
     }
-    .unwrap()
+    .unwrap();
 }
 
 fn get_label_address(name: &str) -> Option<u16> {
