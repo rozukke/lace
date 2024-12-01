@@ -293,6 +293,7 @@ impl Debugger {
         }
     }
 
+    // TODO(refactor): Separate from `Debugger` struct
     fn print_registers(state: &RunState) {
         dprintln!("----------------------");
         dprintln!("| Registers:");
@@ -304,7 +305,12 @@ impl Debugger {
     }
 
     fn print_integer(value: u16) {
-        dprintln!("0x{:04x}\t{}", value, value);
+        dprint!("0x{:04x}", value);
+        dprint!("\t{}", value);
+        dprint!("\t{}", value as i16);
+        dprint!("\t");
+        print_char(value);
+        dprintln!();
     }
 
     fn resolve_location_address(
@@ -339,6 +345,32 @@ impl Debugger {
 
     fn orig(&self) -> u16 {
         self.initial_state.pc()
+    }
+}
+
+fn print_char(value: u16) {
+    match value {
+        // ASCII control characters which are arbitrarily considered significant
+        0x00 => dprint!("NUL"),
+        0x08 => dprint!("BS"),
+        0x09 => dprint!("HT"),
+        0x0a => dprint!("LF"),
+        0x0b => dprint!("VT"),
+        0x0c => dprint!("FF"),
+        0x0d => dprint!("CR"),
+        0x1b => dprint!("ESC"),
+        0x7f => dprint!("DEL"),
+
+        // Space
+        0x20 => dprint!("[_]"),
+
+        // Printable ASCII characters
+        0x21..=0x7e => dprint!("{}", value as u8 as char),
+
+        // Any ASCII character not already matched (unimportant control characters)
+        0x00..=0x7f => dprint!("***"),
+        // Any non-ASCII character
+        0x0080.. => dprint!("---"),
     }
 }
 

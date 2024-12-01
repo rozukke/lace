@@ -7,6 +7,9 @@ use console::Key;
 
 use crate::{dprint, dprintln, dwrite};
 
+// TODO(feat): If argument ends in '...' (or something) then switch to `SourceMode::Terminal` once
+// arguments are exhausted
+
 #[allow(private_interfaces)] // Perhaps a bad practice
 #[derive(Debug)]
 pub enum SourceMode {
