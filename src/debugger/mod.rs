@@ -375,9 +375,9 @@ fn print_char(f: &mut impl io::Write, value: u16) {
         0x21..=0x7e => write!(f, "{:-6}", value as u8 as char),
 
         // Any ASCII character not already matched (unimportant control characters)
-        0x00..=0x7f => write!(f, "***"),
+        0x00..=0x7f => write!(f, "\x1b[2m:::\x1b[0m"),
         // Any non-ASCII character
-        0x0080.. => write!(f, "---"),
+        0x0080.. => write!(f, "\x1b[2m···\x1b[0m"),
     }
     .unwrap();
 }
