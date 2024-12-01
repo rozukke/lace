@@ -330,7 +330,7 @@ impl Debugger {
 
 fn print_registers(state: &RunState) {
     dprintln!("----------------------");
-    dprintln!("| Registers:");
+    dprintln!("|     HEX\tINT\tUINT\tCHAR");
     for i in 0..8 {
         dprint!("| R{}  ", i);
         print_integer(state.reg(i));
