@@ -6,7 +6,10 @@ pub use air::Air;
 
 // Running
 mod runtime;
-pub use runtime::RunState;
+pub use runtime::RunEnvironment;
+#[macro_use]
+mod debugger;
+pub use debugger::DebuggerOptions;
 
 // Reset global state for watch
 mod symbol;

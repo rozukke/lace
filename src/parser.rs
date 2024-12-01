@@ -67,6 +67,10 @@ pub fn preprocess(src: &'static str) -> Result<Vec<Token>> {
                     _ => return Err(error::preproc_no_str(val.span, src)),
                 }
             }
+            TokenKind::Dir(DirKind::Break) => {
+                // TODO(feat): Use real span
+                res.push(Token::breakpoint(Span::dummy()));
+            }
             // Eliminated during preprocessing
             TokenKind::Comment | TokenKind::Whitespace => continue,
             TokenKind::Eof | TokenKind::Dir(DirKind::End) => break,
@@ -164,6 +168,11 @@ impl AsmParser {
                         assert!(dir == DirKind::Orig);
                         let orig = self.expect_lit(Bits::Unsigned(16))?;
                         self.air.set_orig(orig)?;
+                        continue;
+                    }
+                    TokenKind::BreakPoint => {
+                        let addr = self.air.len() as u16;
+                        self.air.breakpoints.push(addr);
                         continue;
                     }
                     TokenKind::Instr(instr_kind) => self.parse_instr(instr_kind)?,

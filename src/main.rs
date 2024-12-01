@@ -13,8 +13,8 @@ use hotwatch::{
 };
 use miette::{bail, IntoDiagnostic, Result};
 
-use lace::reset_state;
-use lace::{Air, RunState, StaticSource};
+use lace::{reset_state, DebuggerOptions};
+use lace::{Air, RunEnvironment, StaticSource};
 
 /// Lace is a complete & convenient assembler toolchain for the LC3 assembly language.
 #[derive(Parser)]
@@ -31,8 +31,19 @@ struct Args {
 enum Command {
     /// Run text `.asm` or binary `.lc3` file directly and output to terminal
     Run {
-        /// .asm file to run
+        /// `.asm` or `.lc3` file to run
         name: PathBuf,
+    },
+    /// Run text `.asm` file directly and with debugger
+    Debug {
+        /// `.asm` file to run
+        name: PathBuf,
+        /// Produce minimal debugger output
+        #[arg(short, long)]
+        minimal: bool,
+        /// Read debugger commands from argument
+        #[arg(short, long)]
+        command: Option<String>,
     },
     /// Create binary `.lc3` file to run later or view compiled data
     Compile {
@@ -71,7 +82,15 @@ fn main() -> miette::Result<()> {
     if let Some(command) = args.command {
         match command {
             Command::Run { name } => {
-                run(&name)?;
+                run(&name, None)?;
+                Ok(())
+            }
+            Command::Debug {
+                name,
+                command,
+                minimal,
+            } => {
+                run(&name, Some(DebuggerOptions { command, minimal }))?;
                 Ok(())
             }
             Command::Compile { name, dest } => {
@@ -91,7 +110,7 @@ fn main() -> miette::Result<()> {
                 }
 
                 // Write lines
-                for stmt in air {
+                for stmt in &air {
                     let _ = file.write(&stmt.emit()?.to_be_bytes());
                 }
 
@@ -169,7 +188,7 @@ fn main() -> miette::Result<()> {
         }
     } else {
         if let Some(path) = args.path {
-            run(&path)?;
+            run(&path, None)?;
             Ok(())
         } else {
             println!("\n~ lace v{VERSION} - Copyright (c) 2024 Artemis Rosman ~");
@@ -204,11 +223,15 @@ where
     println!("{left:>12} {right}");
 }
 
-fn run(name: &PathBuf) -> Result<()> {
+fn run(name: &PathBuf, debugger_opts: Option<DebuggerOptions>) -> Result<()> {
     file_message(MsgColor::Green, "Assembling", &name);
     let mut program = if let Some(ext) = name.extension() {
         match ext.to_str().unwrap() {
             "lc3" | "obj" => {
+                if debugger_opts.is_some() {
+                    bail!("Cannot use debugger on non-assembly file");
+                }
+
                 // Read to byte buffer
                 let mut file = File::open(&name).into_diagnostic()?;
                 let f_size = file.metadata().unwrap().len();
@@ -223,12 +246,15 @@ fn run(name: &PathBuf) -> Result<()> {
                     .chunks_exact(2)
                     .map(|word| u16::from_be_bytes([word[0], word[1]]))
                     .collect();
-                RunState::from_raw(&u16_buf)?
+                RunEnvironment::from_raw(&u16_buf)?
             }
             "asm" => {
                 let contents = StaticSource::new(fs::read_to_string(&name).into_diagnostic()?);
                 let air = assemble(&contents)?;
-                RunState::try_from(air)?
+                match debugger_opts {
+                    None => RunEnvironment::try_from(&air)?,
+                    Some(opts) => RunEnvironment::try_from_with_debugger(air, opts)?,
+                }
             }
             _ => {
                 bail!("File has unknown extension. Exiting...")

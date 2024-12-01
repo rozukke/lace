@@ -5,11 +5,14 @@ use miette::{bail, Result, Severity};
 use crate::symbol::{Flag, Label, Register};
 
 /// Assembly intermediate representation, contains starting address and list of instructions
+#[derive(Clone)]
 pub struct Air {
     /// Memory address to start program at
     orig: Option<u16>,
     /// AIR
     ast: Vec<AsmLine>,
+
+    pub breakpoints: Vec<u16>,
 }
 
 impl Air {
@@ -17,6 +20,7 @@ impl Air {
         Air {
             orig: None,
             ast: Vec::new(),
+            breakpoints: Vec::new(),
         }
     }
 
@@ -55,17 +59,17 @@ impl Air {
     }
 }
 
-impl IntoIterator for Air {
-    type Item = AsmLine;
-    type IntoIter = std::vec::IntoIter<Self::Item>;
+impl<'a> IntoIterator for &'a Air {
+    type Item = &'a AsmLine;
+    type IntoIter = std::slice::Iter<'a, AsmLine>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.ast.into_iter()
+        (&self.ast).into_iter()
     }
 }
 
 /// Single LC3 statement. Has optional labels.
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub enum AirStmt {
     /// Add src_reg with src_reg_imm and store in dest
     Add {
@@ -122,17 +126,11 @@ pub enum AirStmt {
         offset: u8,
     },
     /// Push onto stack (extended dialect)
-    Push {
-        src_reg: Register,
-    },
+    Push { src_reg: Register },
     /// Pop from stack (extended dialect)
-    Pop {
-        dest_reg: Register,
-    },
+    Pop { dest_reg: Register },
     /// Jump to subroutine and push onto stack (extended dialect)
-    Call {
-        dest_label: Label,
-    },
+    Call { dest_label: Label },
     /// Return from subroutine using stack (extended dialect)
     Rets,
     /// A raw value created during preprocessing
@@ -143,7 +141,7 @@ pub enum AirStmt {
 
 /// Used for ADD and AND commands as they support either 5-bit immediate values or registers as the
 /// last operand.
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub enum ImmediateOrReg {
     Reg(Register),
     Imm5(u8),
@@ -164,7 +162,7 @@ impl ImmediateOrReg {
 pub struct RawWord(pub u16);
 
 /// A line (16 bits) of assembly.
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct AsmLine {
     pub line: u16,
     pub stmt: AirStmt,
@@ -340,7 +338,7 @@ impl AsmLine {
             // 6. Continued offset when call
             //
             // There are 10 bits of offset precision when using a call instruction.
-            // There also isn't really a way to work around this setup if other instructions 
+            // There also isn't really a way to work around this setup if other instructions
             // are to be left untouched.
             AirStmt::Push { src_reg } => {
                 let mut raw = 0xD000;
