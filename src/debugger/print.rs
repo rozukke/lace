@@ -4,6 +4,20 @@ use colored::{ColoredString, Colorize as _};
 
 use crate::runtime::terminal_line_start;
 
+pub struct Writer;
+
+impl io::Write for Writer {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        // TODO: Make this good
+        print(String::from_utf8_lossy(buf).to_string());
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
 pub(super) mod is_minimal {
     use std::cell::RefCell;
     thread_local! {

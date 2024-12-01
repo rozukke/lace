@@ -3,11 +3,14 @@ mod parse;
 mod source;
 
 mod print;
+use std::io;
+
+use print::Writer;
 // For macro use
 #[doc(hidden)]
 pub use print::{print as _print, write as _write};
 
-use crate::{dprint, dprintln};
+use crate::dprintln;
 use crate::{runtime::RunState, symbol::with_symbol_table};
 use command::{Command, Label, Location, MemoryLocation};
 use source::{SourceMode, SourceReader};
@@ -206,12 +209,12 @@ impl Debugger {
             Command::Get { location } => match location {
                 Location::Register(register) => {
                     dprintln!("Register R{}:", register as u16);
-                    print_integer(*state.reg_mut(register as u16));
+                    print_integer(&mut Writer, *state.reg_mut(register as u16));
                 }
                 Location::Memory(location) => {
                     let address = self.resolve_location_address(state, &location)?;
                     dprintln!("Memory at address 0x{:04x}:", address);
-                    print_integer(*state.mem_mut(address));
+                    print_integer(&mut Writer, *state.mem_mut(address));
                 }
             },
 
@@ -227,7 +230,7 @@ impl Debugger {
                 }
             },
 
-            Command::Registers => print_registers(state),
+            Command::Registers => print_registers(&mut Writer, state),
 
             Command::Reset => {
                 *state = self.initial_state.clone();
@@ -328,49 +331,50 @@ impl Debugger {
     }
 }
 
-fn print_registers(state: &RunState) {
-    dprintln!("----------------------");
-    dprintln!("|     HEX\tINT\tUINT\tCHAR");
+pub fn print_registers(f: &mut impl io::Write, state: &RunState) {
+    writeln!(f, "----------------------").unwrap();
+    writeln!(f, "|     HEX\tINT\tUINT\tCHAR").unwrap();
     for i in 0..8 {
-        dprint!("| R{}  ", i);
-        print_integer(state.reg(i));
+        write!(f, "| R{}  ", i).unwrap();
+        print_integer(f, state.reg(i));
     }
-    dprintln!("----------------------");
+    writeln!(f, "----------------------").unwrap();
 }
 
-fn print_integer(value: u16) {
-    dprint!("0x{:04x}", value);
-    dprint!("\t{}", value);
-    dprint!("\t{}", value as i16);
-    dprint!("\t");
-    print_char(value);
-    dprintln!();
+fn print_integer(f: &mut impl io::Write, value: u16) {
+    write!(f, "0x{:04x}", value).unwrap();
+    write!(f, "\t{}", value).unwrap();
+    write!(f, "\t{}", value as i16).unwrap();
+    write!(f, "\t").unwrap();
+    print_char(f, value);
+    writeln!(f).unwrap();
 }
 
-fn print_char(value: u16) {
+fn print_char(f: &mut impl io::Write, value: u16) {
     match value {
         // ASCII control characters which are arbitrarily considered significant
-        0x00 => dprint!("NUL"),
-        0x08 => dprint!("BS"),
-        0x09 => dprint!("HT"),
-        0x0a => dprint!("LF"),
-        0x0b => dprint!("VT"),
-        0x0c => dprint!("FF"),
-        0x0d => dprint!("CR"),
-        0x1b => dprint!("ESC"),
-        0x7f => dprint!("DEL"),
+        0x00 => write!(f, "NUL"),
+        0x08 => write!(f, "BS"),
+        0x09 => write!(f, "HT"),
+        0x0a => write!(f, "LF"),
+        0x0b => write!(f, "VT"),
+        0x0c => write!(f, "FF"),
+        0x0d => write!(f, "CR"),
+        0x1b => write!(f, "ESC"),
+        0x7f => write!(f, "DEL"),
 
         // Space
-        0x20 => dprint!("[_]"),
+        0x20 => write!(f, "[_]"),
 
         // Printable ASCII characters
-        0x21..=0x7e => dprint!("{}", value as u8 as char),
+        0x21..=0x7e => write!(f, "{}", value as u8 as char),
 
         // Any ASCII character not already matched (unimportant control characters)
-        0x00..=0x7f => dprint!("***"),
+        0x00..=0x7f => write!(f, "***"),
         // Any non-ASCII character
-        0x0080.. => dprint!("---"),
+        0x0080.. => write!(f, "---"),
     }
+    .unwrap()
 }
 
 fn get_label_address(name: &str) -> Option<u16> {
