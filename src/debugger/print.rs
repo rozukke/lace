@@ -6,6 +6,7 @@ use crate::runtime::terminal_line_start;
 
 pub struct Writer;
 
+// TODO(feat): impl `fmt::Writer` instead
 impl io::Write for Writer {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         // TODO: Make this good

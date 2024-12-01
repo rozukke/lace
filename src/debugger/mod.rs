@@ -332,14 +332,18 @@ impl Debugger {
 }
 
 pub fn print_registers(f: &mut impl io::Write, state: &RunState) {
-    writeln!(f, "┌────────────────────────────────────┐").unwrap();
-    writeln!(f, "│        HEX     INT    UINT    CHAR │").unwrap();
+    writeln!(f, "\x1b[2m┌────────────────────────────────────┐\x1b[0m").unwrap();
+    writeln!(
+        f,
+        "\x1b[2m│        \x1b[3mhex     int    uint    char\x1b[0m\x1b[2m │\x1b[0m"
+    )
+    .unwrap();
     for i in 0..8 {
-        write!(f, "│ R{}  ", i).unwrap();
+        write!(f, "\x1b[2m│\x1b[0m R{}  ", i).unwrap();
         print_integer(f, state.reg(i));
-        writeln!(f, " │").unwrap();
+        writeln!(f, " \x1b[2m│\x1b[0m").unwrap();
     }
-    writeln!(f, "└────────────────────────────────────┘").unwrap();
+    writeln!(f, "\x1b[2m└────────────────────────────────────┘\x1b[0m").unwrap();
 }
 
 fn print_integer(f: &mut impl io::Write, value: u16) {
