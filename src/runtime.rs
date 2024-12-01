@@ -140,10 +140,10 @@ impl RunEnvironment {
         loop {
             if let Some(debugger) = &mut self.debugger {
                 if !terminal_line_start::get() {
-                    dprintln!();
+                    dprintln!(%);
                 }
-                dprintln!();
-                dprintln!("Program counter at: 0x{:04x}", self.state.pc);
+                dprintln!(%);
+                dprintln!(%"Program counter at: 0x{:04x}", self.state.pc);
                 match debugger.wait_for_action(&mut self.state) {
                     Action::Proceed => (),
                     Action::StopDebugger => {

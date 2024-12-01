@@ -80,8 +80,8 @@ impl SourceReader for SourceMode {
         };
         // Echo prompt and command for non-terminal source
         // Equivalent code found in terminal source
-        dprint!("\x1b[1mCommand: ");
-        dprintln!("{}", command.unwrap_or("\x1b[3m(end of input)").trim());
+        dprint!(%"\x1b[1mCommand: ");
+        dprintln!(%"{}", command.unwrap_or("\x1b[3m(end of input)").trim());
         command
     }
 }
@@ -251,7 +251,7 @@ impl Terminal {
 
         // Print prompt and current input
         // Equivalent code found in non-terminal source
-        dwrite!(&mut self.term, "\x1b[1mCommand: \x1b[0m").unwrap();
+        dwrite!(% &mut self.term, "\x1b[1mCommand: \x1b[0m").unwrap();
 
         // Inline `self.get_current()` due to borrowing issues
         let current = if self.is_next() {
