@@ -149,7 +149,7 @@ impl RunEnvironment {
                     Action::StopDebugger => {
                         self.debugger = None;
                         dprintln!("Stopping debugger.");
-                        continue; // Not technically necessary
+                        continue; // This is here for clarity
                     }
                     Action::ExitProgram => {
                         dprintln!("Exiting program.");

@@ -3,6 +3,7 @@ mod parse;
 mod source;
 
 mod print;
+// For macro use
 #[doc(hidden)]
 pub use print::{print as _print, write as _write};
 
@@ -127,6 +128,7 @@ impl Debugger {
         return self.wait_for_single_action(state, instr);
     }
 
+    // TODO(refactor): Rename `wait_for_single_action`
     fn wait_for_single_action(
         &mut self,
         state: &mut RunState,
@@ -172,9 +174,8 @@ impl Debugger {
     }
 
     fn next_action(&mut self, state: &mut RunState) -> Option<Action> {
-        let Some(command) = self.next_command() else {
-            return Some(Action::StopDebugger); // EOF
-        };
+        // Convert `EOF` to `quit` command
+        let command = self.next_command().unwrap_or(Command::Quit);
 
         match command {
             Command::Quit => return Some(Action::StopDebugger),
