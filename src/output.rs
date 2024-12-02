@@ -92,21 +92,17 @@ impl Output {
         match self {
             Self::Normal => {
                 print!("{}", string);
-                // TODO(feat): `terminal_line_start::set`
+                set_line_start(string);
             }
 
             Self::Debugger(condition) => match (is_minimal::get(), *condition) {
                 (false, _) => {
                     eprint!("{}", ColoredString::from(string).blue());
-                    if let Some(ch) = string.chars().next_back() {
-                        terminal_line_start::set(ch == '\n');
-                    }
+                    set_line_start(string);
                 }
                 (true, Condition::Always) => {
                     eprint_colorless(string);
-                    if let Some(ch) = string.chars().next_back() {
-                        terminal_line_start::set(ch == '\n');
-                    }
+                    set_line_start(string);
                 }
                 (true, Condition::Sometimes) => (),
             },
@@ -114,14 +110,43 @@ impl Output {
     }
 }
 
-fn eprint_colorless(string: &str) {
-    let mut chars = string.chars();
-    while let Some(ch) = chars.next() {
-        // Skip everything between '\x1b' and 'm' (inclusive)
-        if ch == '\x1b' {
-            while chars.next().is_some_and(|ch| ch != 'm') {}
-            continue;
+// TODO: Add tests for `Decolored`
+struct Decolored<'a> {
+    chars: std::str::Chars<'a>,
+}
+
+impl<'a> Decolored<'a> {
+    pub fn new(string: &'a str) -> Self {
+        Self {
+            chars: string.chars(),
         }
+    }
+}
+
+impl<'a> Iterator for Decolored<'a> {
+    type Item = char;
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(ch) = self.chars.next() {
+            // Skip everything between '\x1b' and 'm' (inclusive)
+            if ch == '\x1b' {
+                while self.chars.next().is_some_and(|ch| ch != 'm') {}
+                continue;
+            }
+            return Some(ch);
+        }
+        return None;
+    }
+}
+
+fn set_line_start(string: &str) {
+    let last = Decolored::new(string).last();
+    if let Some(ch) = last {
+        terminal_line_start::set(ch == '\n');
+    }
+}
+
+fn eprint_colorless(string: &str) {
+    for ch in Decolored::new(string) {
         eprint!("{}", ch);
     }
 }
