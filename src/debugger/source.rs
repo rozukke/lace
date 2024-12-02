@@ -3,9 +3,10 @@ use std::{
     io::{self, BufRead, BufReader, IsTerminal, Read, Write},
 };
 
+use colored::Colorize;
 use console::Key;
 
-use crate::{dprint, dprintln, dwrite};
+use crate::{dprint, dprintln};
 
 // TODO(feat): If argument ends in '...' (or something) then switch to `SourceMode::Terminal` once
 // arguments are exhausted
@@ -80,8 +81,12 @@ impl SourceReader for SourceMode {
         };
         // Echo prompt and command for non-terminal source
         // Equivalent code found in terminal source
-        dprint!(%"\x1b[1mCommand: ");
-        dprintln!(%"{}", command.unwrap_or("\x1b[3m(end of input)").trim());
+        dprint!(Always, "\x1b[1mCommand: ");
+        dprintln!(
+            Always,
+            "{}",
+            command.unwrap_or("\x1b[3m(end of input)").trim()
+        );
         command
     }
 }
@@ -251,7 +256,7 @@ impl Terminal {
 
         // Print prompt and current input
         // Equivalent code found in non-terminal source
-        dwrite!(% &mut self.term, "\x1b[1mCommand: \x1b[0m").unwrap();
+        write!(&mut self.term, "{}", "\x1b[1mCommand: \x1b[0m".blue()).unwrap();
 
         // Inline `self.get_current()` due to borrowing issues
         let current = if self.is_next() {

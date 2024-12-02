@@ -2,15 +2,8 @@ mod command;
 mod parse;
 mod source;
 
-mod print;
-use std::io;
-
-use print::Writer;
-// For macro use
-#[doc(hidden)]
-pub use print::{print as _print, write as _write};
-
-use crate::dprintln;
+use crate::output::{Condition, Output};
+use crate::{dprintln, output};
 use crate::{runtime::RunState, symbol::with_symbol_table};
 use command::{Command, Label, Location, MemoryLocation};
 use source::{SourceMode, SourceReader};
@@ -88,7 +81,7 @@ impl Debugger {
         initial_state: RunState,
         breakpoints: Vec<u16>,
     ) -> Self {
-        print::is_minimal::set(opts.minimal);
+        output::is_minimal::set(opts.minimal);
 
         Self {
             status: Status::default(),
@@ -104,7 +97,10 @@ impl Debugger {
 
         // 0xFFFF signifies a HALT so don't warn for that
         if pc >= 0xFE00 && pc < 0xFFFF {
-            dprintln!("WARNING: Program counter entered device address space");
+            dprintln!(
+                Always,
+                "WARNING: Program counter entered device address space"
+            );
             return Action::Proceed;
         }
 
@@ -117,13 +113,13 @@ impl Debugger {
         //
         // Remember if previous cycle paused on the same breakpoint. If so, don't break now.
         if self.breakpoints.contains(&pc) && self.current_breakpoint != Some(pc) {
-            dprintln!("Breakpoint reached. Pausing execution.");
+            dprintln!(Always, "Breakpoint reached. Pausing execution.");
             self.current_breakpoint = Some(pc);
             self.status = Status::WaitForAction;
         } else {
             self.current_breakpoint = None;
             if instr == Some(RelevantInstr::TrapHalt) {
-                dprintln!("HALT reached. Pausing execution.");
+                dprintln!(Always, "HALT reached. Pausing execution.");
                 self.status = Status::WaitForAction;
             }
         }
@@ -166,7 +162,7 @@ impl Debugger {
                 }
                 Status::Finish => {
                     if instr == Some(RelevantInstr::Ret) {
-                        dprintln!("RET reached. Pausing execution.");
+                        dprintln!(Always, "RET reached. Pausing execution.");
                         // Execute `RET` before prompting command again
                         self.status = Status::Step { count: 0 };
                     }
@@ -185,16 +181,16 @@ impl Debugger {
             Command::Exit => return Some(Action::ExitProgram),
 
             Command::Help => {
-                dprintln!("\n{}", include_str!("./help.txt"));
+                dprintln!(Always, "\n{}", include_str!("./help.txt"));
             }
 
             Command::Continue => {
                 self.status = Status::Continue;
-                dprintln!("Continuing...");
+                dprintln!(Always, "Continuing...");
             }
             Command::Finish => {
                 self.status = Status::Finish;
-                dprintln!("Finishing subroutine...");
+                dprintln!(Always, "Finishing subroutine...");
             }
 
             Command::Step { count } => {
@@ -208,62 +204,65 @@ impl Debugger {
 
             Command::Get { location } => match location {
                 Location::Register(register) => {
-                    dprintln!("Register R{}:", register as u16);
-                    print_integer(&mut Writer, *state.reg_mut(register as u16));
+                    dprintln!(Always, "Register R{}:", register as u16);
+                    print_integer(
+                        Output::Debugger(Condition::Always),
+                        *state.reg_mut(register as u16),
+                    );
                 }
                 Location::Memory(location) => {
                     let address = self.resolve_location_address(state, &location)?;
-                    dprintln!("Memory at address 0x{:04x}:", address);
-                    print_integer(&mut Writer, *state.mem_mut(address));
+                    dprintln!(Always, "Memory at address 0x{:04x}:", address);
+                    print_integer(Output::Debugger(Condition::Always), *state.mem_mut(address));
                 }
             },
 
             Command::Set { location, value } => match location {
                 Location::Register(register) => {
                     *state.reg_mut(register as u16) = value;
-                    dprintln!("Updated register R{}", register as u16);
+                    dprintln!(Always, "Updated register R{}", register as u16);
                 }
                 Location::Memory(location) => {
                     let address = self.resolve_location_address(state, &location)?;
-                    dprintln!("Updated memory at address 0x{:04x}.", address);
+                    dprintln!(Always, "Updated memory at address 0x{:04x}.", address);
                     *state.mem_mut(address) = value;
                 }
             },
 
-            Command::Registers => print_registers(&mut Writer, state),
+            Command::Registers => print_registers(Output::Debugger(Condition::Always), state),
 
             Command::Reset => {
                 *state = self.initial_state.clone();
-                dprintln!("RESET TO INITIAL STATE");
+                dprintln!(Always, "RESET TO INITIAL STATE");
             }
 
-            Command::Source { .. } => dprintln!("unimplemented: source"),
-            Command::Eval { .. } => dprintln!("unimplemented: eval"),
+            Command::Source { .. } => dprintln!(Always, "unimplemented: source"),
+            Command::Eval { .. } => dprintln!(Always, "unimplemented: eval"),
 
             Command::BreakAdd { location } => {
                 let address = self.resolve_location_address(state, &location)?;
                 if self.breakpoints.contains(&address) {
-                    dprintln!("Breakpoint already exists at 0x{:04x}", address);
+                    dprintln!(Always, "Breakpoint already exists at 0x{:04x}", address);
                 } else {
                     self.breakpoints.push(address);
-                    dprintln!("Added breakpoint at 0x{:04x}", address);
+                    dprintln!(Always, "Added breakpoint at 0x{:04x}", address);
                 }
             }
             Command::BreakRemove { location } => {
                 let address = self.resolve_location_address(state, &location)?;
                 if remove_item_if_exists(&mut self.breakpoints, address) {
-                    dprintln!("Removed breakpoint at 0x{:04x}", address);
+                    dprintln!(Always, "Removed breakpoint at 0x{:04x}", address);
                 } else {
-                    dprintln!("No breakpoint exists at 0x{:04x}", address);
+                    dprintln!(Always, "No breakpoint exists at 0x{:04x}", address);
                 }
             }
             Command::BreakList => {
                 if self.breakpoints.is_empty() {
-                    dprintln!("No breakpoints exist");
+                    dprintln!(Always, "No breakpoints exist");
                 } else {
-                    dprintln!("Breakpoints:");
+                    dprintln!(Always, "Breakpoints:");
                     for breakpoint in &self.breakpoints {
-                        dprintln!("0x{:04x}", breakpoint);
+                        dprintln!(Always, "0x{:04x}", breakpoint);
                         // TODO(feat): This could print the instruction at the address, similar to
                         // `source` command
                     }
@@ -286,8 +285,8 @@ impl Debugger {
             let command = match Command::try_from(line) {
                 Ok(command) => command,
                 Err(error) => {
-                    dprintln!("{}", error);
-                    dprintln!("Type `help` for a list of commands.");
+                    dprintln!(Always, "{}", error);
+                    dprintln!(Always, "Type `help` for a list of commands.");
                     continue;
                 }
             };
@@ -310,7 +309,7 @@ impl Debugger {
 
     fn resolve_label_address(&self, label: &Label) -> Option<u16> {
         let Some(address) = get_label_address(&label.name) else {
-            dprintln!("Label not found named `{}`", label.name);
+            dprintln!(Always, "Label not found named `{}`", label.name);
             return None;
         };
 
@@ -318,11 +317,16 @@ impl Debugger {
         let orig = self.orig() as i16;
         let address = address as i16 + label.offset + orig;
         if address < orig || (address as u16) >= 0xFE00 {
-            dprintln!("Label address + offset is out of bounds of memory");
+            dprintln!(Always, "Label address + offset is out of bounds of memory");
             return None;
         };
 
-        dprintln!("Label `{}` is at address 0x{:04x}", label.name, address);
+        dprintln!(
+            Always,
+            "Label `{}` is at address 0x{:04x}",
+            label.name,
+            address
+        );
         Some(address as u16)
     }
 
@@ -331,55 +335,51 @@ impl Debugger {
     }
 }
 
-pub fn print_registers(f: &mut impl io::Write, state: &RunState) {
-    writeln!(f, "\x1b[2m┌────────────────────────────────────┐\x1b[0m").unwrap();
-    writeln!(
-        f,
-        "\x1b[2m│        \x1b[3mhex     int    uint    char\x1b[0m\x1b[2m │\x1b[0m"
-    )
-    .unwrap();
+// TODO(refactor): Move these functions to `crate::output` ?
+pub fn print_registers(output: Output, state: &RunState) {
+    output.print_str("\x1b[2m┌────────────────────────────────────┐\x1b[0m\n");
+    output.print_str("\x1b[2m│        \x1b[3mhex     int    uint    char\x1b[0m\x1b[2m │\x1b[0m\n");
     for i in 0..8 {
-        write!(f, "\x1b[2m│\x1b[0m R{}  ", i).unwrap();
-        print_integer(f, state.reg(i));
-        writeln!(f, " \x1b[2m│\x1b[0m").unwrap();
+        output.print_str(&format!("\x1b[2m│\x1b[0m R{}  ", i));
+        print_integer(output, state.reg(i));
+        output.print_str(" \x1b[2m│\x1b[0m\n");
     }
-    writeln!(f, "\x1b[2m└────────────────────────────────────┘\x1b[0m").unwrap();
+    output.print_str("\x1b[2m└────────────────────────────────────┘\x1b[0m\n");
 }
 
-fn print_integer(f: &mut impl io::Write, value: u16) {
-    write!(f, "0x{:04x}  ", value).unwrap();
-    write!(f, "{:-6}  ", value).unwrap();
-    write!(f, "{:-6}  ", value as i16).unwrap();
-    print_char(f, value);
+fn print_integer(output: Output, value: u16) {
+    output.print_str(&format!("0x{:04x}  ", value));
+    output.print_str(&format!("{:-6}  ", value));
+    output.print_str(&format!("{:-6}  ", value as i16));
+    print_char(output, value);
 }
 
-fn print_char(f: &mut impl io::Write, value: u16) {
-    write!(f, "   ").unwrap();
+fn print_char(output: Output, value: u16) {
+    output.print_str("   ");
     // Print 3 characters
     match value {
         // ASCII control characters which are arbitrarily considered significant
-        0x00 => write!(f, "NUL"),
-        0x08 => write!(f, "BS "),
-        0x09 => write!(f, "HT "),
-        0x0a => write!(f, "LF "),
-        0x0b => write!(f, "VT "),
-        0x0c => write!(f, "FF "),
-        0x0d => write!(f, "CR "),
-        0x1b => write!(f, "ESC"),
-        0x7f => write!(f, "DEL"),
+        0x00 => output.print_str("NUL"),
+        0x08 => output.print_str("BS "),
+        0x09 => output.print_str("HT "),
+        0x0a => output.print_str("LF "),
+        0x0b => output.print_str("VT "),
+        0x0c => output.print_str("FF "),
+        0x0d => output.print_str("CR "),
+        0x1b => output.print_str("ESC"),
+        0x7f => output.print_str("DEL"),
 
         // Space
-        0x20 => write!(f, "[_]"),
+        0x20 => output.print_str("[_]"),
 
         // Printable ASCII characters
-        0x21..=0x7e => write!(f, "{:-6}", value as u8 as char),
+        0x21..=0x7e => output.print_str(&format!("{:-6}", value as u8 as char)),
 
         // Any ASCII character not already matched (unimportant control characters)
-        0x00..=0x7f => write!(f, "\x1b[2m:::\x1b[0m"),
+        0x00..=0x7f => output.print_str("\x1b[2m:::\x1b[0m"),
         // Any non-ASCII character
-        0x0080.. => write!(f, "\x1b[2m···\x1b[0m"),
+        0x0080.. => output.print_str("\x1b[2m···\x1b[0m"),
     }
-    .unwrap();
 }
 
 fn get_label_address(name: &str) -> Option<u16> {

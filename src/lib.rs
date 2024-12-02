@@ -10,6 +10,7 @@ pub use runtime::RunEnvironment;
 #[macro_use]
 mod debugger;
 pub use debugger::DebuggerOptions;
+mod output;
 
 // Reset global state for watch
 mod symbol;

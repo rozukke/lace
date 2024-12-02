@@ -1,13 +1,15 @@
 use std::{
     cmp::Ordering,
     i16,
-    io::{self, stdin, stdout, IsTerminal, Read, Write},
+    io::{stdin, stdout, IsTerminal, Read, Write},
     u16, u32, u8, usize,
 };
 
 use crate::{
     debugger::{print_registers, Action, Debugger, DebuggerOptions, RelevantInstr},
-    dprintln, env, Air,
+    dprintln, env,
+    output::{self, Output},
+    print_char, Air,
 };
 use colored::Colorize;
 use console::Term;
@@ -25,28 +27,6 @@ macro_rules! exception {
 
 /// LC3 can address 128KB of memory.
 pub(crate) const MEMORY_MAX: usize = 0x10000;
-
-pub(super) mod terminal_line_start {
-    use std::cell::RefCell;
-
-    thread_local! {
-        static VALUE: RefCell<bool> = const { RefCell::new(true) };
-    }
-    pub fn set(new_value: bool) {
-        VALUE.with(|value| *value.borrow_mut() = new_value);
-    }
-    pub fn get() -> bool {
-        VALUE.with(|value| *value.borrow())
-    }
-}
-
-macro_rules! print_char {
-    ( $char:expr ) => {{
-        let ch = ($char);
-        std::print!("{}", ch);
-        terminal_line_start::set(ch == '\n');
-    }};
-}
 
 pub struct RunEnvironment {
     state: RunState,
@@ -139,20 +119,20 @@ impl RunEnvironment {
     pub fn run(&mut self) {
         loop {
             if let Some(debugger) = &mut self.debugger {
-                if !terminal_line_start::get() {
-                    dprintln!(%);
+                if !output::terminal_line_start::get() {
+                    dprintln!(Sometimes);
                 }
-                dprintln!(%);
-                dprintln!(%"Program counter at: 0x{:04x}", self.state.pc);
+                dprintln!(Sometimes);
+                dprintln!(Sometimes, "Program counter at: 0x{:04x}", self.state.pc);
                 match debugger.wait_for_action(&mut self.state) {
                     Action::Proceed => (),
                     Action::StopDebugger => {
                         self.debugger = None;
-                        dprintln!("Stopping debugger.");
+                        dprintln!(Always, "Stopping debugger.");
                         continue; // This is here for clarity
                     }
                     Action::ExitProgram => {
-                        dprintln!("Exiting program.");
+                        dprintln!(Always, "Exiting program.");
                         return;
                     }
                 }
@@ -184,7 +164,7 @@ impl RunEnvironment {
             RunState::OP_TABLE[opcode](&mut self.state, instr);
         }
 
-        if !terminal_line_start::get() {
+        if !output::terminal_line_start::get() {
             println!();
         }
     }
@@ -505,7 +485,7 @@ impl RunState {
             }
             // reg
             0x27 => {
-                print_registers(&mut io::stdout(), &self);
+                print_registers(Output::Normal, &self);
             }
             // unknown
             _ => exception!(
