@@ -484,6 +484,9 @@ impl RunState {
             }
             // reg
             0x27 => {
+                if !output::terminal_line_start::get() {
+                    println!();
+                }
                 print_registers(Output::Normal, &self);
             }
             // unknown
