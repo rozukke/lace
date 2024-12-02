@@ -3,10 +3,9 @@ use std::{
     io::{self, BufRead, BufReader, IsTerminal, Read, Write},
 };
 
-use colored::Colorize;
 use console::Key;
 
-use crate::{dprint, dprintln};
+use crate::{dprint, dprintln, output};
 
 // TODO(feat): If argument ends in '...' (or something) then switch to `SourceMode::Terminal` once
 // arguments are exhausted
@@ -256,7 +255,12 @@ impl Terminal {
 
         // Print prompt and current input
         // Equivalent code found in non-terminal source
-        write!(&mut self.term, "{}", "\x1b[1mCommand: \x1b[0m".blue()).unwrap();
+        let prompt = "Command: ";
+        if output::is_minimal::get() {
+            write!(&mut self.term, "{}", prompt).unwrap();
+        } else {
+            write!(&mut self.term, "\x1b[1;34m{}\x1b[0m", prompt).unwrap();
+        }
 
         // Inline `self.get_current()` due to borrowing issues
         let current = if self.is_next() {
