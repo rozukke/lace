@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    debugger::{print_registers, Action, Debugger, DebuggerOptions, RelevantInstr},
+    debugger::{Action, Debugger, DebuggerOptions, RelevantInstr},
     dprintln, env,
     output::{self, Output},
     print_char, Air,
@@ -487,7 +487,7 @@ impl RunState {
                 if !output::terminal_line_start::get() {
                     println!();
                 }
-                print_registers(Output::Normal, &self);
+                Output::Normal.print_registers(&self);
             }
             // unknown
             _ => exception!(

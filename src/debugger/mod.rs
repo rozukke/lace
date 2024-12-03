@@ -205,15 +205,12 @@ impl Debugger {
             Command::Get { location } => match location {
                 Location::Register(register) => {
                     dprintln!(Always, "Register R{}:", register as u16);
-                    print_integer(
-                        Output::Debugger(Condition::Always),
-                        *state.reg_mut(register as u16),
-                    );
+                    Output::Debugger(Condition::Always).print_integer(state.reg(register as u16));
                 }
                 Location::Memory(location) => {
                     let address = self.resolve_location_address(state, &location)?;
                     dprintln!(Always, "Memory at address 0x{:04x}:", address);
-                    print_integer(Output::Debugger(Condition::Always), *state.mem_mut(address));
+                    Output::Debugger(Condition::Always).print_integer(state.mem(address));
                 }
             },
 
@@ -229,7 +226,10 @@ impl Debugger {
                 }
             },
 
-            Command::Registers => print_registers(Output::Debugger(Condition::Always), state),
+            Command::Registers => {
+                // print_registers(Output::Debugger(Condition::Always), state);
+                Output::Debugger(Condition::Always).print_registers(state);
+            }
 
             Command::Reset => {
                 *state = self.initial_state.clone();
@@ -332,53 +332,6 @@ impl Debugger {
 
     fn orig(&self) -> u16 {
         self.initial_state.pc()
-    }
-}
-
-// TODO(refactor): Move these functions to `crate::output` ?
-pub fn print_registers(output: Output, state: &RunState) {
-    output.print_str("\x1b[2m┌────────────────────────────────────┐\x1b[0m\n");
-    output.print_str("\x1b[2m│        \x1b[3mhex     int    uint    char\x1b[0m\x1b[2m │\x1b[0m\n");
-    for i in 0..8 {
-        output.print_str(&format!("\x1b[2m│\x1b[0m R{}  ", i));
-        print_integer(output, state.reg(i));
-        output.print_str(" \x1b[2m│\x1b[0m\n");
-    }
-    output.print_str("\x1b[2m└────────────────────────────────────┘\x1b[0m\n");
-}
-
-fn print_integer(output: Output, value: u16) {
-    output.print_str(&format!("0x{:04x}  ", value));
-    output.print_str(&format!("{:-6}  ", value));
-    output.print_str(&format!("{:-6}  ", value as i16));
-    print_char(output, value);
-}
-
-fn print_char(output: Output, value: u16) {
-    output.print_str("   ");
-    // Print 3 characters
-    match value {
-        // ASCII control characters which are arbitrarily considered significant
-        0x00 => output.print_str("NUL"),
-        0x08 => output.print_str("BS "),
-        0x09 => output.print_str("HT "),
-        0x0a => output.print_str("LF "),
-        0x0b => output.print_str("VT "),
-        0x0c => output.print_str("FF "),
-        0x0d => output.print_str("CR "),
-        0x1b => output.print_str("ESC"),
-        0x7f => output.print_str("DEL"),
-
-        // Space
-        0x20 => output.print_str("[_]"),
-
-        // Printable ASCII characters
-        0x21..=0x7e => output.print_str(&format!("{:-6}", value as u8 as char)),
-
-        // Any ASCII character not already matched (unimportant control characters)
-        0x00..=0x7f => output.print_str("\x1b[2m:::\x1b[0m"),
-        // Any non-ASCII character
-        0x0080.. => output.print_str("\x1b[2m···\x1b[0m"),
     }
 }
 
