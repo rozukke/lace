@@ -22,6 +22,9 @@ pub struct Debugger {
 
     // TODO(refactor): Make private, use method to increment
     pub(super) instruction_count: u32,
+    // TODO(refactor): Rename `was_pc_changed` to something better (it doesn't necessarily indicate
+    // that the pc was changed, just that it COULD have)
+    was_pc_changed: bool,
 
     initial_state: RunState,
 
@@ -153,6 +156,7 @@ impl Debugger {
             status: Status::default(),
             source: SourceMode::from(opts.command),
             instruction_count: 0,
+            was_pc_changed: false,
             initial_state,
             breakpoints: breakpoints.into(),
             current_breakpoint: None,
@@ -254,12 +258,14 @@ impl Debugger {
     }
 
     fn next_action(&mut self, state: &mut RunState) -> Option<Action> {
-        // TODO(feat): Only print if pc changed since last display
-        dprintln!(Sometimes, "Program counter at: 0x{:04x}", state.pc());
+        if self.was_pc_changed {
+            self.was_pc_changed = false;
+            dprintln!(Sometimes, "Program counter at: 0x{:04x}", state.pc());
+        }
         if self.instruction_count > 0 {
+            self.instruction_count = 0;
             dprintln!(Always, "Executed {} instructions", self.instruction_count);
         }
-        self.instruction_count = 0;
 
         // Convert `EOF` to `quit` command
         let command = self.next_command().unwrap_or(Command::Quit);
@@ -274,20 +280,24 @@ impl Debugger {
 
             Command::Continue => {
                 self.status = Status::Continue;
+                self.was_pc_changed = true;
                 dprintln!(Always, "Continuing...");
             }
             Command::Finish => {
                 self.status = Status::Finish;
+                self.was_pc_changed = true;
                 dprintln!(Always, "Finishing subroutine...");
             }
 
             Command::Step { count } => {
                 self.status = Status::Step { count: count - 1 };
+                self.was_pc_changed = true;
             }
             Command::Next => {
                 self.status = Status::Next {
                     return_addr: state.pc() + 1,
                 };
+                self.was_pc_changed = true;
             }
 
             Command::Get { location } => match location {
@@ -321,11 +331,15 @@ impl Debugger {
 
             Command::Reset => {
                 *state = self.initial_state.clone();
+                self.was_pc_changed = true;
                 dprintln!(Always, "RESET TO INITIAL STATE");
             }
 
             Command::Source { .. } => dprintln!(Always, "unimplemented: source"),
-            Command::Eval { .. } => dprintln!(Always, "unimplemented: eval"),
+            Command::Eval { .. } => {
+                self.was_pc_changed = true;
+                dprintln!(Always, "unimplemented: eval")
+            }
 
             Command::BreakAdd { location } => {
                 let address = self.resolve_location_address(state, &location)?;
