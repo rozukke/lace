@@ -26,6 +26,7 @@ pub struct Debugger {
 
     initial_state: RunState,
 
+    // TODO(feat): Distinguish pre-defined and impromptu breakpoints
     breakpoints: Vec<u16>,
     current_breakpoint: Option<u16>,
 }
@@ -117,13 +118,13 @@ impl Debugger {
         //
         // Remember if previous cycle paused on the same breakpoint. If so, don't break now.
         if self.breakpoints.contains(&pc) && self.current_breakpoint != Some(pc) {
-            dprintln!(Always, "Breakpoint reached. Pausing execution.");
+            dprintln!(Always, "Reached breakpoint. Pausing execution.");
             self.current_breakpoint = Some(pc);
             self.status = Status::WaitForAction;
         } else {
             self.current_breakpoint = None;
             if instr == Some(RelevantInstr::TrapHalt) {
-                dprintln!(Always, "HALT reached. Pausing execution.");
+                dprintln!(Always, "Reached HALT. Pausing execution.");
                 self.status = Status::WaitForAction;
             }
         }
@@ -157,7 +158,11 @@ impl Debugger {
                 }
                 Status::Next { return_addr } => {
                     if state.pc() == *return_addr {
-                        // TODO: Print whether subroutine was executed
+                        // If subroutine was excecuted (for `JSR`/`JSRR` + `RET`)
+                        // As opposed to a single instruction
+                        if self.instruction_count > 1 {
+                            dprintln!(Always, "Reached end of subroutine. Pausing execution.");
+                        }
                         self.status = Status::WaitForAction;
                         continue;
                     }
@@ -168,7 +173,7 @@ impl Debugger {
                 }
                 Status::Finish => {
                     if instr == Some(RelevantInstr::Ret) {
-                        dprintln!(Always, "RET reached. Pausing execution.");
+                        dprintln!(Always, "Reached end of subroutine. Pausing execution.");
                         // Execute `RET` before prompting command again
                         self.status = Status::Step { count: 0 };
                     }
