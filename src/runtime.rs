@@ -173,7 +173,7 @@ impl RunEnvironment {
 }
 
 impl RunState {
-    const OP_TABLE: [fn(&mut RunState, u16); 16] = [
+    pub const OP_TABLE: [fn(&mut RunState, u16); 16] = [
         Self::br,    // 0x0
         Self::add,   // 0x1
         Self::ld,    // 0x2

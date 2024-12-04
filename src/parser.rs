@@ -88,20 +88,17 @@ fn preprocess_simple(src: &'static str) -> Result<Vec<Token>> {
     loop {
         let token = cur.advance_real()?;
         match token.kind {
-            TokenKind::Instr(_) | TokenKind::Trap(_) => res.push(token),
+            TokenKind::Dir(_) => {
+                // TODO(feat): Handle error
+                panic!("unexpected directive");
+            }
 
+            TokenKind::Byte(_) => unreachable!("Found byte in stream"),
+            TokenKind::Breakpoint => unreachable!("Found breakpoint in stream"),
             TokenKind::Comment | TokenKind::Whitespace => continue,
             TokenKind::Eof => break,
 
-            TokenKind::Dir(_)
-            | TokenKind::Label
-            | TokenKind::Lit(_)
-            | TokenKind::Reg(_)
-            | TokenKind::Byte(_)
-            | TokenKind::Breakpoint => {
-                // TODO(feat): Handle error
-                panic!("unexpected token `{:?}`", token.kind);
-            }
+            _ => res.push(token),
         }
     }
 
@@ -240,7 +237,7 @@ impl AsmParser {
     pub fn parse_simple(&mut self) -> Result<AirStmt> {
         let Some(tok) = self.toks.next() else {
             // TODO(feat): Handle error
-            panic!("unexpected eof (possibly unreachable)");
+            panic!("unexpected eof");
         };
 
         match tok.kind {
