@@ -92,7 +92,7 @@ impl Output {
                 print!("{}", ch)
             }
             Self::Debugger { .. } => {
-                unimplemented!("`print_char()` called on `Output::Debugger`");
+                eprint!("{}", ch);
             }
         }
         Self::set_line_start_from_char(ch);
