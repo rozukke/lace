@@ -14,6 +14,7 @@ macro_rules! print_char {
 #[macro_export]
 macro_rules! dprint {
     ( $cond:expr, $fmt:literal $($tt:tt)* ) => {{
+        #[allow(unused_imports)]
         use crate::output::Condition::*;
         let s = format!(
             $fmt
@@ -21,21 +22,31 @@ macro_rules! dprint {
         );
         crate::output::Output::Debugger($cond).print_str(&s);
     }};
+    // Trigger type error if missing condition
+    ( $fmt:literal $($tt:tt)* ) => {{
+        crate::output::Output::Debugger($fmt);
+    }};
 }
 
 #[macro_export]
 macro_rules! dprintln {
     ( $cond:expr ) => {{
+        #[allow(unused_imports)]
         use crate::output::Condition::*;
         crate::output::Output::Debugger($cond).print_str("\n");
     }};
     ( $cond:expr, $fmt:literal $($tt:tt)* ) => {{
+        #[allow(unused_imports)]
         use crate::output::Condition::*;
         let s = format!(
             concat!($fmt, "\n")
             $($tt)*
         );
         crate::output::Output::Debugger($cond).print_str(&s);
+    }};
+    // Trigger type error if missing condition
+    ( $fmt:literal $($tt:tt)* ) => {{
+        crate::output::Output::Debugger($fmt);
     }};
 }
 
