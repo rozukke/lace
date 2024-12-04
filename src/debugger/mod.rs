@@ -336,8 +336,10 @@ impl Debugger {
             }
 
             Command::Source { .. } => dprintln!(Always, "unimplemented: source"),
-            Command::Eval { .. } => {
+
+            Command::Eval { instruction } => {
                 self.was_pc_changed = true;
+                dprintln!(Always, "<{}>", instruction);
                 dprintln!(Always, "unimplemented: eval")
             }
 

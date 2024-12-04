@@ -180,6 +180,12 @@ impl<'a> CommandIter<'a> {
         Ok(())
     }
 
+    pub fn collect_rest(&mut self) -> String {
+        let rest = self.buffer[self.head..].trim().to_string();
+        self.head = self.buffer.len();
+        rest
+    }
+
     /// Get next character at head, WITHOUT incrementing head
     fn peek(&self) -> Option<char> {
         if self.head >= self.buffer.len() {

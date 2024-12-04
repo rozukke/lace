@@ -35,7 +35,9 @@ pub enum Command {
         count: u16,
         location: MemoryLocation,
     },
-    Eval(EvalInstruction),
+    Eval {
+        instruction: String,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -101,9 +103,6 @@ pub struct Label {
     pub name: String,
     pub offset: i16,
 }
-
-#[derive(Debug)]
-pub enum EvalInstruction {}
 
 // TODO(refactor): Rename these variants
 // TODO(opt): Most `String` fields could be `&str` (with difficulty, no doubt)
@@ -199,10 +198,8 @@ impl TryFrom<&str> for Command {
             }
 
             CommandName::Eval => {
-                eprintln!("unimplemented: eval command");
-                return Err(Error::InvalidCommandName {
-                    name: "eval".to_string(),
-                });
+                let instruction = iter.collect_rest();
+                Self::Eval { instruction }
             }
         };
 
