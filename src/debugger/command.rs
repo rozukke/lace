@@ -35,6 +35,8 @@ pub enum Command {
         count: u16,
         location: MemoryLocation,
     },
+    // This can be `String` bc it will be allocated later regardless to get a &'static str
+    // Unless parsing code is changed, and can accept a non-static string
     Eval {
         instruction: String,
     },

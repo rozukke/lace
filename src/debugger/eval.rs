@@ -15,13 +15,16 @@ pub fn run(state: &mut RunState, line: String) -> Result<()> {
 }
 
 fn parse(line: String) -> Result<AirStmt> {
-    // TODO(fix): This is a TERRIBLE solution. Ideally cursor doesn't take &'static str ??
-    let line = Box::leak(line.into_boxed_str());
+    // Required to make temporarily 'static
+    let line_ptr = Box::into_raw(line.into_boxed_str());
+    let line = unsafe { &*line_ptr };
 
-    let mut parser = AsmParser::new_simple(line)?;
-    let stmt = parser.parse_simple()?;
+    // Do not return early or memory will not be freed
+    let result = AsmParser::new_simple(line).and_then(|mut parser| parser.parse_simple());
 
-    Ok(stmt)
+    unsafe { drop(Box::from_raw(line_ptr)) };
+
+    result
 }
 
 fn execute(state: &mut RunState, instr: u16) {
