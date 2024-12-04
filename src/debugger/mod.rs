@@ -21,6 +21,9 @@ pub struct Debugger {
     status: Status,
     source: SourceMode,
 
+    // TODO(refactor): Make private, use method to increment
+    pub(super) instruction_count: u32,
+
     initial_state: RunState,
 
     breakpoints: Vec<u16>,
@@ -86,6 +89,7 @@ impl Debugger {
         Self {
             status: Status::default(),
             source: SourceMode::from(opts.command),
+            instruction_count: 0,
             initial_state,
             breakpoints,
             current_breakpoint: None,
@@ -153,6 +157,7 @@ impl Debugger {
                 }
                 Status::Next { return_addr } => {
                     if state.pc() == *return_addr {
+                        // TODO: Print whether subroutine was executed
                         self.status = Status::WaitForAction;
                     }
                     return Action::Proceed;
@@ -173,6 +178,12 @@ impl Debugger {
     }
 
     fn next_action(&mut self, state: &mut RunState) -> Option<Action> {
+        dprintln!(Sometimes, "Program counter at: 0x{:04x}", state.pc());
+        if self.instruction_count > 0 {
+            dprintln!(Always, "Executed {} instructions", self.instruction_count);
+        }
+        self.instruction_count = 0;
+
         // Convert `EOF` to `quit` command
         let command = self.next_command().unwrap_or(Command::Quit);
 

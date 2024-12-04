@@ -120,13 +120,13 @@ impl RunEnvironment {
         loop {
             if let Some(debugger) = &mut self.debugger {
                 Output::Debugger(Condition::Always).start_new_line();
-                dprintln!(Sometimes, "Program counter at: 0x{:04x}", self.state.pc);
                 match debugger.wait_for_action(&mut self.state) {
                     Action::Proceed => (),
                     Action::StopDebugger => {
-                        self.debugger = None;
                         dprintln!(Always, "Stopping debugger.");
-                        continue; // This is here for clarity
+                        // Go to start of next loop iteration, without debugger
+                        self.debugger = None;
+                        continue;
                     }
                     Action::ExitProgram => {
                         dprintln!(Always, "Exiting program.");
@@ -141,9 +141,16 @@ impl RunEnvironment {
                 {
                     continue;
                 }
+                // From this point, next instruction will always be executed
+                // Unless debugger is `quit`, making this counter irrelevant anyway
+                debugger.instruction_count += 1;
             }
 
             if self.state.pc == u16::MAX {
+                debug_assert!(
+                    self.debugger.is_none(),
+                    "halt should be caught if debugger is active",
+                );
                 break; // Halt was triggered
             }
             if self.state.pc >= 0xFE00 {
