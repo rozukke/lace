@@ -1,4 +1,5 @@
 mod command;
+mod eval;
 mod parse;
 mod source;
 
@@ -339,8 +340,8 @@ impl Debugger {
 
             Command::Eval { instruction } => {
                 self.was_pc_changed = true;
-                dprintln!(Always, "<{}>", instruction);
-                dprintln!(Always, "unimplemented: eval")
+                dprintln!(Always, "Eval: <{}>", instruction);
+                eval::run(state, instruction);
             }
 
             Command::BreakAdd { location } => {

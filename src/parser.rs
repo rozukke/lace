@@ -81,6 +81,33 @@ pub fn preprocess(src: &'static str) -> Result<Vec<Token>> {
     Ok(res)
 }
 
+fn preprocess_simple(src: &'static str) -> Result<Vec<Token>> {
+    let mut res: Vec<Token> = Vec::new();
+    let mut cur = Cursor::new(src);
+
+    loop {
+        let token = cur.advance_real()?;
+        match token.kind {
+            TokenKind::Instr(_) | TokenKind::Trap(_) => res.push(token),
+
+            TokenKind::Comment | TokenKind::Whitespace => continue,
+            TokenKind::Eof => break,
+
+            TokenKind::Dir(_)
+            | TokenKind::Label
+            | TokenKind::Lit(_)
+            | TokenKind::Reg(_)
+            | TokenKind::Byte(_)
+            | TokenKind::Breakpoint => {
+                // TODO(feat): Handle error
+                panic!("unexpected token `{:?}`", token.kind);
+            }
+        }
+    }
+
+    Ok(res)
+}
+
 fn unescape(s: &str) -> Cow<str> {
     if s.find('\\').is_none() {
         return Cow::Borrowed(s);
@@ -129,6 +156,16 @@ impl AsmParser {
     /// contain no whitespace or comments.
     pub fn new(src: &'static str) -> Result<Self> {
         let toks = preprocess(src)?;
+        Ok(AsmParser {
+            src,
+            toks: toks.into_iter().peekable(),
+            air: Air::new(),
+            line: 1,
+        })
+    }
+
+    pub fn new_simple(src: &'static str) -> Result<Self> {
+        let toks = preprocess_simple(src)?;
         Ok(AsmParser {
             src,
             toks: toks.into_iter().peekable(),
@@ -200,6 +237,31 @@ impl AsmParser {
         Ok(self.air)
     }
 
+    pub fn parse_simple(&mut self) -> Result<AirStmt> {
+        let Some(tok) = self.toks.next() else {
+            // TODO(feat): Handle error
+            panic!("unexpected eof (possibly unreachable)");
+        };
+
+        match tok.kind {
+            TokenKind::Instr(instr_kind) => self.parse_instr(instr_kind),
+            TokenKind::Trap(trap_kind) => self.parse_trap(trap_kind),
+
+            // Does not exist in preprocessed token stream
+            TokenKind::Comment
+            | TokenKind::Whitespace
+            | TokenKind::Eof
+            | TokenKind::Dir(_)
+            | TokenKind::Label
+            | TokenKind::Lit(_)
+            | TokenKind::Reg(_)
+            | TokenKind::Byte(_)
+            | TokenKind::Breakpoint => {
+                unreachable!("Found invalid token kind in preprocessed stream");
+            }
+        }
+    }
+
     /// Return label or leave iter untouched and return None
     fn optional_label(&mut self) -> Option<Token> {
         match self.toks.peek() {
@@ -209,7 +271,7 @@ impl AsmParser {
     }
 
     /// Process several tokens to form valid AIR statement
-    fn parse_instr(&mut self, kind: InstrKind) -> Result<AirStmt> {
+    pub fn parse_instr(&mut self, kind: InstrKind) -> Result<AirStmt> {
         use crate::symbol::InstrKind;
         match kind {
             InstrKind::Push => {
