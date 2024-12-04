@@ -8,7 +8,7 @@ use std::{
 use crate::{
     debugger::{Action, Debugger, DebuggerOptions, RelevantInstr},
     dprintln, env,
-    output::Output,
+    output::{Condition, Output},
     print_char, Air,
 };
 use colored::Colorize;
@@ -119,9 +119,7 @@ impl RunEnvironment {
     pub fn run(&mut self) {
         loop {
             if let Some(debugger) = &mut self.debugger {
-                if !Output::is_line_start() {
-                    dprintln!(Always);
-                }
+                Output::Debugger(Condition::Always).start_new_line();
                 dprintln!(Sometimes, "Program counter at: 0x{:04x}", self.state.pc);
                 match debugger.wait_for_action(&mut self.state) {
                     Action::Proceed => (),
@@ -163,9 +161,7 @@ impl RunEnvironment {
             RunState::OP_TABLE[opcode](&mut self.state, instr);
         }
 
-        if !Output::is_line_start() {
-            Output::Normal.print_char('\n');
-        }
+        Output::Normal.start_new_line();
     }
 }
 
@@ -484,9 +480,7 @@ impl RunState {
             }
             // reg
             0x27 => {
-                if !Output::is_line_start() {
-                    Output::Normal.print_char('\n');
-                }
+                Output::Normal.start_new_line();
                 Output::Normal.print_registers(&self);
             }
             // unknown

@@ -65,7 +65,8 @@ impl Output {
     pub fn set_line_start(new_value: bool) -> bool {
         Self::IS_LINE_START.with(|value| value.replace(new_value))
     }
-    pub fn is_line_start() -> bool {
+    /// Private. Use [`Output::start_new_line`].
+    fn is_line_start() -> bool {
         Self::IS_LINE_START.with(|value| *value.borrow())
     }
     pub fn set_debugger_minimal(new_value: bool) -> bool {
@@ -115,6 +116,12 @@ impl Output {
                 }
                 (true, Condition::Sometimes) => (),
             },
+        }
+    }
+
+    pub fn start_new_line(&self) {
+        if !Self::is_line_start() {
+            self.print_char('\n');
         }
     }
 
