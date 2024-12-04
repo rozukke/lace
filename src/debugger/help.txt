@@ -9,7 +9,8 @@ Available Commands:
           - [3mCOUNT[0m: Integer (default: 1)
 
     [1mnext[0m (n) [3mCOUNT?[0m
-        Execute next instruction or whole subroutine.
+        Execute next instruction or whole subroutine (including any nested
+            subroutine calls).
           - [3mCOUNT[0m: Integer (default: 1)
 
     [1mcontinue[0m (c)
@@ -45,7 +46,8 @@ Available Commands:
         Reset all memory and registers to original state.
 
     [1msource[0m [3mCOUNT? LOCATION?[0m
-        Print corresponding line and line number of source code from address/label/PC.
+        Print corresponding line and line number of source code from
+            address/label/PC.
           - [3mCOUNT[0m: Integer (default: 1)
           - [3mLOCATION[0m: Address+ | Label+ (default: PC)
 
@@ -59,4 +61,5 @@ Available Commands:
     [1mexit[0m (e)
         Exit debugger and simulator.
 
-[1mNote:[0m Address+ and Label+ arguments can include an offset, eg. `HelloWorld+4`
+[1mNote:[0m Address+ and Label+ arguments can include an offset,
+    eg. `HelloWorld+4`
