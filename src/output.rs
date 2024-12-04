@@ -51,11 +51,11 @@ pub enum Condition {
     Sometimes,
 }
 
-// TODO: Add tests for `Decolored`
 struct Decolored<'a> {
     chars: Chars<'a>,
 }
 
+// TODO(opt): Don't use `format!`. Possibly `format_args!` or `impl Write`
 impl Output {
     thread_local! {
         static IS_LINE_START: RefCell<bool> = const { RefCell::new(true) };
@@ -129,6 +129,10 @@ impl Output {
             self.print_str(" \x1b[2m│\x1b[0m\n");
         }
         self.print_str("\x1b[2m└────────────────────────────────────┘\x1b[0m\n");
+    }
+
+    pub fn print_decimal(&self, value: u16) {
+        self.print_str(&format!("{}", value as i16));
     }
 
     pub fn print_integer(&self, value: u16) {

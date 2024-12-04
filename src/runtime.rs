@@ -164,7 +164,7 @@ impl RunEnvironment {
         }
 
         if !Output::is_line_start() {
-            println!();
+            Output::Normal.print_char('\n');
         }
     }
 }
@@ -480,12 +480,12 @@ impl RunState {
             // putn
             0x26 => {
                 let val = self.reg(0);
-                println!("{val}");
+                Output::Normal.print_decimal(val);
             }
             // reg
             0x27 => {
                 if !Output::is_line_start() {
-                    println!();
+                    Output::Normal.print_char('\n');
                 }
                 Output::Normal.print_registers(&self);
             }
