@@ -75,7 +75,7 @@ fn main() -> miette::Result<()> {
                 Ok(())
             }
             Command::Compile { name, dest } => {
-                file_message(Green, "Assembing", &name);
+                file_message(Green, "Assembling", &name);
                 let contents = StaticSource::new(fs::read_to_string(&name).into_diagnostic()?);
                 let air = assemble(&contents)?;
 

@@ -156,7 +156,7 @@ impl AsmParser {
                     TokenKind::Label | TokenKind::Lit(_) | TokenKind::Reg(_) => {
                         return Err(error::parse_generic_unexpected(
                             self.src,
-                            "directive/instrucion/trap",
+                            "directive/instruction/trap",
                             tok,
                         ))
                     }
