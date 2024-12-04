@@ -159,6 +159,7 @@ impl Debugger {
                     if state.pc() == *return_addr {
                         // TODO: Print whether subroutine was executed
                         self.status = Status::WaitForAction;
+                        continue;
                     }
                     return Action::Proceed;
                 }
