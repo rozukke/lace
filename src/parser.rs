@@ -88,10 +88,6 @@ fn preprocess_simple(src: &'static str) -> Result<Vec<Token>> {
     loop {
         let token = cur.advance_real()?;
         match token.kind {
-            TokenKind::Dir(_) => {
-                return Err(error::parse_generic_unexpected(src, "instruction", token));
-            }
-
             TokenKind::Byte(_) => unreachable!("Found byte in stream"),
             TokenKind::Breakpoint => unreachable!("Found breakpoint in stream"),
             TokenKind::Comment | TokenKind::Whitespace => continue,
@@ -242,19 +238,25 @@ impl AsmParser {
             TokenKind::Instr(instr_kind) => self.parse_instr(instr_kind),
             TokenKind::Trap(trap_kind) => self.parse_trap(trap_kind),
 
+            TokenKind::Dir(_) | TokenKind::Label | TokenKind::Lit(_) | TokenKind::Reg(_) => {
+                return Err(error::parse_generic_unexpected(
+                    self.src,
+                    "instruction",
+                    tok,
+                ))
+            }
+
             // Does not exist in preprocessed token stream
             TokenKind::Comment
             | TokenKind::Whitespace
             | TokenKind::Eof
-            | TokenKind::Dir(_)
-            | TokenKind::Label
-            | TokenKind::Lit(_)
-            | TokenKind::Reg(_)
             | TokenKind::Byte(_)
             | TokenKind::Breakpoint => {
                 unreachable!("Found invalid token kind in preprocessed stream");
             }
         }
+
+        // TODO(fix): Check for end of line here
     }
 
     /// Return label or leave iter untouched and return None
