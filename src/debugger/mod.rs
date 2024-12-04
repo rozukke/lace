@@ -2,8 +2,8 @@ mod command;
 mod parse;
 mod source;
 
+use crate::dprintln;
 use crate::output::{Condition, Output};
-use crate::{dprintln, output};
 use crate::{runtime::RunState, symbol::with_symbol_table};
 use command::{Command, Label, Location, MemoryLocation};
 use source::{SourceMode, SourceReader};
@@ -81,7 +81,7 @@ impl Debugger {
         initial_state: RunState,
         breakpoints: Vec<u16>,
     ) -> Self {
-        output::is_minimal::set(opts.minimal);
+        Output::set_debugger_minimal(opts.minimal);
 
         Self {
             status: Status::default(),

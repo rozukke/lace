@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+
 use colored::{ColoredString, Colorize};
 
 use crate::runtime::RunState;
@@ -35,34 +37,6 @@ macro_rules! dprintln {
         );
         crate::output::Output::Debugger($cond).print_str(&s);
     }};
-}
-
-pub mod is_minimal {
-    use std::cell::RefCell;
-    thread_local! {
-        static VALUE: RefCell<bool> = const { RefCell::new(false) };
-    }
-    /// May be called multiple times
-    pub fn set(new_value: bool) {
-        VALUE.with(|value| *value.borrow_mut() = new_value);
-    }
-    /// May be called before `set_is_minimal`
-    pub fn get() -> bool {
-        VALUE.with(|value| *value.borrow())
-    }
-}
-
-pub mod terminal_line_start {
-    use std::cell::RefCell;
-    thread_local! {
-        static VALUE: RefCell<bool> = const { RefCell::new(true) };
-    }
-    pub fn set(new_value: bool) {
-        VALUE.with(|value| *value.borrow_mut() = new_value);
-    }
-    pub fn get() -> bool {
-        VALUE.with(|value| *value.borrow())
-    }
 }
 
 // TODO: Add tests for `Decolored`
@@ -108,7 +82,7 @@ impl<'a> Iterator for Decolored<'a> {
 fn set_line_start(string: &str) {
     let last = Decolored::new(string).last();
     if let Some(ch) = last {
-        terminal_line_start::set(ch == '\n');
+        Output::set_line_start(ch == '\n');
     }
 }
 
@@ -119,6 +93,24 @@ fn eprint_colorless(string: &str) {
 }
 
 impl Output {
+    thread_local! {
+        static IS_LINE_START: RefCell<bool> = const { RefCell::new(true) };
+        static IS_DEBUGGER_MINIMAL: RefCell<bool> = const { RefCell::new(false) };
+    }
+
+    pub fn set_line_start(new_value: bool) -> bool {
+        Self::IS_LINE_START.with(|value| value.replace(new_value))
+    }
+    pub fn is_line_start() -> bool {
+        Self::IS_LINE_START.with(|value| *value.borrow())
+    }
+    pub fn set_debugger_minimal(new_value: bool) -> bool {
+        Self::IS_DEBUGGER_MINIMAL.with(|value| value.replace(new_value))
+    }
+    pub fn is_debugger_minimal() -> bool {
+        Self::IS_DEBUGGER_MINIMAL.with(|value| *value.borrow())
+    }
+
     pub fn print_char(&self, ch: char) {
         match self {
             Self::Normal => {
@@ -128,7 +120,7 @@ impl Output {
                 unimplemented!("`print_char()` called on `Output::Debugger`");
             }
         }
-        terminal_line_start::set(ch == '\n');
+        Self::set_line_start(ch == '\n');
     }
 
     pub fn print_str(&self, string: &str) {
@@ -138,7 +130,7 @@ impl Output {
                 set_line_start(string);
             }
 
-            Self::Debugger(condition) => match (is_minimal::get(), *condition) {
+            Self::Debugger(condition) => match (Self::is_debugger_minimal(), *condition) {
                 (false, _) => {
                     eprint!("{}", ColoredString::from(string).blue());
                     set_line_start(string);
