@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::{cell::RefCell, str::Chars};
 
 use colored::{ColoredString, Colorize};
 
@@ -39,11 +39,6 @@ macro_rules! dprintln {
     }};
 }
 
-// TODO: Add tests for `Decolored`
-struct Decolored<'a> {
-    chars: std::str::Chars<'a>,
-}
-
 #[derive(Clone, Copy, Debug)]
 pub enum Output {
     Normal,
@@ -56,40 +51,9 @@ pub enum Condition {
     Sometimes,
 }
 
-impl<'a> Decolored<'a> {
-    pub fn new(string: &'a str) -> Self {
-        Self {
-            chars: string.chars(),
-        }
-    }
-}
-
-impl<'a> Iterator for Decolored<'a> {
-    type Item = char;
-    fn next(&mut self) -> Option<Self::Item> {
-        while let Some(ch) = self.chars.next() {
-            // Skip everything between '\x1b' and 'm' (inclusive)
-            if ch == '\x1b' {
-                while self.chars.next().is_some_and(|ch| ch != 'm') {}
-                continue;
-            }
-            return Some(ch);
-        }
-        return None;
-    }
-}
-
-fn set_line_start(string: &str) {
-    let last = Decolored::new(string).last();
-    if let Some(ch) = last {
-        Output::set_line_start(ch == '\n');
-    }
-}
-
-fn eprint_colorless(string: &str) {
-    for ch in Decolored::new(string) {
-        eprint!("{}", ch);
-    }
+// TODO: Add tests for `Decolored`
+struct Decolored<'a> {
+    chars: Chars<'a>,
 }
 
 impl Output {
@@ -111,6 +75,16 @@ impl Output {
         Self::IS_DEBUGGER_MINIMAL.with(|value| *value.borrow())
     }
 
+    fn set_line_start_from_char(ch: char) {
+        Output::set_line_start(ch == '\n');
+    }
+    fn set_line_start_from_str(string: &str) {
+        let last = Decolored::new(string).last();
+        if let Some(ch) = last {
+            Output::set_line_start(ch == '\n');
+        }
+    }
+
     pub fn print_char(&self, ch: char) {
         match self {
             Self::Normal => {
@@ -120,24 +94,24 @@ impl Output {
                 unimplemented!("`print_char()` called on `Output::Debugger`");
             }
         }
-        Self::set_line_start(ch == '\n');
+        Self::set_line_start_from_char(ch);
     }
 
     pub fn print_str(&self, string: &str) {
         match self {
             Self::Normal => {
                 print!("{}", string);
-                set_line_start(string);
+                Self::set_line_start_from_str(string);
             }
 
             Self::Debugger(condition) => match (Self::is_debugger_minimal(), *condition) {
                 (false, _) => {
                     eprint!("{}", ColoredString::from(string).blue());
-                    set_line_start(string);
+                    Self::set_line_start_from_str(string);
                 }
                 (true, Condition::Always) => {
                     eprint_colorless(string);
-                    set_line_start(string);
+                    Self::set_line_start_from_str(string);
                 }
                 (true, Condition::Sometimes) => (),
             },
@@ -190,5 +164,53 @@ impl Output {
             // Any non-ASCII character
             0x0080.. => self.print_str("\x1b[2m···\x1b[0m"),
         }
+    }
+}
+
+impl<'a> Decolored<'a> {
+    pub fn new(string: &'a str) -> Self {
+        Self {
+            chars: string.chars(),
+        }
+    }
+}
+
+impl<'a> Iterator for Decolored<'a> {
+    type Item = char;
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(ch) = self.chars.next() {
+            // Skip everything between '\x1b' and 'm' (inclusive)
+            if ch == '\x1b' {
+                while self.chars.next().is_some_and(|ch| ch != 'm') {}
+                continue;
+            }
+            return Some(ch);
+        }
+        return None;
+    }
+}
+
+fn eprint_colorless(string: &str) {
+    for ch in Decolored::new(string) {
+        eprint!("{}", ch);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn decolored() {
+        assert_eq!(Decolored::new("abcdef").collect::<String>(), "abcdef");
+        assert_eq!(
+            Decolored::new("abc\x1b[0;2mdef\x1b[0m").collect::<String>(),
+            "abcdef"
+        );
+        assert_eq!(Decolored::new("abc\x1b[0xyz").collect::<String>(), "abc");
+        assert_eq!(
+            Decolored::new("abc\x1bw[0bxyzmdef").collect::<String>(),
+            "abcdef"
+        );
     }
 }
