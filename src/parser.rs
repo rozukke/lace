@@ -89,8 +89,7 @@ fn preprocess_simple(src: &'static str) -> Result<Vec<Token>> {
         let token = cur.advance_real()?;
         match token.kind {
             TokenKind::Dir(_) => {
-                // TODO(feat): Handle error
-                panic!("unexpected directive");
+                return Err(error::parse_generic_unexpected(src, "instruction", token));
             }
 
             TokenKind::Byte(_) => unreachable!("Found byte in stream"),
@@ -236,8 +235,7 @@ impl AsmParser {
 
     pub fn parse_simple(&mut self) -> Result<AirStmt> {
         let Some(tok) = self.toks.next() else {
-            // TODO(feat): Handle error
-            panic!("unexpected eof");
+            return Err(error::parse_eof(self.src));
         };
 
         match tok.kind {
