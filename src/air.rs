@@ -2,7 +2,10 @@ use std::{i16, u16, u32};
 
 use miette::{bail, Result, Severity};
 
-use crate::symbol::{Flag, Label, Register};
+use crate::{
+    debugger::Breakpoint,
+    symbol::{Flag, Label, Register},
+};
 
 /// Assembly intermediate representation, contains starting address and list of instructions
 #[derive(Clone)]
@@ -12,7 +15,7 @@ pub struct Air {
     /// AIR
     ast: Vec<AsmLine>,
 
-    pub breakpoints: Vec<u16>,
+    pub breakpoints: Vec<Breakpoint>,
 }
 
 impl Air {

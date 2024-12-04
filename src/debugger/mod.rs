@@ -16,7 +16,6 @@ pub struct DebuggerOptions {
     pub command: Option<String>,
 }
 
-#[allow(dead_code)]
 pub struct Debugger {
     status: Status,
     source: SourceMode,
@@ -26,9 +25,17 @@ pub struct Debugger {
 
     initial_state: RunState,
 
-    // TODO(feat): Distinguish pre-defined and impromptu breakpoints
-    breakpoints: Vec<u16>,
+    breakpoints: Breakpoints,
     current_breakpoint: Option<u16>,
+}
+
+#[derive(Debug)]
+pub struct Breakpoints(Vec<Breakpoint>);
+
+#[derive(Clone, Copy, Debug)]
+pub struct Breakpoint {
+    pub address: u16,
+    pub predefined: bool,
 }
 
 #[allow(dead_code)]
@@ -51,6 +58,61 @@ pub enum Action {
     Proceed,
     StopDebugger,
     ExitProgram,
+}
+
+impl Breakpoints {
+    fn get(&self, address: u16) -> Option<Breakpoint> {
+        for breakpoint in &self.0 {
+            if breakpoint.address == address {
+                return Some(*breakpoint);
+            }
+        }
+        None
+    }
+
+    fn contains(&self, address: u16) -> bool {
+        for breakpoint in &self.0 {
+            if breakpoint.address == address {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn insert(&mut self, breakpoint: Breakpoint) {
+        self.0.push(breakpoint);
+    }
+
+    /// Removes every breakpoint with given address
+    ///
+    /// Returns whether any breakpoint was found with given address
+    fn remove(&mut self, address: u16) -> bool {
+        let initial_len = self.0.len();
+        self.0.retain(|breakpoint| breakpoint.address != address);
+        initial_len != self.0.len()
+    }
+
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
+impl From<Vec<Breakpoint>> for Breakpoints {
+    fn from(vec: Vec<Breakpoint>) -> Self {
+        Self(vec)
+    }
+}
+
+impl<'a> IntoIterator for &'a Breakpoints {
+    type Item = &'a Breakpoint;
+    type IntoIter = std::slice::Iter<'a, Breakpoint>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -83,7 +145,7 @@ impl Debugger {
     pub(super) fn new(
         opts: DebuggerOptions,
         initial_state: RunState,
-        breakpoints: Vec<u16>,
+        breakpoints: impl Into<Breakpoints>,
     ) -> Self {
         Output::set_debugger_minimal(opts.minimal);
 
@@ -92,7 +154,7 @@ impl Debugger {
             source: SourceMode::from(opts.command),
             instruction_count: 0,
             initial_state,
-            breakpoints,
+            breakpoints: breakpoints.into(),
             current_breakpoint: None,
         }
     }
@@ -117,8 +179,16 @@ impl Debugger {
         // Likewise for completing `step` or `next`
         //
         // Remember if previous cycle paused on the same breakpoint. If so, don't break now.
-        if self.breakpoints.contains(&pc) && self.current_breakpoint != Some(pc) {
-            dprintln!(Always, "Reached breakpoint. Pausing execution.");
+        if let Some(breakpoint) = self
+            .breakpoints
+            .get(pc)
+            .filter(|_| self.current_breakpoint != Some(pc))
+        {
+            if breakpoint.predefined {
+                dprintln!(Always, "Reached predefined breakpoint. Pausing execution.");
+            } else {
+                dprintln!(Always, "Reached breakpoint. Pausing execution.");
+            }
             self.current_breakpoint = Some(pc);
             self.status = Status::WaitForAction;
         } else {
@@ -184,6 +254,7 @@ impl Debugger {
     }
 
     fn next_action(&mut self, state: &mut RunState) -> Option<Action> {
+        // TODO(feat): Only print if pc changed since last display
         dprintln!(Sometimes, "Program counter at: 0x{:04x}", state.pc());
         if self.instruction_count > 0 {
             dprintln!(Always, "Executed {} instructions", self.instruction_count);
@@ -258,16 +329,19 @@ impl Debugger {
 
             Command::BreakAdd { location } => {
                 let address = self.resolve_location_address(state, &location)?;
-                if self.breakpoints.contains(&address) {
+                if self.breakpoints.contains(address) {
                     dprintln!(Always, "Breakpoint already exists at 0x{:04x}", address);
                 } else {
-                    self.breakpoints.push(address);
+                    self.breakpoints.insert(Breakpoint {
+                        address,
+                        predefined: false,
+                    });
                     dprintln!(Always, "Added breakpoint at 0x{:04x}", address);
                 }
             }
             Command::BreakRemove { location } => {
                 let address = self.resolve_location_address(state, &location)?;
-                if remove_item_if_exists(&mut self.breakpoints, address) {
+                if self.breakpoints.remove(address) {
                     dprintln!(Always, "Removed breakpoint at 0x{:04x}", address);
                 } else {
                     dprintln!(Always, "No breakpoint exists at 0x{:04x}", address);
@@ -279,7 +353,7 @@ impl Debugger {
                 } else {
                     dprintln!(Always, "Breakpoints:");
                     for breakpoint in &self.breakpoints {
-                        dprintln!(Always, "0x{:04x}", breakpoint);
+                        dprintln!(Always, "0x{:04x}", breakpoint.address);
                         // TODO(feat): This could print the instruction at the address, similar to
                         // `source` command
                     }
@@ -356,13 +430,4 @@ fn get_label_address(name: &str) -> Option<u16> {
     with_symbol_table(|sym| sym.get(name).copied())
         // Account for PC being incremented before instruction is executed
         .map(|addr| addr - 1)
-}
-
-/// Removes every instance of `item` from `vec`
-///
-/// Returns whether `item` was found in `vec`
-fn remove_item_if_exists<T: PartialEq>(vec: &mut Vec<T>, item: T) -> bool {
-    let initial_len = vec.len();
-    vec.retain(|x| x != &item);
-    initial_len != vec.len()
 }

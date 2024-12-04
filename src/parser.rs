@@ -4,6 +4,7 @@ use miette::Result;
 
 use crate::{
     air::{Air, AirStmt, ImmediateOrReg, RawWord},
+    debugger::Breakpoint,
     error,
     lexer::{cursor::Cursor, LiteralKind, Token, TokenKind},
     symbol::{DirKind, InstrKind, Label, Register, Span, TrapKind},
@@ -170,9 +171,12 @@ impl AsmParser {
                         self.air.set_orig(orig)?;
                         continue;
                     }
-                    TokenKind::BreakPoint => {
+                    TokenKind::Breakpoint => {
                         let addr = self.air.len() as u16;
-                        self.air.breakpoints.push(addr);
+                        self.air.breakpoints.push(Breakpoint {
+                            address: addr,
+                            predefined: true,
+                        });
                         continue;
                     }
                     TokenKind::Instr(instr_kind) => self.parse_instr(instr_kind)?,

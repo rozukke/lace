@@ -38,7 +38,7 @@ impl Token {
 
     pub fn breakpoint(span: Span) -> Self {
         Token {
-            kind: TokenKind::BreakPoint,
+            kind: TokenKind::Breakpoint,
             span,
         }
     }
@@ -64,7 +64,7 @@ pub enum TokenKind {
     Reg(Register),
     /// Preprocessor raw values
     Byte(u16),
-    BreakPoint,
+    Breakpoint,
     Whitespace,
     Comment,
     Eof,
@@ -83,7 +83,7 @@ impl Display for TokenKind {
             | TokenKind::Comment
             | TokenKind::Eof
             | TokenKind::Byte(_)
-            | TokenKind::BreakPoint => {
+            | TokenKind::Breakpoint => {
                 unreachable!("whitespace, comment, eof, byte, breakpoitn attempted to be displayed")
             }
         };
