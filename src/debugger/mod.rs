@@ -261,8 +261,12 @@ impl Debugger {
             self.was_pc_changed = false;
         }
         if self.instruction_count > 0 {
-            // TODO(fix): Singular form 'instruction'
-            dprintln!(Always, "Executed {} instructions.", self.instruction_count);
+            dprintln!(
+                Always,
+                "Executed {} instruction{}.",
+                self.instruction_count,
+                if self.instruction_count == 1 { "" } else { "s" },
+            );
             self.instruction_count = 0;
         }
 

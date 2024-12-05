@@ -166,7 +166,6 @@ impl Output {
         self.print_str(&format!("                "));
         self.print_str(&format!(" \x1b[1mCC\x1b[0m  {:03b}", state.flag() as u8));
         self.print_str(" \x1b[2m│\x1b[0m\n");
-        // self.print_str(&format!("CC {:03b}\n", state.flag() as u8));
         self.print_str("\x1b[2m└────────────────────────────────────┘\x1b[0m\n");
     }
 
