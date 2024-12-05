@@ -1,10 +1,29 @@
 use miette::Result;
 
-use crate::{
-    air::{AirStmt, AsmLine},
-    runtime::RunState,
-    AsmParser,
-};
+use crate::{air::AsmLine, runtime::RunState, AsmParser};
+
+pub fn eval(state: &mut RunState, line: String) {
+    // Required to make temporarily 'static
+    // Automatically dropped at end of scope
+    let line = StaticStr::from(line);
+
+    // Note that error cannot be returned from this function, without the caller
+    // being responsible for dropping `line`
+    if let Err(err) = eval_inner(state, unsafe { line.as_str() }) {
+        eprintln!("{:?}", err);
+    }
+}
+
+// Wrapper to group errors into one location
+fn eval_inner(state: &mut RunState, line: &'static str) -> Result<()> {
+    // Parse
+    let stmt = AsmParser::new_simple(line)?.parse_simple()?;
+    // Emit
+    let instr = AsmLine::new(0, stmt).emit()?;
+    // Execute
+    RunState::OP_TABLE[(instr >> 12) as usize](state, instr);
+    Ok(())
+}
 
 /// Get an unsafe `&'static str` from a `Box<str>`, for temporary use
 struct StaticStr {
@@ -33,36 +52,4 @@ impl Drop for StaticStr {
         let boxed = unsafe { Box::from_raw(self.ptr) };
         drop(boxed);
     }
-}
-
-pub fn eval(state: &mut RunState, line: String) {
-    // Required to make temporarily 'static
-    // Automatically dropped at end of scope
-    let line = StaticStr::from(line);
-
-    // Note that error cannot be returned from this function, without the caller
-    // being responsible for dropping `line`
-    if let Err(err) = run(state, unsafe { line.as_str() }) {
-        eprintln!("{:?}", err);
-    }
-}
-
-// TODO(refactor): Rename `run`
-fn run(state: &mut RunState, line: &'static str) -> Result<()> {
-    let stmt = parse(line)?;
-    let line = AsmLine::new(0, stmt);
-    let instr = line.emit()?;
-    execute(state, instr);
-    Ok(())
-}
-
-fn parse(line: &'static str) -> Result<AirStmt> {
-    let mut parser = AsmParser::new_simple(line)?;
-    let line = parser.parse_simple()?;
-    Ok(line)
-}
-
-fn execute(state: &mut RunState, instr: u16) {
-    let opcode = (instr >> 12) as usize;
-    RunState::OP_TABLE[opcode](state, instr);
 }
