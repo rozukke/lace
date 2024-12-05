@@ -167,12 +167,11 @@ impl Output {
         self.print_str(&format!("{}", value as i16));
     }
 
-    // TODO(refactor): Rename `print_integer_display`?
     pub fn print_integer(&self, value: u16) {
-        debug_assert!(
-            !Self::is_minimal(),
-            "`print_integer` should not be called if `--minimal`"
-        );
+        if Self::is_minimal() {
+            self.print_decimal(value);
+            return;
+        }
         self.print_str(&format!("0x{:04x}  ", value));
         self.print_str(&format!("{:-6}  ", value));
         self.print_str(&format!("{:-6}  ", value as i16));

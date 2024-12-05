@@ -254,6 +254,8 @@ impl Debugger {
     }
 
     fn next_action(&mut self, state: &mut RunState) -> Option<Action> {
+        Output::Debugger(Condition::Always).start_new_line();
+
         if self.was_pc_changed {
             dprintln!(Sometimes, "Program counter at: 0x{:04x}.", state.pc());
             self.was_pc_changed = false;
@@ -297,14 +299,17 @@ impl Debugger {
             }
 
             Command::Get { location } => match location {
+                // TODO(feat): Draw box around value, mirroring `registers`
                 Location::Register(register) => {
                     dprintln!(Always, "Register R{}:", register as u16);
                     Output::Debugger(Condition::Always).print_integer(state.reg(register as u16));
+                    Output::Debugger(Condition::Always).print_char('\n');
                 }
                 Location::Memory(location) => {
                     let address = self.resolve_location_address(state, &location)?;
                     dprintln!(Always, "Memory at address 0x{:04x}:", address);
                     Output::Debugger(Condition::Always).print_integer(state.mem(address));
+                    Output::Debugger(Condition::Always).print_char('\n');
                 }
             },
 
