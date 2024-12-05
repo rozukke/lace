@@ -1,7 +1,5 @@
-use std::{
-    fs::{self, File},
-    io::{self, BufRead, BufReader, IsTerminal, Read, Write},
-};
+use std::fs::{self, File};
+use std::io::{self, BufRead, BufReader, IsTerminal, Read, Write};
 
 use console::Key;
 

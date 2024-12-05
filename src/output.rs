@@ -1,4 +1,5 @@
-use std::{cell::RefCell, str::Chars};
+use std::cell::RefCell;
+use std::str::Chars;
 
 use colored::{ColoredString, Colorize};
 

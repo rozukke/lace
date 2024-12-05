@@ -1,6 +1,8 @@
 use miette::Result;
 
-use crate::{air::AsmLine, runtime::RunState, AsmParser};
+use crate::air::AsmLine;
+use crate::runtime::RunState;
+use crate::AsmParser;
 
 pub fn eval(state: &mut RunState, line: String) {
     // Required to make temporarily 'static

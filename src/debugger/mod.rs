@@ -3,11 +3,12 @@ mod eval;
 mod parse;
 mod source;
 
+use self::command::{Command, Label, Location, MemoryLocation};
+use self::source::{SourceMode, SourceReader};
 use crate::dprintln;
 use crate::output::{Condition, Output};
-use crate::{runtime::RunState, symbol::with_symbol_table};
-use command::{Command, Label, Location, MemoryLocation};
-use source::{SourceMode, SourceReader};
+use crate::runtime::RunState;
+use crate::symbol::with_symbol_table;
 
 // TODO(refactor): Perhaps there is `clap` trait that can be implemented for
 // this struct, to avoid field duplication in `Command` enum
