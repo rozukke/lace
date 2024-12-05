@@ -84,7 +84,7 @@ impl Output {
     pub fn set_minimal(new_value: bool) -> bool {
         Self::IS_MINIMAL.with(|value| value.replace(new_value))
     }
-    pub fn is_debugger_minimal() -> bool {
+    pub fn is_minimal() -> bool {
         Self::IS_MINIMAL.with(|value| *value.borrow())
     }
 
@@ -113,15 +113,19 @@ impl Output {
     pub fn print_str(&self, string: &str) {
         match self {
             Self::Normal => {
+                // Don't remove color, even if `--minimal`
+                // The only color which could occur is that which the LC-3 created,
+                // which is allowed
                 print!("{}", string);
                 Self::set_line_start_from_str(string);
             }
 
-            Self::Debugger(condition) => match (Self::is_debugger_minimal(), *condition) {
+            Self::Debugger(condition) => match (Self::is_minimal(), *condition) {
                 (false, _) => {
                     eprint!("{}", ColoredString::from(string).blue());
                     Self::set_line_start_from_str(string);
                 }
+                // Always remove color if `--minimal`
                 (true, Condition::Always) => {
                     eprint_colorless(string);
                     Self::set_line_start_from_str(string);
@@ -138,6 +142,15 @@ impl Output {
     }
 
     pub fn print_registers(&self, state: &RunState) {
+        if Self::is_minimal() {
+            for i in 0..8 {
+                self.print_str(&format!("R{} ", i));
+                self.print_decimal(state.reg(i));
+                self.print_char('\n');
+            }
+            return;
+        }
+
         self.print_str("\x1b[2m┌────────────────────────────────────┐\x1b[0m\n");
         self.print_str(
             "\x1b[2m│        \x1b[3mhex     int    uint    char\x1b[0m\x1b[2m │\x1b[0m\n",
@@ -154,7 +167,12 @@ impl Output {
         self.print_str(&format!("{}", value as i16));
     }
 
+    // TODO(refactor): Rename `print_integer_display`?
     pub fn print_integer(&self, value: u16) {
+        debug_assert!(
+            !Self::is_minimal(),
+            "`print_integer` should not be called if `--minimal`"
+        );
         self.print_str(&format!("0x{:04x}  ", value));
         self.print_str(&format!("{:-6}  ", value));
         self.print_str(&format!("{:-6}  ", value as i16));
@@ -162,6 +180,10 @@ impl Output {
     }
 
     fn print_char_display(&self, value: u16) {
+        debug_assert!(
+            !Self::is_minimal(),
+            "`print_char_display` should not be called if `--minimal`"
+        );
         self.print_str("   ");
         // Print 3 characters
         match value {

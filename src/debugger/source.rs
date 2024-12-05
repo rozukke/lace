@@ -78,7 +78,7 @@ impl SourceReader for SourceMode {
         };
         // Echo prompt and command for non-terminal source
         // Equivalent code found in terminal source
-        if !Output::is_debugger_minimal() || command.is_some() {
+        if !Output::is_minimal() || command.is_some() {
             dprint!(Always, "\x1b[1mCommand: ");
             dprintln!(
                 Always,
@@ -256,7 +256,7 @@ impl Terminal {
         // Print prompt and current input
         // Equivalent code found in non-terminal source
         let prompt = "Command: ";
-        if Output::is_debugger_minimal() {
+        if Output::is_minimal() {
             write!(&mut self.term, "{}", prompt).unwrap();
         } else {
             write!(&mut self.term, "\x1b[1;34m{}\x1b[0m", prompt).unwrap();
