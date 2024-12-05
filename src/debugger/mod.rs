@@ -172,7 +172,7 @@ impl Debugger {
         if pc >= 0xFE00 && pc < 0xFFFF {
             dprintln!(
                 Always,
-                "WARNING: Program counter entered device address space"
+                "WARNING: Program counter entered device address space."
             );
             return Action::Proceed;
         }
@@ -261,12 +261,12 @@ impl Debugger {
 
     fn next_action(&mut self, state: &mut RunState) -> Option<Action> {
         if self.was_pc_changed {
+            dprintln!(Sometimes, "Program counter at: 0x{:04x}.", state.pc());
             self.was_pc_changed = false;
-            dprintln!(Sometimes, "Program counter at: 0x{:04x}", state.pc());
         }
         if self.instruction_count > 0 {
+            dprintln!(Always, "Executed {} instructions.", self.instruction_count);
             self.instruction_count = 0;
-            dprintln!(Always, "Executed {} instructions", self.instruction_count);
         }
 
         // Convert `EOF` to `quit` command
@@ -317,7 +317,7 @@ impl Debugger {
             Command::Set { location, value } => match location {
                 Location::Register(register) => {
                     *state.reg_mut(register as u16) = value;
-                    dprintln!(Always, "Updated register R{}", register as u16);
+                    dprintln!(Always, "Updated register R{}.", register as u16);
                 }
                 Location::Memory(location) => {
                     let address = self.resolve_location_address(state, &location)?;
@@ -334,44 +334,46 @@ impl Debugger {
             Command::Reset => {
                 *state = self.initial_state.clone();
                 self.was_pc_changed = true;
-                dprintln!(Always, "RESET TO INITIAL STATE");
+                dprintln!(Always, "Reset program to initial state.");
             }
 
-            Command::Source { .. } => dprintln!(Always, "unimplemented: source"),
+            Command::Source { .. } => {
+                // TODO(feat): `source` command
+                dprintln!(Always, "`source` command is not yet implemented.");
+            }
 
             Command::Eval { instruction } => {
                 self.was_pc_changed = true;
-                dprintln!(Always, "-- Eval: <{}>", instruction);
                 eval::eval(state, instruction);
             }
 
             Command::BreakAdd { location } => {
                 let address = self.resolve_location_address(state, &location)?;
                 if self.breakpoints.contains(address) {
-                    dprintln!(Always, "Breakpoint already exists at 0x{:04x}", address);
+                    dprintln!(Always, "Breakpoint already exists at 0x{:04x}.", address);
                 } else {
                     self.breakpoints.insert(Breakpoint {
                         address,
                         predefined: false,
                     });
-                    dprintln!(Always, "Added breakpoint at 0x{:04x}", address);
+                    dprintln!(Always, "Added breakpoint at 0x{:04x}.", address);
                 }
             }
             Command::BreakRemove { location } => {
                 let address = self.resolve_location_address(state, &location)?;
                 if self.breakpoints.remove(address) {
-                    dprintln!(Always, "Removed breakpoint at 0x{:04x}", address);
+                    dprintln!(Always, "Removed breakpoint at 0x{:04x}.", address);
                 } else {
-                    dprintln!(Always, "No breakpoint exists at 0x{:04x}", address);
+                    dprintln!(Always, "No breakpoint exists at 0x{:04x}.", address);
                 }
             }
             Command::BreakList => {
                 if self.breakpoints.is_empty() {
-                    dprintln!(Always, "No breakpoints exist");
+                    dprintln!(Always, "No breakpoints exist.");
                 } else {
                     dprintln!(Always, "Breakpoints:");
                     for breakpoint in &self.breakpoints {
-                        dprintln!(Always, "0x{:04x}", breakpoint.address);
+                        dprintln!(Always, "  * 0x{:04x}", breakpoint.address);
                         // TODO(feat): This could print the instruction at the address, similar to
                         // `source` command
                     }
@@ -418,7 +420,7 @@ impl Debugger {
 
     fn resolve_label_address(&self, label: &Label) -> Option<u16> {
         let Some(address) = get_label_address(&label.name) else {
-            dprintln!(Always, "Label not found named `{}`", label.name);
+            dprintln!(Always, "Label not found named `{}`.", label.name);
             return None;
         };
 
@@ -426,13 +428,13 @@ impl Debugger {
         let orig = self.orig() as i16;
         let address = address as i16 + label.offset + orig;
         if address < orig || (address as u16) >= 0xFE00 {
-            dprintln!(Always, "Label address + offset is out of bounds of memory");
+            dprintln!(Always, "Label address + offset is out of bounds of memory.");
             return None;
         };
 
         dprintln!(
             Always,
-            "Label `{}` is at address 0x{:04x}",
+            "Label `{}` is at address 0x{:04x}.",
             label.name,
             address
         );
