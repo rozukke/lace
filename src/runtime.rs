@@ -220,6 +220,10 @@ impl RunState {
     pub(super) fn pc(&self) -> u16 {
         self.pc
     }
+    #[inline]
+    pub(super) fn flag(&self) -> RunFlag {
+        self.flag
+    }
 
     #[inline]
     fn s_ext(mut val: u16, bits: u32) -> u16 {

@@ -144,10 +144,10 @@ impl Output {
     pub fn print_registers(&self, state: &RunState) {
         if Self::is_minimal() {
             for i in 0..8 {
-                self.print_str(&format!("R{} ", i));
-                self.print_decimal(state.reg(i));
-                self.print_char('\n');
+                self.print_str(&format!("R{} {}\n", i, state.reg(i)));
             }
+            self.print_str(&format!("PC {}\n", state.pc()));
+            self.print_str(&format!("CC {:03b}\n", state.flag() as u8));
             return;
         }
 
@@ -156,10 +156,17 @@ impl Output {
             "\x1b[2m│        \x1b[3mhex     int    uint    char\x1b[0m\x1b[2m │\x1b[0m\n",
         );
         for i in 0..8 {
-            self.print_str(&format!("\x1b[2m│\x1b[0m R{}  ", i));
+            self.print_str(&format!("\x1b[2m│\x1b[0m"));
+            self.print_str(&format!(" \x1b[1mR{}\x1b[0m  ", i));
             self.print_integer(state.reg(i));
             self.print_str(" \x1b[2m│\x1b[0m\n");
         }
+        self.print_str(&format!("\x1b[2m│\x1b[0m"));
+        self.print_str(&format!(" \x1b[1mPC\x1b[0m  0x{:04x}", state.pc()));
+        self.print_str(&format!("                "));
+        self.print_str(&format!(" \x1b[1mCC\x1b[0m  {:03b}", state.flag() as u8));
+        self.print_str(" \x1b[2m│\x1b[0m\n");
+        // self.print_str(&format!("CC {:03b}\n", state.flag() as u8));
         self.print_str("\x1b[2m└────────────────────────────────────┘\x1b[0m\n");
     }
 
