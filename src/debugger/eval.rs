@@ -6,7 +6,21 @@ use crate::{
     AsmParser,
 };
 
-pub fn run(state: &mut RunState, line: String) -> Result<()> {
+pub fn eval(state: &mut RunState, line: String) {
+    // Required to make temporarily 'static
+    let line_ptr = Box::into_raw(line.into_boxed_str());
+    let line = unsafe { &*line_ptr };
+
+    // Do not return early, to ensure string is freed
+    if let Err(err) = run(state, line) {
+        eprintln!("{:?}", err);
+    }
+
+    unsafe { drop(Box::from_raw(line_ptr)) };
+}
+
+// TODO(refactor): Rename `run`
+fn run(state: &mut RunState, line: &'static str) -> Result<()> {
     let stmt = parse(line)?;
     let line = AsmLine::new(0, stmt);
     let instr = line.emit()?;
@@ -14,17 +28,10 @@ pub fn run(state: &mut RunState, line: String) -> Result<()> {
     Ok(())
 }
 
-fn parse(line: String) -> Result<AirStmt> {
-    // Required to make temporarily 'static
-    let line_ptr = Box::into_raw(line.into_boxed_str());
-    let line = unsafe { &*line_ptr };
-
-    // Do not return early or memory will not be freed
-    let result = AsmParser::new_simple(line).and_then(|mut parser| parser.parse_simple());
-
-    unsafe { drop(Box::from_raw(line_ptr)) };
-
-    result
+fn parse(line: &'static str) -> Result<AirStmt> {
+    let mut parser = AsmParser::new_simple(line)?;
+    let line = parser.parse_simple()?;
+    Ok(line)
 }
 
 fn execute(state: &mut RunState, instr: u16) {

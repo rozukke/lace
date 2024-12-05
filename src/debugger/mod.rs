@@ -340,10 +340,8 @@ impl Debugger {
 
             Command::Eval { instruction } => {
                 self.was_pc_changed = true;
-                dprintln!(Always, "Eval: <{}>", instruction);
-                if let Err(err) = eval::run(state, instruction) {
-                    eprintln!("{:?}", err);
-                }
+                dprintln!(Always, "-- Eval: <{}>", instruction);
+                eval::eval(state, instruction);
             }
 
             Command::BreakAdd { location } => {
