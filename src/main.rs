@@ -33,17 +33,20 @@ enum Command {
     Run {
         /// `.asm` or `.lc3` file to run
         name: PathBuf,
+        /// Produce minimal output, suited for blackbox tests
+        #[arg(short, long)]
+        minimal: bool,
     },
     /// Run text `.asm` file directly and with debugger
     Debug {
         /// `.asm` file to run
         name: PathBuf,
-        /// Produce minimal debugger output
-        #[arg(short, long)]
-        minimal: bool,
         /// Read debugger commands from argument
         #[arg(short, long)]
         command: Option<String>,
+        /// Produce minimal output, suited for blackbox tests
+        #[arg(short, long)]
+        minimal: bool,
     },
     /// Create binary `.lc3` file to run later or view compiled data
     Compile {
@@ -81,8 +84,8 @@ fn main() -> miette::Result<()> {
 
     if let Some(command) = args.command {
         match command {
-            Command::Run { name } => {
-                run(&name, None)?;
+            Command::Run { name, minimal } => {
+                run(&name, None, minimal)?;
                 Ok(())
             }
             Command::Debug {
@@ -90,7 +93,7 @@ fn main() -> miette::Result<()> {
                 command,
                 minimal,
             } => {
-                run(&name, Some(DebuggerOptions { command, minimal }))?;
+                run(&name, Some(DebuggerOptions { command }), minimal)?;
                 Ok(())
             }
             Command::Compile { name, dest } => {
@@ -188,7 +191,7 @@ fn main() -> miette::Result<()> {
         }
     } else {
         if let Some(path) = args.path {
-            run(&path, None)?;
+            run(&path, None, false)?;
             Ok(())
         } else {
             println!("\n~ lace v{VERSION} - Copyright (c) 2024 Artemis Rosman ~");
@@ -223,7 +226,7 @@ where
     println!("{left:>12} {right}");
 }
 
-fn run(name: &PathBuf, debugger_opts: Option<DebuggerOptions>) -> Result<()> {
+fn run(name: &PathBuf, debugger_opts: Option<DebuggerOptions>, minimal: bool) -> Result<()> {
     file_message(MsgColor::Green, "Assembling", &name);
     let mut program = if let Some(ext) = name.extension() {
         match ext.to_str().unwrap() {
@@ -263,6 +266,8 @@ fn run(name: &PathBuf, debugger_opts: Option<DebuggerOptions>) -> Result<()> {
     } else {
         bail!("File has no extension. Exiting...");
     };
+
+    program.set_minimal(minimal);
 
     message(MsgColor::Green, "Running", "emitted binary");
     program.run();

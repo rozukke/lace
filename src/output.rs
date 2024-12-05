@@ -71,7 +71,7 @@ struct Decolored<'a> {
 impl Output {
     thread_local! {
         static IS_LINE_START: RefCell<bool> = const { RefCell::new(true) };
-        static IS_DEBUGGER_MINIMAL: RefCell<bool> = const { RefCell::new(false) };
+        static IS_MINIMAL: RefCell<bool> = const { RefCell::new(false) };
     }
 
     pub fn set_line_start(new_value: bool) -> bool {
@@ -81,11 +81,11 @@ impl Output {
     fn is_line_start() -> bool {
         Self::IS_LINE_START.with(|value| *value.borrow())
     }
-    pub fn set_debugger_minimal(new_value: bool) -> bool {
-        Self::IS_DEBUGGER_MINIMAL.with(|value| value.replace(new_value))
+    pub fn set_minimal(new_value: bool) -> bool {
+        Self::IS_MINIMAL.with(|value| value.replace(new_value))
     }
     pub fn is_debugger_minimal() -> bool {
-        Self::IS_DEBUGGER_MINIMAL.with(|value| *value.borrow())
+        Self::IS_MINIMAL.with(|value| *value.borrow())
     }
 
     fn set_line_start_from_char(ch: char) {

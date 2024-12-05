@@ -10,11 +10,9 @@ use crate::output::{Condition, Output};
 use crate::runtime::RunState;
 use crate::symbol::with_symbol_table;
 
-// TODO(refactor): Perhaps there is `clap` trait that can be implemented for
-// this struct, to avoid field duplication in `Command` enum
+// TODO(refactor): Delete struct and replace with `Option<String>`
 #[derive(Debug)]
 pub struct DebuggerOptions {
-    pub minimal: bool,
     pub command: Option<String>,
 }
 
@@ -152,8 +150,6 @@ impl Debugger {
         initial_state: RunState,
         breakpoints: impl Into<Breakpoints>,
     ) -> Self {
-        Output::set_debugger_minimal(opts.minimal);
-
         Self {
             status: Status::default(),
             source: SourceMode::from(opts.command),
