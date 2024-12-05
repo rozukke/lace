@@ -204,9 +204,9 @@ impl Output {
             0x21..=0x7e => self.print_str(&format!("{:-6}", value as u8 as char)),
 
             // Any ASCII character not already matched (unimportant control characters)
-            0x00..=0x7f => self.print_str("\x1b[2m:::\x1b[0m"),
+            0x00..=0x7f => self.print_str("\x1b[2m───\x1b[0m"),
             // Any non-ASCII character
-            0x0080.. => self.print_str("\x1b[2m···\x1b[0m"),
+            0x0080.. => self.print_str("\x1b[2m┄┄┄\x1b[0m"),
         }
     }
 }
