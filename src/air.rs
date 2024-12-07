@@ -13,7 +13,7 @@ pub struct Air {
     /// Memory address to start program at
     orig: Option<u16>,
     /// AIR
-    ast: Vec<AsmLine>,
+    pub ast: Vec<AsmLine>,
 
     pub breakpoints: Vec<Breakpoint>,
 

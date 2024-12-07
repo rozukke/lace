@@ -65,15 +65,6 @@ impl RunEnvironment {
 
         air_array.push(orig);
         for stmt in air {
-            if stmt.span.len() > 0 {
-                let err = miette::miette!(
-                    severity = miette::Severity::Advice,
-                    labels = vec![miette::LabeledSpan::at(stmt.span, "here")],
-                    "You are here",
-                )
-                .with_source_code(air.src);
-                println!("{:?}", err);
-            }
             air_array.push(stmt.emit()?);
         }
 
@@ -93,7 +84,13 @@ impl RunEnvironment {
             breakpoint.address += orig;
         }
 
-        env.debugger = Some(Debugger::new(debugger_opts, env.state.clone(), breakpoints));
+        env.debugger = Some(Debugger::new(
+            debugger_opts,
+            env.state.clone(),
+            breakpoints,
+            air.ast,
+            air.src,
+        ));
 
         Ok(env)
     }

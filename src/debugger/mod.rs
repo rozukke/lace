@@ -5,6 +5,7 @@ mod source;
 
 use self::command::{Command, Label, Location, MemoryLocation};
 use self::source::{SourceMode, SourceReader};
+use crate::air::AsmLine;
 use crate::dprintln;
 use crate::output::{Condition, Output};
 use crate::runtime::RunState;
@@ -30,6 +31,9 @@ pub struct Debugger {
 
     breakpoints: Breakpoints,
     current_breakpoint: Option<u16>,
+
+    ast: Vec<AsmLine>,
+    src: &'static str,
 }
 
 #[derive(Debug)]
@@ -149,6 +153,8 @@ impl Debugger {
         opts: DebuggerOptions,
         initial_state: RunState,
         breakpoints: impl Into<Breakpoints>,
+        ast: Vec<AsmLine>,
+        src: &'static str,
     ) -> Self {
         Self {
             status: Status::default(),
@@ -158,11 +164,32 @@ impl Debugger {
             initial_state,
             breakpoints: breakpoints.into(),
             current_breakpoint: None,
+            ast,
+            src,
         }
     }
 
     pub(super) fn wait_for_action(&mut self, state: &mut RunState) -> Action {
         let pc = state.pc();
+
+        let addr = pc - self.orig();
+
+        if let Some(stmt) = self.ast.get(addr as usize) {
+            if stmt.span.len() > 0 {
+                let err = miette::miette!(
+                    severity = miette::Severity::Advice,
+                    labels = vec![miette::LabeledSpan::at(stmt.span, "here")],
+                    "You are here (Address 0x{:04x})",
+                    addr as u16 + pc,
+                )
+                .with_source_code(self.src);
+                println!("{:?}", err);
+            } else {
+                println!("Not a real instruction (directive)");
+            }
+        } else {
+            println!("Not a real instruction (out of bounds)");
+        }
 
         // 0xFFFF signifies a HALT so don't warn for that
         if pc >= 0xFE00 && pc < 0xFFFF {
