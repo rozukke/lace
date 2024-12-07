@@ -4,7 +4,7 @@ use miette::{bail, Result, Severity};
 
 use crate::{
     debugger::Breakpoint,
-    symbol::{Flag, Label, Register},
+    symbol::{Flag, Label, Register, Span},
 };
 
 /// Assembly intermediate representation, contains starting address and list of instructions
@@ -16,14 +16,17 @@ pub struct Air {
     ast: Vec<AsmLine>,
 
     pub breakpoints: Vec<Breakpoint>,
+
+    pub src: &'static str,
 }
 
 impl Air {
-    pub fn new() -> Self {
+    pub fn new(src: &'static str) -> Self {
         Air {
             orig: None,
             ast: Vec::new(),
             breakpoints: Vec::new(),
+            src,
         }
     }
 
@@ -41,9 +44,9 @@ impl Air {
         self.orig
     }
 
-    pub fn add_stmt(&mut self, stmt: AirStmt) {
+    pub fn add_stmt(&mut self, stmt: AirStmt, span: Span) {
         self.ast
-            .push(AsmLine::new((self.ast.len() + 1) as u16, stmt))
+            .push(AsmLine::new((self.ast.len() + 1) as u16, stmt, span))
     }
 
     pub fn get(&self, idx: usize) -> &AsmLine {
@@ -169,11 +172,12 @@ pub struct RawWord(pub u16);
 pub struct AsmLine {
     pub line: u16,
     pub stmt: AirStmt,
+    pub span: Span,
 }
 
 impl AsmLine {
-    pub fn new(line: u16, stmt: AirStmt) -> Self {
-        AsmLine { line, stmt }
+    pub fn new(line: u16, stmt: AirStmt, span: Span) -> Self {
+        AsmLine { line, stmt, span }
     }
 
     /// Fill label references using values from symbol table

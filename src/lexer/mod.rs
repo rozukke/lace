@@ -26,6 +26,7 @@ impl Token {
     }
 
     pub fn byte(val: u16) -> Self {
+        // TODO(feat): Use real span
         Token {
             kind: TokenKind::Byte(val),
             span: Span::dummy(),

@@ -151,7 +151,7 @@ impl AsmParser {
         Ok(AsmParser {
             src,
             toks: toks.into_iter().peekable(),
-            air: Air::new(),
+            air: Air::new(src),
             line: 1,
         })
     }
@@ -161,7 +161,7 @@ impl AsmParser {
         Ok(AsmParser {
             src,
             toks: toks.into_iter().peekable(),
-            air: Air::new(),
+            air: Air::new(src),
             line: 1,
         })
     }
@@ -216,7 +216,7 @@ impl AsmParser {
                         unreachable!("Found whitespace/comment/eof in preprocessed stream")
                     }
                 };
-                self.air.add_stmt(stmt);
+                self.air.add_stmt(stmt, tok.span);
             } else {
                 if labeled_line {
                     return Err(error::parse_eof(self.src));
