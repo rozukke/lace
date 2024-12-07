@@ -160,7 +160,7 @@ impl Debugger {
             status: Status::default(),
             source: SourceMode::from(opts.command),
             instruction_count: 0,
-            was_pc_changed: false,
+            was_pc_changed: true,
             initial_state,
             breakpoints: breakpoints.into(),
             current_breakpoint: None,
