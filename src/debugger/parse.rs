@@ -244,7 +244,7 @@ impl<'a> CommandIter<'a> {
         self.skip_whitespace();
         self.reset_head();
 
-        while self.peek().is_some_and(|ch| ch.is_alphanumeric()) {
+        while self.peek().is_some_and(|ch| !ch.is_whitespace()) {
             self.next();
         }
 
