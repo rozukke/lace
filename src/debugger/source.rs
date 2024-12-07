@@ -16,7 +16,7 @@ pub enum SourceMode {
     Terminal(Terminal),
 }
 
-// Stdin which is not attached to a terminal, i.e. piped.
+/// Stdin which is not attached to a terminal, i.e. piped.
 #[derive(Debug)]
 struct Stdin {
     stdin: io::Stdin,
@@ -24,7 +24,7 @@ struct Stdin {
     buffer: String,
 }
 
-// Command-line argument
+/// Command-line argument
 #[derive(Debug)]
 struct Argument {
     buffer: String,
@@ -32,7 +32,8 @@ struct Argument {
     cursor: usize,
 }
 
-// Interactive unbuffered terminal
+/// Interactive unbuffered terminal
+// TODO(feat): Support CTRL+Arrow keybinds
 #[derive(Debug)]
 struct Terminal {
     term: console::Term,
