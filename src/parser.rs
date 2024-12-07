@@ -73,8 +73,9 @@ pub fn preprocess(src: &'static str) -> Result<Vec<Token>> {
                 }
             }
             TokenKind::Dir(DirKind::Break) => {
-                // TODO(feat): Use real span
-                res.push(Token::breakpoint(Span::dummy()));
+                // Note that this span will never be used
+                // Since breakpoints don't push bytes
+                res.push(Token::breakpoint(dir.span));
             }
             // Eliminated during preprocessing
             TokenKind::Comment | TokenKind::Whitespace => continue,
