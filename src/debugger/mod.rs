@@ -349,8 +349,8 @@ impl Debugger {
                 dprintln!(Always, "Reset program to initial state.");
             }
 
-            Command::Source { count, location } => {
-                self.show_source(state, count, location);
+            Command::Source { location } => {
+                self.show_source(state, location);
             }
 
             Command::Eval { instruction } => {
@@ -417,7 +417,7 @@ impl Debugger {
         }
     }
 
-    fn show_source(&self, state: &RunState, _count: u16, location: MemoryLocation) {
+    fn show_source(&self, state: &RunState, location: MemoryLocation) {
         let Some(address) = self.resolve_location_address(state, &location) else {
             return;
         };

@@ -45,10 +45,8 @@ Available Commands:
     [1mreset[0m
         Reset all memory and registers to original state.
 
-    [1msource[0m [3mCOUNT? LOCATION?[0m
-        Print corresponding line and line number of source code from
-            address/label/PC.
-          - [3mCOUNT[0m: Integer (default: 1)
+    [1msource[0m [3mLOCATION?[0m
+        Print corresponding line of source code from address/label/PC.
           - [3mLOCATION[0m: Address+ | Label+ (default: PC)
 
     [1meval[0m

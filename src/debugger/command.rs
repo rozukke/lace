@@ -7,39 +7,23 @@ use crate::symbol::Register;
 #[derive(Debug)]
 pub enum Command {
     Help,
-    Step {
-        count: u16,
-    },
+    Step { count: u16 },
     Next,
     Continue,
     Finish,
     Quit,
     Exit,
     BreakList,
-    BreakAdd {
-        location: MemoryLocation,
-    },
-    BreakRemove {
-        location: MemoryLocation,
-    },
-    Get {
-        location: Location,
-    },
-    Set {
-        location: Location,
-        value: u16,
-    },
+    BreakAdd { location: MemoryLocation },
+    BreakRemove { location: MemoryLocation },
+    Get { location: Location },
+    Set { location: Location, value: u16 },
     Registers,
     Reset,
-    Source {
-        count: u16,
-        location: MemoryLocation,
-    },
+    Source { location: MemoryLocation },
     // This can be `String` bc it will be allocated later regardless to get a &'static str
     // Unless parsing code is changed, and can accept a non-static string
-    Eval {
-        instruction: String,
-    },
+    Eval { instruction: String },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -194,9 +178,8 @@ impl TryFrom<&str> for Command {
             }
 
             CommandName::Source => {
-                let count = iter.next_positive_integer_or_default(name)?;
                 let location = iter.next_memory_location_or_default(name)?;
-                Self::Source { count, location }
+                Self::Source { location }
             }
 
             CommandName::Eval => {
