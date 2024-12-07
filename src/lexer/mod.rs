@@ -91,23 +91,6 @@ impl Display for TokenKind {
     }
 }
 
-#[allow(dead_code)]
-pub fn tokenize(input: &'static str) -> impl Iterator<Item = Result<Token>> + '_ {
-    let mut cursor = Cursor::new(input);
-    std::iter::from_fn(move || loop {
-        let token = cursor.advance_token();
-        if let Ok(inner) = &token {
-            if inner.kind == TokenKind::Whitespace {
-                continue;
-            }
-            if inner.kind == TokenKind::Eof {
-                return None;
-            }
-        }
-        return Some(token);
-    })
-}
-
 /// Test if a character is considered to be whitespace, including commas.
 pub(crate) fn is_whitespace(c: char) -> bool {
     char::is_ascii_whitespace(&c) || matches!(c, ',' | ':')
