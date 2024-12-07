@@ -4,9 +4,10 @@ use miette::Result;
 
 use crate::{
     air::{Air, AirStmt, ImmediateOrReg, RawWord},
+    debugger::Breakpoint,
     error,
     lexer::{cursor::Cursor, LiteralKind, Token, TokenKind},
-    symbol::{DirKind, InstrKind, Label, Register, Span, TrapKind},
+    symbol::{DirKind, InstrKind, Label, Register, Span, SrcOffset, TrapKind},
 };
 
 /// Replaces raw value directives .fill, .blkw, .stringz with equivalent raw bytes
@@ -22,12 +23,14 @@ pub fn preprocess(src: &'static str) -> Result<Vec<Token>> {
             // Into raw word with the next literal as value
             TokenKind::Dir(DirKind::Fill) => {
                 let val = cur.advance_real()?;
+                // Span entire directive name and integer literal
+                let span = dir.span.join(val.span);
                 match val.kind {
                     TokenKind::Lit(LiteralKind::Hex(lit)) => {
-                        res.push(Token::byte(lit));
+                        res.push(Token::byte(lit, span));
                     }
                     TokenKind::Lit(LiteralKind::Dec(lit)) => {
-                        res.push(Token::byte(lit as u16));
+                        res.push(Token::byte(lit as u16, span));
                     }
                     _ => return Err(error::preproc_bad_lit(val.span, src, false)),
                 }
@@ -35,10 +38,11 @@ pub fn preprocess(src: &'static str) -> Result<Vec<Token>> {
             // Into a series of raw null words
             TokenKind::Dir(DirKind::Blkw) => {
                 let val = cur.advance_real()?;
+                let span = dir.span.join(val.span);
                 match val.kind {
                     TokenKind::Lit(LiteralKind::Hex(lit)) => {
                         for _ in 0..lit {
-                            res.push(Token::nullbyte());
+                            res.push(Token::nullbyte(span));
                         }
                     }
                     TokenKind::Lit(LiteralKind::Dec(lit)) => {
@@ -46,7 +50,7 @@ pub fn preprocess(src: &'static str) -> Result<Vec<Token>> {
                             println!("{:?}", error::preproc_bad_lit(val.span, src, true));
                         }
                         for _ in 0..lit as u16 {
-                            res.push(Token::nullbyte());
+                            res.push(Token::nullbyte(span));
                         }
                     }
                     _ => return Err(error::preproc_bad_lit(val.span, src, false)),
@@ -58,14 +62,20 @@ pub fn preprocess(src: &'static str) -> Result<Vec<Token>> {
                 match val.kind {
                     TokenKind::Lit(LiteralKind::Str) => {
                         let str_raw = cur.get_range(val.span.into());
+                        let span = dir.span.join(val.span);
                         // Get rid of quotation marks
                         for c in unescape(&str_raw[1..str_raw.len() - 1]).chars() {
-                            res.push(Token::byte(c as u16));
+                            res.push(Token::byte(c as u16, span));
                         }
-                        res.push(Token::nullbyte());
+                        res.push(Token::nullbyte(span));
                     }
                     _ => return Err(error::preproc_no_str(val.span, src)),
                 }
+            }
+            TokenKind::Dir(DirKind::Break) => {
+                // Note that this span will never be used
+                // Since breakpoints don't push bytes
+                res.push(Token::breakpoint(dir.span));
             }
             // Eliminated during preprocessing
             TokenKind::Comment | TokenKind::Whitespace => continue,
@@ -73,6 +83,25 @@ pub fn preprocess(src: &'static str) -> Result<Vec<Token>> {
             _ => res.push(dir),
         }
     }
+    Ok(res)
+}
+
+fn preprocess_simple(src: &'static str) -> Result<Vec<Token>> {
+    let mut res: Vec<Token> = Vec::new();
+    let mut cur = Cursor::new(src);
+
+    loop {
+        let token = cur.advance_real()?;
+        match token.kind {
+            TokenKind::Byte(_) => unreachable!("Found byte in stream"),
+            TokenKind::Breakpoint => unreachable!("Found breakpoint in stream"),
+            TokenKind::Comment | TokenKind::Whitespace => continue,
+            TokenKind::Eof => break,
+
+            _ => res.push(token),
+        }
+    }
+
     Ok(res)
 }
 
@@ -117,6 +146,8 @@ pub struct AsmParser {
     air: Air,
     /// Tracker for current line
     line: u16,
+
+    tok_end: usize,
 }
 
 impl AsmParser {
@@ -127,8 +158,20 @@ impl AsmParser {
         Ok(AsmParser {
             src,
             toks: toks.into_iter().peekable(),
-            air: Air::new(),
+            air: Air::new(src),
             line: 1,
+            tok_end: 0,
+        })
+    }
+
+    pub fn new_simple(src: &'static str) -> Result<Self> {
+        let toks = preprocess_simple(src)?;
+        Ok(AsmParser {
+            src,
+            toks: toks.into_iter().peekable(),
+            air: Air::new(src),
+            line: 1,
+            tok_end: 0,
         })
     }
 
@@ -166,6 +209,14 @@ impl AsmParser {
                         self.air.set_orig(orig)?;
                         continue;
                     }
+                    TokenKind::Breakpoint => {
+                        let addr = self.air.len() as u16;
+                        self.air.breakpoints.push(Breakpoint {
+                            address: addr,
+                            predefined: true,
+                        });
+                        continue;
+                    }
                     TokenKind::Instr(instr_kind) => self.parse_instr(instr_kind)?,
                     TokenKind::Trap(trap_kind) => self.parse_trap(trap_kind)?,
                     TokenKind::Byte(val) => self.parse_byte(val),
@@ -174,7 +225,14 @@ impl AsmParser {
                         unreachable!("Found whitespace/comment/eof in preprocessed stream")
                     }
                 };
-                self.air.add_stmt(stmt);
+
+                let len = if self.tok_end < tok.span.offs() {
+                    tok.span.len()
+                } else {
+                    self.tok_end - tok.span.offs()
+                };
+                let span = Span::new(SrcOffset(tok.span.offs()), len);
+                self.air.add_stmt(stmt, span);
             } else {
                 if labeled_line {
                     return Err(error::parse_eof(self.src));
@@ -187,6 +245,36 @@ impl AsmParser {
         Ok(self.air)
     }
 
+    pub fn parse_simple(&mut self) -> Result<AirStmt> {
+        let Some(tok) = self.toks.next() else {
+            return Err(error::parse_eof(self.src));
+        };
+
+        match tok.kind {
+            TokenKind::Instr(instr_kind) => self.parse_instr(instr_kind),
+            TokenKind::Trap(trap_kind) => self.parse_trap(trap_kind),
+
+            TokenKind::Dir(_) | TokenKind::Label | TokenKind::Lit(_) | TokenKind::Reg(_) => {
+                return Err(error::parse_generic_unexpected(
+                    self.src,
+                    "instruction",
+                    tok,
+                ))
+            }
+
+            // Does not exist in preprocessed token stream
+            TokenKind::Comment
+            | TokenKind::Whitespace
+            | TokenKind::Eof
+            | TokenKind::Byte(_)
+            | TokenKind::Breakpoint => {
+                unreachable!("Found invalid token kind in preprocessed stream");
+            }
+        }
+
+        // TODO(fix): Check for end of line here
+    }
+
     /// Return label or leave iter untouched and return None
     fn optional_label(&mut self) -> Option<Token> {
         match self.toks.peek() {
@@ -196,7 +284,7 @@ impl AsmParser {
     }
 
     /// Process several tokens to form valid AIR statement
-    fn parse_instr(&mut self, kind: InstrKind) -> Result<AirStmt> {
+    pub fn parse_instr(&mut self, kind: InstrKind) -> Result<AirStmt> {
         use crate::symbol::InstrKind;
         match kind {
             InstrKind::Push => {
@@ -340,7 +428,10 @@ impl AsmParser {
 
     fn expect(&mut self, expected: TokenKind) -> Result<Token> {
         match self.toks.next() {
-            Some(tok) if tok.kind == expected => Ok(tok),
+            Some(tok) if tok.kind == expected => {
+                self.tok_end = tok.span.offs() + tok.span.len();
+                Ok(tok)
+            }
             Some(unexpected) => {
                 return Err(error::parse_generic_unexpected(
                     self.src,
@@ -358,7 +449,10 @@ impl AsmParser {
         expected: &str,
     ) -> Result<Token> {
         match self.toks.next() {
-            Some(tok) if check(&tok.kind) => Ok(tok),
+            Some(tok) if check(&tok.kind) => {
+                self.tok_end = tok.span.offs() + tok.span.len();
+                Ok(tok)
+            }
             Some(unexpected) => {
                 return Err(error::parse_generic_unexpected(
                     self.src, expected, unexpected,
@@ -536,7 +630,12 @@ mod test {
         let res = preprocess(r#"temp .stringz "\"hello\n\"""#).unwrap();
         let expected = "\"hello\n\"\0"
             .chars()
-            .map(|c| Token::byte(c as u16))
+            .map(|c| {
+                Token::byte(
+                    c as u16,
+                    Span::new(SrcOffset("temp ".len()), r#".stringz "\"hello\n\"""#.len()),
+                )
+            })
             .collect::<Vec<Token>>();
         assert!(res[1..] == expected)
     }
@@ -547,7 +646,12 @@ mod test {
         let res = preprocess(r#"temp .stringz "hello""#).unwrap();
         let expected = "hello\0"
             .chars()
-            .map(|c| Token::byte(c as u16))
+            .map(|c| {
+                Token::byte(
+                    c as u16,
+                    Span::new(SrcOffset("temp ".len()), r#".stringz "hello""#.len()),
+                )
+            })
             .collect::<Vec<Token>>();
         assert!(res[1..] == expected)
     }
@@ -592,7 +696,8 @@ mod test {
                     dest: Register::R0,
                     src_reg: Register::R1,
                     src_reg_imm: ImmediateOrReg::Reg(Register::R2),
-                }
+                },
+                span: Span::new(SrcOffset(0), "add r0 r1 r2".len())
             }
         )
     }
@@ -616,7 +721,15 @@ mod test {
                     dest: Register::R0,
                     src_reg: Register::R1,
                     src_reg_imm: ImmediateOrReg::Imm5(15),
-                }
+                },
+                span: Span::new(
+                    SrcOffset(
+                        r#"
+        "#
+                        .len()
+                    ),
+                    "add r0 r1 #15".len()
+                )
             }
         );
         assert_eq!(
@@ -627,7 +740,16 @@ mod test {
                     dest: Register::R0,
                     src_reg: Register::R1,
                     src_reg_imm: ImmediateOrReg::Imm5((-16i8) as u8),
-                }
+                },
+                span: Span::new(
+                    SrcOffset(
+                        r#"
+        add r0 r1 #15
+        "#
+                        .len()
+                    ),
+                    "add r0 r1 #-16".len()
+                )
             }
         );
     }
@@ -650,7 +772,8 @@ mod test {
                 stmt: AirStmt::Branch {
                     flag: Flag::Nzp,
                     dest_label: Label::empty("label")
-                }
+                },
+                span: Span::new(SrcOffset(0), "br label".len())
             }
         )
     }
@@ -662,7 +785,8 @@ mod test {
             air.get(0),
             &AsmLine {
                 line: 1,
-                stmt: AirStmt::RawWord { val: RawWord(0x30) }
+                stmt: AirStmt::RawWord { val: RawWord(0x30) },
+                span: Span::new(SrcOffset("label ".len()), ".fill x30".len())
             }
         )
     }
@@ -679,7 +803,8 @@ mod test {
                 line: 1,
                 stmt: AirStmt::RawWord {
                     val: RawWord('a' as u16)
-                }
+                },
+                span: Span::new(SrcOffset("label ".len()), ".stringz \"ab\"".len())
             }
         );
         assert_eq!(
@@ -688,7 +813,8 @@ mod test {
                 line: 2,
                 stmt: AirStmt::RawWord {
                     val: RawWord('b' as u16)
-                }
+                },
+                span: Span::new(SrcOffset("label ".len()), ".stringz \"ab\"".len())
             }
         );
         assert_eq!(
@@ -697,7 +823,8 @@ mod test {
                 line: 3,
                 stmt: AirStmt::RawWord {
                     val: RawWord('\0' as u16)
-                }
+                },
+                span: Span::new(SrcOffset("label ".len()), ".stringz \"ab\"".len())
             }
         );
     }
@@ -719,7 +846,15 @@ mod test {
                 line: 1,
                 stmt: AirStmt::RawWord {
                     val: RawWord('a' as u16)
-                }
+                },
+                span: Span::new(
+                    SrcOffset(
+                        r#"
+        "#
+                        .len()
+                    ),
+                    ".stringz \"a\"".len()
+                )
             }
         );
         assert_eq!(
@@ -728,7 +863,16 @@ mod test {
                 line: 3,
                 stmt: AirStmt::RawWord {
                     val: RawWord('b' as u16)
-                }
+                },
+                span: Span::new(
+                    SrcOffset(
+                        r#"
+        .stringz "a"
+        "#
+                        .len()
+                    ),
+                    ".stringz \"b\"".len()
+                )
             }
         );
     }
@@ -753,7 +897,15 @@ mod test {
                     dest: Register::R0,
                     src_reg: Register::R0,
                     src_reg_imm: ImmediateOrReg::Reg(Register::R0)
-                }
+                },
+                span: Span::new(
+                    SrcOffset(
+                        r#"
+        label "#
+                            .len()
+                    ),
+                    "add r0 r0 r0".len()
+                )
             }
         );
         assert_eq!(
@@ -763,7 +915,16 @@ mod test {
                 stmt: AirStmt::Branch {
                     flag: Flag::Nzp,
                     dest_label: Label::dummy(1)
-                }
+                },
+                span: Span::new(
+                    SrcOffset(
+                        r#"
+        label add r0 r0 r0
+              "#
+                        .len()
+                    ),
+                    "br label".len()
+                )
             }
         );
         assert_eq!(
@@ -773,7 +934,17 @@ mod test {
                 stmt: AirStmt::Branch {
                     flag: Flag::Nzp,
                     dest_label: Label::empty("not_existing")
-                }
+                },
+                span: Span::new(
+                    SrcOffset(
+                        r#"
+        label add r0 r0 r0
+              br label
+              "#
+                        .len()
+                    ),
+                    "br not_existing".len()
+                )
             }
         );
     }
