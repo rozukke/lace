@@ -399,7 +399,11 @@ impl AsmLine {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{air::AirStmt, parser::AsmParser, symbol::Flag};
+    use crate::{
+        air::AirStmt,
+        parser::AsmParser,
+        symbol::{Flag, SrcOffset},
+    };
 
     // Backpatching tests
     #[test]
@@ -423,7 +427,15 @@ mod test {
                 stmt: AirStmt::Branch {
                     flag: Flag::Nzp,
                     dest_label: Label::Ref(2)
-                }
+                },
+                span: Span::new(
+                    SrcOffset(
+                        r#"
+        "#
+                        .len()
+                    ),
+                    "br label".len()
+                )
             }
         );
     }
@@ -444,6 +456,7 @@ mod test {
                 src_reg: Register::R2,
                 src_reg_imm: ImmediateOrReg::Reg(Register::R3),
             },
+            span: Span::dummy(),
         };
         assert_eq!(asm.emit().unwrap(), 0x1283)
     }
@@ -457,6 +470,7 @@ mod test {
                 src_reg: Register::R2,
                 src_reg_imm: ImmediateOrReg::Imm5(0b01111),
             },
+            span: Span::dummy(),
         };
         assert_eq!(asm.emit().unwrap(), 0x12AF)
     }
@@ -469,6 +483,7 @@ mod test {
                 flag: Flag::Nzp,
                 dest_label: Label::Ref(4),
             },
+            span: Span::dummy(),
         };
         assert_eq!(asm.emit().unwrap(), 0b0000111000000010)
     }
@@ -481,6 +496,7 @@ mod test {
                 flag: Flag::Nzp,
                 dest_label: Label::Ref(1),
             },
+            span: Span::dummy(),
         };
         assert_eq!(asm.emit().unwrap(), 0b0000111111111100)
     }
@@ -493,6 +509,7 @@ mod test {
                 flag: Flag::Nzp,
                 dest_label: Label::Ref(258),
             },
+            span: Span::dummy(),
         };
         assert!(asm.emit().is_err());
         let asm = AsmLine {
@@ -501,6 +518,7 @@ mod test {
                 flag: Flag::Nzp,
                 dest_label: Label::Ref(1),
             },
+            span: Span::dummy(),
         };
         assert!(asm.emit().is_err())
     }
@@ -515,6 +533,7 @@ mod test {
                 src_reg: Register::R4,
                 src_reg_imm: ImmediateOrReg::Imm5((-1i8) as u8),
             },
+            span: Span::dummy(),
         };
         assert_eq!(asm.emit().unwrap(), 0x193f);
     }
