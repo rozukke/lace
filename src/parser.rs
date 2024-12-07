@@ -23,12 +23,14 @@ pub fn preprocess(src: &'static str) -> Result<Vec<Token>> {
             // Into raw word with the next literal as value
             TokenKind::Dir(DirKind::Fill) => {
                 let val = cur.advance_real()?;
+                // Span entire directive name and integer literal
+                let span = dir.span.join(val.span);
                 match val.kind {
                     TokenKind::Lit(LiteralKind::Hex(lit)) => {
-                        res.push(Token::byte(lit));
+                        res.push(Token::byte(lit, span));
                     }
                     TokenKind::Lit(LiteralKind::Dec(lit)) => {
-                        res.push(Token::byte(lit as u16));
+                        res.push(Token::byte(lit as u16, span));
                     }
                     _ => return Err(error::preproc_bad_lit(val.span, src, false)),
                 }
@@ -36,10 +38,11 @@ pub fn preprocess(src: &'static str) -> Result<Vec<Token>> {
             // Into a series of raw null words
             TokenKind::Dir(DirKind::Blkw) => {
                 let val = cur.advance_real()?;
+                let span = dir.span.join(val.span);
                 match val.kind {
                     TokenKind::Lit(LiteralKind::Hex(lit)) => {
                         for _ in 0..lit {
-                            res.push(Token::nullbyte());
+                            res.push(Token::nullbyte(span));
                         }
                     }
                     TokenKind::Lit(LiteralKind::Dec(lit)) => {
@@ -47,7 +50,7 @@ pub fn preprocess(src: &'static str) -> Result<Vec<Token>> {
                             println!("{:?}", error::preproc_bad_lit(val.span, src, true));
                         }
                         for _ in 0..lit as u16 {
-                            res.push(Token::nullbyte());
+                            res.push(Token::nullbyte(span));
                         }
                     }
                     _ => return Err(error::preproc_bad_lit(val.span, src, false)),
@@ -59,11 +62,12 @@ pub fn preprocess(src: &'static str) -> Result<Vec<Token>> {
                 match val.kind {
                     TokenKind::Lit(LiteralKind::Str) => {
                         let str_raw = cur.get_range(val.span.into());
+                        let span = dir.span.join(val.span);
                         // Get rid of quotation marks
                         for c in unescape(&str_raw[1..str_raw.len() - 1]).chars() {
-                            res.push(Token::byte(c as u16));
+                            res.push(Token::byte(c as u16, span));
                         }
-                        res.push(Token::nullbyte());
+                        res.push(Token::nullbyte(span));
                     }
                     _ => return Err(error::preproc_no_str(val.span, src)),
                 }

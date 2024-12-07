@@ -436,16 +436,6 @@ impl Debugger {
             .get((address - orig) as usize)
             .expect("index was checked to be within bounds above");
 
-        // TODO(feat): Use real span for directives
-        if stmt.span.len() == 0 {
-            dprintln!(
-                Always,
-                "Address 0x{:04x} corresponds to a directive, not an instruction",
-                address
-            );
-            return;
-        }
-
         let report = miette::miette!(
             severity = miette::Severity::Advice,
             labels = vec![miette::LabeledSpan::at(

@@ -140,6 +140,20 @@ impl Span {
     pub fn end(&self) -> usize {
         self.offs.0 + self.len
     }
+
+    pub fn join(&self, other: Span) -> Span {
+        let (left, right) = if self.offs() > other.offs() {
+            (other, *self) // Prevent underflow
+        } else {
+            (*self, other)
+        };
+
+        let len = right.offs() - left.offs() + right.len();
+        // TODO(fix): What does this mean ?
+        debug_assert!(len >= left.len(), "Span length was calculated incorrectly");
+
+        Span::new(SrcOffset(left.offs()), len)
+    }
 }
 
 // Used for miette conversion

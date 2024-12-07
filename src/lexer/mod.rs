@@ -25,16 +25,15 @@ impl Token {
         Token { kind, span }
     }
 
-    pub fn byte(val: u16) -> Self {
-        // TODO(feat): Use real span
+    pub fn byte(val: u16, span: Span) -> Self {
         Token {
             kind: TokenKind::Byte(val),
-            span: Span::dummy(),
+            span,
         }
     }
 
-    pub fn nullbyte() -> Self {
-        Token::byte(0)
+    pub fn nullbyte(span: Span) -> Self {
+        Token::byte(0, span)
     }
 
     pub fn breakpoint(span: Span) -> Self {
