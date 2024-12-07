@@ -7,7 +7,7 @@ use crate::{
     debugger::Breakpoint,
     error,
     lexer::{cursor::Cursor, LiteralKind, Token, TokenKind},
-    symbol::{DirKind, InstrKind, Label, Register, Span, TrapKind},
+    symbol::{DirKind, InstrKind, Label, Register, Span, SrcOffset, TrapKind},
 };
 
 /// Replaces raw value directives .fill, .blkw, .stringz with equivalent raw bytes
@@ -141,6 +141,8 @@ pub struct AsmParser {
     air: Air,
     /// Tracker for current line
     line: u16,
+
+    tok_end: usize,
 }
 
 impl AsmParser {
@@ -153,6 +155,7 @@ impl AsmParser {
             toks: toks.into_iter().peekable(),
             air: Air::new(src),
             line: 1,
+            tok_end: 0,
         })
     }
 
@@ -163,6 +166,7 @@ impl AsmParser {
             toks: toks.into_iter().peekable(),
             air: Air::new(src),
             line: 1,
+            tok_end: 0,
         })
     }
 
@@ -216,7 +220,14 @@ impl AsmParser {
                         unreachable!("Found whitespace/comment/eof in preprocessed stream")
                     }
                 };
-                self.air.add_stmt(stmt, tok.span);
+
+                let len = if self.tok_end < tok.span.offs() {
+                    tok.span.len()
+                } else {
+                    self.tok_end - tok.span.offs()
+                };
+                let span = Span::new(SrcOffset(tok.span.offs()), len);
+                self.air.add_stmt(stmt, span);
             } else {
                 if labeled_line {
                     return Err(error::parse_eof(self.src));
@@ -412,7 +423,10 @@ impl AsmParser {
 
     fn expect(&mut self, expected: TokenKind) -> Result<Token> {
         match self.toks.next() {
-            Some(tok) if tok.kind == expected => Ok(tok),
+            Some(tok) if tok.kind == expected => {
+                self.tok_end = tok.span.offs() + tok.span.len();
+                Ok(tok)
+            }
             Some(unexpected) => {
                 return Err(error::parse_generic_unexpected(
                     self.src,
@@ -430,7 +444,10 @@ impl AsmParser {
         expected: &str,
     ) -> Result<Token> {
         match self.toks.next() {
-            Some(tok) if check(&tok.kind) => Ok(tok),
+            Some(tok) if check(&tok.kind) => {
+                self.tok_end = tok.span.offs() + tok.span.len();
+                Ok(tok)
+            }
             Some(unexpected) => {
                 return Err(error::parse_generic_unexpected(
                     self.src, expected, unexpected,
