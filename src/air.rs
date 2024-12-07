@@ -147,7 +147,7 @@ pub enum AirStmt {
 
 /// Used for ADD and AND commands as they support either 5-bit immediate values or registers as the
 /// last operand.
-#[derive(PartialEq, Eq, Debug, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum ImmediateOrReg {
     Reg(Register),
     Imm5(u8),
