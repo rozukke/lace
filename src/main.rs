@@ -82,6 +82,14 @@ fn main() -> miette::Result<()> {
     let args = Args::parse();
     lace::env::init();
 
+    miette::set_hook(Box::new(|_| {
+        Box::new(
+            miette::MietteHandlerOpts::new() //
+                .context_lines(6)
+                .build(),
+        )
+    }))?;
+
     if let Some(command) = args.command {
         match command {
             Command::Run { name, minimal } => {
