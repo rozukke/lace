@@ -172,25 +172,6 @@ impl Debugger {
     pub(super) fn wait_for_action(&mut self, state: &mut RunState) -> Action {
         let pc = state.pc();
 
-        let addr = pc - self.orig();
-
-        if let Some(stmt) = self.ast.get(addr as usize) {
-            if stmt.span.len() > 0 {
-                let err = miette::miette!(
-                    severity = miette::Severity::Advice,
-                    labels = vec![miette::LabeledSpan::at(stmt.span, "here")],
-                    "You are here (Address 0x{:04x})",
-                    addr as u16 + pc,
-                )
-                .with_source_code(self.src);
-                println!("{:?}", err);
-            } else {
-                println!("Not a real instruction (directive)");
-            }
-        } else {
-            println!("Not a real instruction (out of bounds)");
-        }
-
         // 0xFFFF signifies a HALT so don't warn for that
         if pc >= 0xFE00 && pc < 0xFFFF {
             dprintln!(
@@ -368,9 +349,8 @@ impl Debugger {
                 dprintln!(Always, "Reset program to initial state.");
             }
 
-            Command::Source { .. } => {
-                // TODO(feat): `source` command
-                dprintln!(Always, "`source` command is not yet implemented.");
+            Command::Source { count, location } => {
+                self.show_source(state, count, location);
             }
 
             Command::Eval { instruction } => {
@@ -437,11 +417,45 @@ impl Debugger {
         }
     }
 
-    fn resolve_location_address(
-        &self,
-        state: &mut RunState,
-        location: &MemoryLocation,
-    ) -> Option<u16> {
+    fn show_source(&self, state: &RunState, _count: u16, location: MemoryLocation) {
+        let Some(address) = self.resolve_location_address(state, &location) else {
+            return;
+        };
+
+        let orig = self.orig();
+        if address < orig || (address - orig) as usize >= self.ast.len() {
+            dprintln!(
+                Always,
+                "Address 0x{:04x} does not correspond to an instruction",
+                address
+            );
+            return;
+        };
+        let stmt = self
+            .ast
+            .get((address - orig) as usize)
+            .expect("index was checked to be within bounds above");
+
+        if stmt.span.len() == 0 {
+            dprintln!(
+                Always,
+                "Address 0x{:04x} corresponds to a directive, not an instruction",
+                address
+            );
+            return;
+        }
+
+        let report = miette::miette!(
+            severity = miette::Severity::Advice,
+            labels = vec![miette::LabeledSpan::at(stmt.span, "here")],
+            "You are here (Address 0x{:04x})",
+            address,
+        )
+        .with_source_code(self.src);
+        eprintln!("{:?}", report);
+    }
+
+    fn resolve_location_address(&self, state: &RunState, location: &MemoryLocation) -> Option<u16> {
         match location {
             MemoryLocation::Address(address) => Some(*address),
             MemoryLocation::PC => Some(state.pc()),
