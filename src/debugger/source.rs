@@ -290,6 +290,7 @@ impl Terminal {
             Key::Enter | Key::Char('\n') => {
                 if self.is_next() && self.buffer.trim().is_empty() {
                     self.buffer.clear();
+                    self.visible_cursor = 0;
                     println!();
                 } else {
                     self.update_next();
