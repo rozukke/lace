@@ -69,8 +69,9 @@ impl fmt::Display for CommandName {
     }
 }
 
-/// `Location::Memory(MemoryLocation::PC)` is valid, but should not be constructed
-// TODO(refactor): This could be renamed to `Storage` or something similar
+/// `Location::Memory(MemoryLocation::PC)` is valid, but should not be
+/// constructed, as it would imply using `get`/`set` with the PC, which is not
+/// possible.
 #[derive(Debug)]
 pub enum Location {
     Register(Register),
