@@ -630,7 +630,12 @@ mod test {
         let res = preprocess(r#"temp .stringz "\"hello\n\"""#).unwrap();
         let expected = "\"hello\n\"\0"
             .chars()
-            .map(|c| Token::byte(c as u16))
+            .map(|c| {
+                Token::byte(
+                    c as u16,
+                    Span::new(SrcOffset("temp ".len()), r#".stringz "\"hello\n\"""#.len()),
+                )
+            })
             .collect::<Vec<Token>>();
         assert!(res[1..] == expected)
     }
@@ -641,7 +646,12 @@ mod test {
         let res = preprocess(r#"temp .stringz "hello""#).unwrap();
         let expected = "hello\0"
             .chars()
-            .map(|c| Token::byte(c as u16))
+            .map(|c| {
+                Token::byte(
+                    c as u16,
+                    Span::new(SrcOffset("temp ".len()), r#".stringz "hello""#.len()),
+                )
+            })
             .collect::<Vec<Token>>();
         assert!(res[1..] == expected)
     }
@@ -686,7 +696,8 @@ mod test {
                     dest: Register::R0,
                     src_reg: Register::R1,
                     src_reg_imm: ImmediateOrReg::Reg(Register::R2),
-                }
+                },
+                span: Span::new(SrcOffset(0), "add r0 r1 r2".len())
             }
         )
     }
@@ -710,7 +721,15 @@ mod test {
                     dest: Register::R0,
                     src_reg: Register::R1,
                     src_reg_imm: ImmediateOrReg::Imm5(15),
-                }
+                },
+                span: Span::new(
+                    SrcOffset(
+                        r#"
+        "#
+                        .len()
+                    ),
+                    "add r0 r1 #15".len()
+                )
             }
         );
         assert_eq!(
@@ -721,7 +740,16 @@ mod test {
                     dest: Register::R0,
                     src_reg: Register::R1,
                     src_reg_imm: ImmediateOrReg::Imm5((-16i8) as u8),
-                }
+                },
+                span: Span::new(
+                    SrcOffset(
+                        r#"
+        add r0 r1 #15
+        "#
+                        .len()
+                    ),
+                    "add r0 r1 #-16".len()
+                )
             }
         );
     }
@@ -744,7 +772,8 @@ mod test {
                 stmt: AirStmt::Branch {
                     flag: Flag::Nzp,
                     dest_label: Label::empty("label")
-                }
+                },
+                span: Span::new(SrcOffset(0), "br label".len())
             }
         )
     }
@@ -756,7 +785,8 @@ mod test {
             air.get(0),
             &AsmLine {
                 line: 1,
-                stmt: AirStmt::RawWord { val: RawWord(0x30) }
+                stmt: AirStmt::RawWord { val: RawWord(0x30) },
+                span: Span::new(SrcOffset("label ".len()), ".fill x30".len())
             }
         )
     }
@@ -773,7 +803,8 @@ mod test {
                 line: 1,
                 stmt: AirStmt::RawWord {
                     val: RawWord('a' as u16)
-                }
+                },
+                span: Span::new(SrcOffset("label ".len()), ".stringz \"ab\"".len())
             }
         );
         assert_eq!(
@@ -782,7 +813,8 @@ mod test {
                 line: 2,
                 stmt: AirStmt::RawWord {
                     val: RawWord('b' as u16)
-                }
+                },
+                span: Span::new(SrcOffset("label ".len()), ".stringz \"ab\"".len())
             }
         );
         assert_eq!(
@@ -791,7 +823,8 @@ mod test {
                 line: 3,
                 stmt: AirStmt::RawWord {
                     val: RawWord('\0' as u16)
-                }
+                },
+                span: Span::new(SrcOffset("label ".len()), ".stringz \"ab\"".len())
             }
         );
     }
@@ -813,7 +846,15 @@ mod test {
                 line: 1,
                 stmt: AirStmt::RawWord {
                     val: RawWord('a' as u16)
-                }
+                },
+                span: Span::new(
+                    SrcOffset(
+                        r#"
+        "#
+                        .len()
+                    ),
+                    ".stringz \"a\"".len()
+                )
             }
         );
         assert_eq!(
@@ -822,7 +863,16 @@ mod test {
                 line: 3,
                 stmt: AirStmt::RawWord {
                     val: RawWord('b' as u16)
-                }
+                },
+                span: Span::new(
+                    SrcOffset(
+                        r#"
+        .stringz "a"
+        "#
+                        .len()
+                    ),
+                    ".stringz \"b\"".len()
+                )
             }
         );
     }
@@ -847,7 +897,15 @@ mod test {
                     dest: Register::R0,
                     src_reg: Register::R0,
                     src_reg_imm: ImmediateOrReg::Reg(Register::R0)
-                }
+                },
+                span: Span::new(
+                    SrcOffset(
+                        r#"
+        label "#
+                            .len()
+                    ),
+                    "add r0 r0 r0".len()
+                )
             }
         );
         assert_eq!(
@@ -857,7 +915,16 @@ mod test {
                 stmt: AirStmt::Branch {
                     flag: Flag::Nzp,
                     dest_label: Label::dummy(1)
-                }
+                },
+                span: Span::new(
+                    SrcOffset(
+                        r#"
+        label add r0 r0 r0
+              "#
+                        .len()
+                    ),
+                    "br label".len()
+                )
             }
         );
         assert_eq!(
@@ -867,7 +934,17 @@ mod test {
                 stmt: AirStmt::Branch {
                     flag: Flag::Nzp,
                     dest_label: Label::empty("not_existing")
-                }
+                },
+                span: Span::new(
+                    SrcOffset(
+                        r#"
+        label add r0 r0 r0
+              br label
+              "#
+                        .len()
+                    ),
+                    "br not_existing".len()
+                )
             }
         );
     }
