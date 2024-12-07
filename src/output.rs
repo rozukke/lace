@@ -217,6 +217,7 @@ impl Output {
     }
 }
 
+// TODO(refactor): Consider `strip_ansi_codes` from `console`
 impl<'a> Decolored<'a> {
     pub fn new(string: &'a str) -> Self {
         Self {
