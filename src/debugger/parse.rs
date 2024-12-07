@@ -72,22 +72,12 @@ impl<'a> CommandIter<'a> {
     }
 
     pub fn get_command_name(&mut self) -> Result<CommandName> {
-        let name = match self.next_command_name_part() {
-            Some(name) => name,
-            None => {
-                // Command source should always return a string containing non-whitespace
-                // characters, so initial command name should always exist.
-                // Only panic in debug mode.
-                #[cfg(debug_assertions)]
-                {
-                    panic!("assertion failed: missing command name.");
-                }
-                #[cfg(not(debug_assertions))]
-                {
-                    ""
-                }
-            }
-        };
+        let name = self.next_command_name_part();
+        // Command source should always return a string containing non-whitespace
+        // characters, so initial command name should always exist.
+        debug_assert!(name.is_some(), "missing command name");
+        let name = name.unwrap_or("");
+
         // TODO(feat): Add more aliases (such as undocumented typo aliases)
         Ok(match name.to_lowercase().as_str() {
             "help" | "--help" | "h" | "-h" => CommandName::Help,
