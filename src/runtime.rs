@@ -133,13 +133,13 @@ impl RunEnvironment {
                 match debugger.wait_for_action(&mut self.state) {
                     Action::Proceed => (),
                     Action::StopDebugger => {
-                        dprintln!(Always, "  * Stopping debugger.");
+                        dprintln!(Always, Warning, "Stopping debugger.");
                         // Go to start of next loop iteration, without debugger
                         self.debugger = None;
                         continue;
                     }
                     Action::ExitProgram => {
-                        dprintln!(Always, "  * Exiting program.");
+                        dprintln!(Always, Warning, "Exiting program.");
                         return;
                     }
                 }

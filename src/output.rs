@@ -14,16 +14,18 @@ macro_rules! print_char {
 
 #[macro_export]
 macro_rules! dprint {
-    ( $cond:expr, $fmt:literal $($tt:tt)* ) => {{
+    ( $cond:expr, $flag:expr, $fmt:literal $($tt:tt)* ) => {{
         #[allow(unused_imports)]
-        use crate::output::Condition::*;
+        use crate::output::{Condition::*, Category::*};
         let s = format!(
             $fmt
             $($tt)*
         );
-        crate::output::Output::Debugger($cond).print_str(&s);
+        let output = crate::output::Output::Debugger($cond);
+        output.print_category($flag);
+        output.print_str(&s);
     }};
-    // Trigger type error if missing condition
+    // Trigger type error if missing condition/kind
     ( $fmt:literal $($tt:tt)* ) => {{
         crate::output::Output::Debugger($fmt);
     }};
@@ -33,19 +35,21 @@ macro_rules! dprint {
 macro_rules! dprintln {
     ( $cond:expr ) => {{
         #[allow(unused_imports)]
-        use crate::output::Condition::*;
-        crate::output::Output::Debugger($cond).print_str("\n");
+        use crate::output::{Condition::*, Flag};
+        crate::output::Output::Debugger($cond, Flag::Normal).print_str("\n");
     }};
-    ( $cond:expr, $fmt:literal $($tt:tt)* ) => {{
+    ( $cond:expr, $flag:expr, $fmt:literal $($tt:tt)* ) => {{
         #[allow(unused_imports)]
-        use crate::output::Condition::*;
+        use crate::output::{Condition::*, Category::*};
         let s = format!(
             concat!($fmt, "\n")
             $($tt)*
         );
-        crate::output::Output::Debugger($cond).print_str(&s);
+        let output = crate::output::Output::Debugger($cond);
+        output.print_category($flag);
+        output.print_str(&s);
     }};
-    // Trigger type error if missing condition
+    // Trigger type error if missing condition/kind
     ( $fmt:literal $($tt:tt)* ) => {{
         crate::output::Output::Debugger($fmt);
     }};
@@ -55,6 +59,14 @@ macro_rules! dprintln {
 pub enum Output {
     Normal,
     Debugger(Condition),
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum Category {
+    Normal,
+    Info,
+    Warning,
+    Error,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -213,6 +225,20 @@ impl Output {
             0x00..=0x7f => self.print_str("\x1b[2m───\x1b[0m"),
             // Any non-ASCII character
             0x0080.. => self.print_str("\x1b[2m┄┄┄\x1b[0m"),
+        }
+    }
+
+    pub fn print_category(&self, category: Category) {
+        assert!(
+            matches!(self, Self::Debugger(_)),
+            "`Output::print_category()` called on `Output::Normal`"
+        );
+
+        match category {
+            Category::Normal => (),
+            Category::Info => self.print_str("  · "),
+            Category::Warning => self.print_str("  * "),
+            Category::Error => self.print_str("  ~ "),
         }
     }
 }

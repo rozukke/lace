@@ -181,6 +181,7 @@ impl Debugger {
         if pc >= 0xFE00 && pc < 0xFFFF {
             dprintln!(
                 Always,
+                Normal,
                 "WARNING: Program counter entered device address space."
             );
             return Action::Proceed;
@@ -201,17 +202,18 @@ impl Debugger {
             if breakpoint.predefined {
                 dprintln!(
                     Always,
-                    "  * Reached predefined breakpoint. Pausing execution."
+                    Warning,
+                    "Reached predefined breakpoint. Pausing execution."
                 );
             } else {
-                dprintln!(Always, "  * Reached breakpoint. Pausing execution.");
+                dprintln!(Always, Warning, "Reached breakpoint. Pausing execution.");
             }
             self.current_breakpoint = Some(pc);
             self.status = Status::WaitForAction;
         } else {
             self.current_breakpoint = None;
             if instr == Some(RelevantInstr::TrapHalt) {
-                dprintln!(Always, "  * Reached HALT. Pausing execution.");
+                dprintln!(Always, Warning, "Reached HALT. Pausing execution.");
                 self.status = Status::WaitForAction;
             }
         }
@@ -247,7 +249,11 @@ impl Debugger {
                         // If subroutine was excecuted (for `JSR`/`JSRR` + `RET`)
                         // As opposed to a single instruction
                         if self.instruction_count > 1 {
-                            dprintln!(Always, "  * Reached end of subroutine. Pausing execution.");
+                            dprintln!(
+                                Always,
+                                Warning,
+                                "Reached end of subroutine. Pausing execution."
+                            );
                         }
                         self.status = Status::WaitForAction;
                         continue;
@@ -259,7 +265,11 @@ impl Debugger {
                 }
                 Status::Finish => {
                     if instr == Some(RelevantInstr::Ret) {
-                        dprintln!(Always, "  * Reached end of subroutine. Pausing execution.");
+                        dprintln!(
+                            Always,
+                            Warning,
+                            "Reached end of subroutine. Pausing execution."
+                        );
                         // Execute `RET` before prompting command again
                         self.status = Status::Step { count: 0 };
                     }
@@ -273,13 +283,14 @@ impl Debugger {
         Output::Debugger(Condition::Always).start_new_line();
 
         if self.was_pc_changed {
-            dprintln!(Sometimes, "  · Program counter at: 0x{:04x}.", state.pc());
+            dprintln!(Sometimes, Info, "Program counter at: 0x{:04x}.", state.pc());
             self.was_pc_changed = false;
         }
         if self.instruction_count > 0 {
             dprintln!(
                 Always,
-                "  · Executed {} instruction{}.",
+                Info,
+                "Executed {} instruction{}.",
                 self.instruction_count,
                 if self.instruction_count == 1 { "" } else { "s" },
             );
@@ -294,18 +305,18 @@ impl Debugger {
             Command::Exit => return Some(Action::ExitProgram),
 
             Command::Help => {
-                dprintln!(Always, "\n{}", include_str!("./help.txt"));
+                dprintln!(Always, Normal, "\n{}", include_str!("./help.txt"));
             }
 
             Command::Continue => {
                 self.status = Status::Continue;
                 self.was_pc_changed = true;
-                dprintln!(Always, "  · Continuing...");
+                dprintln!(Always, Info, "Continuing...");
             }
             Command::Finish => {
                 self.status = Status::Finish;
                 self.was_pc_changed = true;
-                dprintln!(Always, "  · Finishing subroutine...");
+                dprintln!(Always, Info, "Finishing subroutine...");
             }
 
             Command::Step { count } => {
@@ -322,13 +333,13 @@ impl Debugger {
             Command::Get { location } => match location {
                 // TODO(feat): Draw box around value, mirroring `registers`
                 Location::Register(register) => {
-                    dprintln!(Always, "  · Register R{}:", register as u16);
+                    dprintln!(Always, Info, "Register R{}:", register as u16);
                     Output::Debugger(Condition::Always).print_integer(state.reg(register as u16));
                     Output::Debugger(Condition::Always).print_char('\n');
                 }
                 Location::Memory(location) => {
                     let address = self.resolve_location_address(state, &location)?;
-                    dprintln!(Always, "  · Memory at address 0x{:04x}:", address);
+                    dprintln!(Always, Info, "Memory at address 0x{:04x}:", address);
                     Output::Debugger(Condition::Always).print_integer(state.mem(address));
                     Output::Debugger(Condition::Always).print_char('\n');
                 }
@@ -337,11 +348,16 @@ impl Debugger {
             Command::Set { location, value } => match location {
                 Location::Register(register) => {
                     *state.reg_mut(register as u16) = value;
-                    dprintln!(Always, "  * Updated register R{}.", register as u16);
+                    dprintln!(Always, Warning, "Updated register R{}.", register as u16);
                 }
                 Location::Memory(location) => {
                     let address = self.resolve_location_address(state, &location)?;
-                    dprintln!(Always, "  * Updated memory at address 0x{:04x}.", address);
+                    dprintln!(
+                        Always,
+                        Warning,
+                        "Updated memory at address 0x{:04x}.",
+                        address
+                    );
                     *state.mem_mut(address) = value;
                 }
             },
@@ -353,7 +369,7 @@ impl Debugger {
             Command::Reset => {
                 *state = self.initial_state.clone();
                 self.was_pc_changed = true;
-                dprintln!(Always, "  * Reset program to initial state.");
+                dprintln!(Always, Warning, "Reset program to initial state.");
             }
 
             Command::Source { location } => {
@@ -370,7 +386,8 @@ impl Debugger {
                 if self.breakpoints.contains(address) {
                     dprintln!(
                         Always,
-                        "  ~ Breakpoint already exists at 0x{:04x}.",
+                        Error,
+                        "Breakpoint already exists at 0x{:04x}.",
                         address
                     );
                 } else {
@@ -378,25 +395,26 @@ impl Debugger {
                         address,
                         predefined: false,
                     });
-                    dprintln!(Always, "  * Added breakpoint at 0x{:04x}.", address);
+                    dprintln!(Always, Warning, "Added breakpoint at 0x{:04x}.", address);
                 }
             }
             Command::BreakRemove { location } => {
                 let address = self.resolve_location_address(state, &location)?;
                 if self.breakpoints.remove(address) {
-                    dprintln!(Always, "  * Removed breakpoint at 0x{:04x}.", address);
+                    dprintln!(Always, Warning, "Removed breakpoint at 0x{:04x}.", address);
                 } else {
-                    dprintln!(Always, "  ~ No breakpoint exists at 0x{:04x}.", address);
+                    dprintln!(Always, Error, "No breakpoint exists at 0x{:04x}.", address);
                 }
             }
             Command::BreakList => {
                 if self.breakpoints.is_empty() {
-                    dprintln!(Always, "  · No breakpoints exist.");
+                    dprintln!(Always, Info, "No breakpoints exist.");
                 } else {
-                    dprintln!(Always, "  · Breakpoints:");
+                    dprintln!(Always, Info, "Breakpoints:");
                     for (i, breakpoint) in self.breakpoints.iter().enumerate() {
                         dprintln!(
                             Always,
+                            Normal,
                             "  {} 0x{:04x}",
                             if i + 1 == self.breakpoints.len() {
                                 "╰─"
@@ -427,8 +445,8 @@ impl Debugger {
             let command = match Command::try_from(line) {
                 Ok(command) => command,
                 Err(error) => {
-                    dprintln!(Always, "  ~ {}", error);
-                    dprintln!(Always, "  ~ Type `help` for a list of commands.");
+                    dprintln!(Always, Error, "{}", error);
+                    dprintln!(Always, Error, "Type `help` for a list of commands.");
                     continue;
                 }
             };
@@ -446,7 +464,8 @@ impl Debugger {
         if address < orig || (address - orig) as usize >= self.ast.len() {
             dprintln!(
                 Always,
-                "  · Address 0x{:04x} does not correspond to an instruction",
+                Info,
+                "Address 0x{:04x} does not correspond to an instruction",
                 address
             );
             return;
@@ -478,7 +497,7 @@ impl Debugger {
 
     fn resolve_label_address(&self, label: &Label) -> Option<u16> {
         let Some(address) = get_label_address(&label.name) else {
-            dprintln!(Always, "  ~ Label not found named `{}`.", label.name);
+            dprintln!(Always, Error, "Label not found named `{}`.", label.name);
             return None;
         };
 
@@ -488,14 +507,16 @@ impl Debugger {
         if address < orig || (address as u16) >= 0xFE00 {
             dprintln!(
                 Always,
-                "  ~ Label address + offset is out of bounds of memory."
+                Error,
+                "Label address + offset is out of bounds of memory."
             );
             return None;
         };
 
         dprintln!(
             Always,
-            "  · Label `{}` is at address 0x{:04x}.",
+            Info,
+            "Label `{}` is at address 0x{:04x}.",
             label.name,
             address
         );

@@ -80,9 +80,10 @@ impl SourceReader for SourceMode {
         // Echo prompt and command for non-terminal source
         // Equivalent code found in terminal source
         if !Output::is_minimal() || command.is_some() {
-            dprint!(Always, "\x1b[1mCommand: ");
+            dprint!(Always, Normal, "\x1b[1mCommand: ");
             dprintln!(
                 Always,
+                Normal,
                 "{}",
                 command.unwrap_or("\x1b[3m(end of input)").trim()
             );
