@@ -14,17 +14,21 @@ macro_rules! print_char {
 
 #[macro_export]
 macro_rules! dprint {
-    ( $cond:expr, $flag:expr, $fmt:literal $($tt:tt)* ) => {{
+    ( $condition:expr, $category:expr, $fmt:expr $(, $($tt:tt)* )? ) => {{
         #[allow(unused_imports)]
         use crate::output::{Condition::*, Category::*};
+
+        let output = crate::output::Output::Debugger($condition);
+
         let s = format!(
             $fmt
-            $($tt)*
+            $(, $($tt)* )?
         );
-        let output = crate::output::Output::Debugger($cond);
-        output.print_category($flag);
+
+        output.print_category($category);
         output.print_str(&s);
     }};
+
     // Trigger type error if missing condition/kind
     ( $fmt:literal $($tt:tt)* ) => {{
         crate::output::Output::Debugger($fmt);
@@ -33,25 +37,27 @@ macro_rules! dprint {
 
 #[macro_export]
 macro_rules! dprintln {
-    ( $cond:expr ) => {{
+    ( $condition:expr ) => {{
         #[allow(unused_imports)]
-        use crate::output::{Condition::*, Flag};
-        crate::output::Output::Debugger($cond, Flag::Normal).print_str("\n");
-    }};
-    ( $cond:expr, $flag:expr, $fmt:literal $($tt:tt)* ) => {{
-        #[allow(unused_imports)]
-        use crate::output::{Condition::*, Category::*};
-        let s = format!(
-            concat!($fmt, "\n")
-            $($tt)*
+        crate::dprint!(
+            $condition,
+            crate::output::Category::Normal,
+            "\n"
         );
-        let output = crate::output::Output::Debugger($cond);
-        output.print_category($flag);
-        output.print_str(&s);
     }};
-    // Trigger type error if missing condition/kind
-    ( $fmt:literal $($tt:tt)* ) => {{
-        crate::output::Output::Debugger($fmt);
+
+    ( $condition:expr, $category:expr, $fmt:expr $(, $($tt:tt)* )? ) => {{
+        crate::dprint!(
+            $condition,
+            $category,
+            concat!($fmt, "\n")
+            $(,$($tt)*)?
+        );
+    }};
+
+    // Let `dprint` issue any other compiler errors
+    ( $($tt:tt)* ) => {{
+        crate::dprint!($($tt)*);
     }};
 }
 
