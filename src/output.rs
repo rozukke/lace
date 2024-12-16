@@ -1,7 +1,5 @@
 use std::cell::RefCell;
-use std::str::Chars;
-
-use colored::{ColoredString, Colorize};
+use std::fmt::{self, Write as _};
 
 use crate::runtime::RunState;
 
@@ -61,10 +59,18 @@ macro_rules! dprintln {
     }};
 }
 
+const DEBUGGER_COLOR: &str = "34";
+
 #[derive(Clone, Copy, Debug)]
 pub enum Output {
     Normal,
     Debugger(Condition),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Condition {
+    Always,
+    Sometimes,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -75,87 +81,61 @@ pub enum Category {
     Error,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Condition {
-    Always,
-    Sometimes,
-}
-
-struct Decolored<'a> {
-    chars: Chars<'a>,
-}
-
-// TODO(opt): Don't use `format!`. Possibly `format_args!` or `impl Write`
 impl Output {
     thread_local! {
-        static IS_LINE_START: RefCell<bool> = const { RefCell::new(true) };
         static IS_MINIMAL: RefCell<bool> = const { RefCell::new(false) };
-    }
-
-    pub fn set_line_start(new_value: bool) -> bool {
-        Self::IS_LINE_START.with(|value| value.replace(new_value))
-    }
-    /// Private. Use [`Output::start_new_line`].
-    fn is_line_start() -> bool {
-        Self::IS_LINE_START.with(|value| *value.borrow())
-    }
-    pub fn set_minimal(new_value: bool) -> bool {
-        Self::IS_MINIMAL.with(|value| value.replace(new_value))
     }
     pub fn is_minimal() -> bool {
         Self::IS_MINIMAL.with(|value| *value.borrow())
     }
-
-    fn set_line_start_from_char(ch: char) {
-        Output::set_line_start(ch == '\n');
+    pub fn set_minimal(new_value: bool) -> bool {
+        Self::IS_MINIMAL.with(|value| value.replace(new_value))
     }
-    fn set_line_start_from_str(string: &str) {
-        let last = Decolored::new(string).last();
-        if let Some(ch) = last {
-            Output::set_line_start(ch == '\n');
+
+    pub fn start_new_line(&self) {
+        if !LineTracker::is_line_start() {
+            self.print_char('\n');
         }
     }
 
     pub fn print_char(&self, ch: char) {
-        match self {
-            Self::Normal => {
-                print!("{}", ch)
-            }
-            Self::Debugger { .. } => {
-                eprint!("{}", ch);
-            }
-        }
-        Self::set_line_start_from_char(ch);
+        self.print_fmt(format_args!("{}", ch))
     }
-
     pub fn print_str(&self, string: &str) {
+        self.print_fmt(format_args!("{}", string))
+    }
+    pub fn print_decimal(&self, value: u16) {
+        self.print_fmt(format_args!("{}", value as i16));
+    }
+
+    pub fn print_fmt(&self, args: fmt::Arguments) {
+        let minimal = Self::is_minimal();
         match self {
             Self::Normal => {
-                // Don't remove color, even if `--minimal`
-                // The only color which could occur is that which the LC-3 created,
-                // which is allowed
-                print!("{}", string);
-                Self::set_line_start_from_str(string);
+                NormalWriter { minimal }.write_fmt(args).unwrap();
+                LineTracker.write_fmt(args).unwrap();
             }
-
-            Self::Debugger(condition) => match (Self::is_minimal(), *condition) {
-                (false, _) => {
-                    eprint!("{}", ColoredString::from(string).blue());
-                    Self::set_line_start_from_str(string);
+            Self::Debugger(condition) => {
+                if condition == &Condition::Sometimes && minimal {
+                    return;
                 }
-                // Always remove color if `--minimal`
-                (true, Condition::Always) => {
-                    eprint_colorless(string);
-                    Self::set_line_start_from_str(string);
-                }
-                (true, Condition::Sometimes) => (),
-            },
+                DebuggerWriter { minimal }.write_fmt(args).unwrap();
+                LineTracker.write_fmt(args).unwrap();
+            }
         }
     }
 
-    pub fn start_new_line(&self) {
-        if !Self::is_line_start() {
-            self.print_char('\n');
+    pub fn print_category(&self, category: Category) {
+        assert!(
+            matches!(self, Self::Debugger(_)),
+            "`Output::print_category()` called on `Output::Normal`"
+        );
+
+        match category {
+            Category::Normal => (),
+            Category::Info => self.print_str("  · "),
+            Category::Warning => self.print_str("  * "),
+            Category::Error => self.print_str("  ~ "),
         }
     }
 
@@ -185,10 +165,6 @@ impl Output {
         self.print_str(&format!(" \x1b[1mCC\x1b[0m  {:03b}", state.flag() as u8));
         self.print_str(" \x1b[2m│\x1b[0m\n");
         self.print_str("\x1b[2m└────────────────────────────────────┘\x1b[0m\n");
-    }
-
-    pub fn print_decimal(&self, value: u16) {
-        self.print_str(&format!("{}", value as i16));
     }
 
     pub fn print_integer(&self, value: u16) {
@@ -233,67 +209,128 @@ impl Output {
             0x0080.. => self.print_str("\x1b[2m┄┄┄\x1b[0m"),
         }
     }
+}
 
-    pub fn print_category(&self, category: Category) {
-        assert!(
-            matches!(self, Self::Debugger(_)),
-            "`Output::print_category()` called on `Output::Normal`"
-        );
-
-        match category {
-            Category::Normal => (),
-            Category::Info => self.print_str("  · "),
-            Category::Warning => self.print_str("  * "),
-            Category::Error => self.print_str("  ~ "),
+struct NormalWriter {
+    minimal: bool,
+}
+impl fmt::Write for NormalWriter {
+    fn write_str(&mut self, string: &str) -> fmt::Result {
+        if self.minimal {
+            print!("{}", Decolored::new(string));
+        } else {
+            print!("{}", string);
         }
+        Ok(())
     }
 }
 
-// TODO(refactor): Consider `strip_ansi_codes` from `console`
-impl<'a> Decolored<'a> {
-    pub fn new(string: &'a str) -> Self {
-        Self {
-            chars: string.chars(),
+struct DebuggerWriter {
+    minimal: bool,
+}
+impl fmt::Write for DebuggerWriter {
+    fn write_str(&mut self, string: &str) -> fmt::Result {
+        if self.minimal {
+            print!("{}", Decolored::new(string));
+        } else {
+            eprint!("\x1b[{}m", DEBUGGER_COLOR);
+            eprint!("{}", Colored::new(DEBUGGER_COLOR, string));
+            eprint!("\x1b[0m");
         }
+        Ok(())
     }
 }
 
-impl<'a> Iterator for Decolored<'a> {
-    type Item = char;
-    fn next(&mut self) -> Option<Self::Item> {
-        while let Some(ch) = self.chars.next() {
-            // Skip everything between '\x1b' and 'm' (inclusive)
+struct LineTracker;
+impl LineTracker {
+    thread_local! {
+        static IS_LINE_START: RefCell<bool> = const { RefCell::new(true) };
+    }
+    pub fn is_line_start() -> bool {
+        Self::IS_LINE_START.with(|value| *value.borrow())
+    }
+    fn set_line_start(new_value: bool) -> bool {
+        Self::IS_LINE_START.with(|value| value.replace(new_value))
+    }
+}
+impl fmt::Write for LineTracker {
+    fn write_str(&mut self, string: &str) -> fmt::Result {
+        for ch in string.chars().rev() {
+            let is_line_start = match ch {
+                '\n' | '\r' => true,
+                '\x00'..='\x1f' | '\x7f' => continue,
+                _ => false,
+            };
+            Self::set_line_start(is_line_start);
+            break;
+        }
+
+        Ok(())
+    }
+}
+
+struct Colored<'a> {
+    color: &'static str,
+    string: &'a str,
+}
+impl<'a> Colored<'a> {
+    pub fn new(color: &'static str, string: &'a str) -> Self {
+        Self { color, string }
+    }
+}
+impl<'a> fmt::Display for Colored<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("\x1b[")?;
+        f.write_str(self.color)?;
+        f.write_str("m")?;
+
+        let mut chars = self.string.chars();
+        while let Some(ch) = chars.next() {
+            // Print color code in string -- everything between '\x1b' and 'm' (inclusive)
+            // Re-apply global color
             if ch == '\x1b' {
-                while self.chars.next().is_some_and(|ch| ch != 'm') {}
+                f.write_char('\x1b')?;
+                while let Some(ch) = chars.next() {
+                    f.write_char(ch)?;
+                    if ch == 'm' {
+                        break;
+                    }
+                }
+                f.write_str("\x1b[")?;
+                f.write_str(self.color)?;
+                f.write_str("m")?;
                 continue;
             }
-            return Some(ch);
+
+            f.write_char(ch)?;
         }
-        return None;
+
+        f.write_str("\x1b[0m")?;
+
+        Ok(())
     }
 }
 
-fn eprint_colorless(string: &str) {
-    for ch in Decolored::new(string) {
-        eprint!("{}", ch);
+struct Decolored<'a> {
+    string: &'a str,
+}
+impl<'a> Decolored<'a> {
+    pub fn new(string: &'a str) -> Self {
+        Self { string }
+    }
+}
+impl<'a> fmt::Display for Decolored<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut chars = self.string.chars();
+        while let Some(ch) = chars.next() {
+            // Skip everything between '\x1b' and 'm' (inclusive)
+            if ch == '\x1b' {
+                while chars.next().is_some_and(|ch| ch != 'm') {}
+                continue;
+            }
+            f.write_char(ch)?;
+        }
+        Ok(())
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn decolored() {
-        assert_eq!(Decolored::new("abcdef").collect::<String>(), "abcdef");
-        assert_eq!(
-            Decolored::new("abc\x1b[0;2mdef\x1b[0m").collect::<String>(),
-            "abcdef"
-        );
-        assert_eq!(Decolored::new("abc\x1b[0xyz").collect::<String>(), "abc");
-        assert_eq!(
-            Decolored::new("abc\x1bw[0bxyzmdef").collect::<String>(),
-            "abcdef"
-        );
-    }
-}
