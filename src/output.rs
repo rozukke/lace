@@ -15,11 +15,11 @@ macro_rules! dprint {
     ( $condition:expr, $category:expr, $fmt:expr $(, $($tt:tt)* )? ) => {{
         #[allow(unused_imports)]
         use crate::output::{Condition::*, Category::*};
-        let output = crate::output::Output::Debugger($condition);
-        output.print_category($category);
-        output.print_fmt(format_args!(
-            $fmt $(, $($tt)* )?
-        ));
+        crate::output::Output::Debugger(crate::output::Condition::Sometimes)
+            .print_category($category);
+        crate::output::Output::Debugger($condition)
+            .print_fmt(format_args!($fmt $(, $($tt)* )?)
+        );
     }};
 
     // Trigger type error if missing condition/kind
