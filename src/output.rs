@@ -129,8 +129,8 @@ impl Output {
         match category {
             Category::Normal => (),
             Category::Info => self.print_str("  · "),
-            Category::Warning => self.print_str("  * "),
-            Category::Error => self.print_str("  ~ "),
+            Category::Warning => self.print_str("  ➔ "),
+            Category::Error => self.print_str("  ⨯ "),
         }
     }
 
