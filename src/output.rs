@@ -15,16 +15,11 @@ macro_rules! dprint {
     ( $condition:expr, $category:expr, $fmt:expr $(, $($tt:tt)* )? ) => {{
         #[allow(unused_imports)]
         use crate::output::{Condition::*, Category::*};
-
         let output = crate::output::Output::Debugger($condition);
-
-        let s = format!(
-            $fmt
-            $(, $($tt)* )?
-        );
-
         output.print_category($category);
-        output.print_str(&s);
+        output.print_fmt(format_args!(
+            $fmt $(, $($tt)* )?
+        ));
     }};
 
     // Trigger type error if missing condition/kind
@@ -142,10 +137,10 @@ impl Output {
     pub fn print_registers(&self, state: &RunState) {
         if Self::is_minimal() {
             for i in 0..8 {
-                self.print_str(&format!("R{} {}\n", i, state.reg(i)));
+                self.print_fmt(format_args!("R{} {}\n", i, state.reg(i)));
             }
-            self.print_str(&format!("PC {}\n", state.pc()));
-            self.print_str(&format!("CC {:03b}\n", state.flag() as u8));
+            self.print_fmt(format_args!("PC {}\n", state.pc()));
+            self.print_fmt(format_args!("CC {:03b}\n", state.flag() as u8));
             return;
         }
 
@@ -154,15 +149,18 @@ impl Output {
             "\x1b[2m│        \x1b[3mhex     int    uint    char\x1b[0m\x1b[2m │\x1b[0m\n",
         );
         for i in 0..8 {
-            self.print_str(&format!("\x1b[2m│\x1b[0m"));
-            self.print_str(&format!(" \x1b[1mR{}\x1b[0m  ", i));
+            self.print_fmt(format_args!("\x1b[2m│\x1b[0m"));
+            self.print_fmt(format_args!(" \x1b[1mR{}\x1b[0m  ", i));
             self.print_integer(state.reg(i));
             self.print_str(" \x1b[2m│\x1b[0m\n");
         }
-        self.print_str(&format!("\x1b[2m│\x1b[0m"));
-        self.print_str(&format!(" \x1b[1mPC\x1b[0m  0x{:04x}", state.pc()));
-        self.print_str(&format!("                "));
-        self.print_str(&format!(" \x1b[1mCC\x1b[0m  {:03b}", state.flag() as u8));
+        self.print_fmt(format_args!("\x1b[2m│\x1b[0m"));
+        self.print_fmt(format_args!(" \x1b[1mPC\x1b[0m  0x{:04x}", state.pc()));
+        self.print_fmt(format_args!("                "));
+        self.print_fmt(format_args!(
+            " \x1b[1mCC\x1b[0m  {:03b}",
+            state.flag() as u8
+        ));
         self.print_str(" \x1b[2m│\x1b[0m\n");
         self.print_str("\x1b[2m└────────────────────────────────────┘\x1b[0m\n");
     }
@@ -172,9 +170,9 @@ impl Output {
             self.print_decimal(value);
             return;
         }
-        self.print_str(&format!("0x{:04x}  ", value));
-        self.print_str(&format!("{:-6}  ", value));
-        self.print_str(&format!("{:-6}  ", value as i16));
+        self.print_fmt(format_args!("0x{:04x}  ", value));
+        self.print_fmt(format_args!("{:-6}  ", value));
+        self.print_fmt(format_args!("{:-6}  ", value as i16));
         self.print_char_display(value);
     }
 
@@ -201,7 +199,7 @@ impl Output {
             0x20 => self.print_str("[_]"),
 
             // Printable ASCII characters
-            0x21..=0x7e => self.print_str(&format!("{:-6}", value as u8 as char)),
+            0x21..=0x7e => self.print_fmt(format_args!("{:-6}", value as u8 as char)),
 
             // Any ASCII character not already matched (unimportant control characters)
             0x00..=0x7f => self.print_str("\x1b[2m───\x1b[0m"),
