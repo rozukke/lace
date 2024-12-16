@@ -3,6 +3,7 @@ use std::fmt::{self, Write as _};
 
 use crate::runtime::RunState;
 
+/// Print a single character to `Normal` output.
 #[macro_export]
 macro_rules! print_char {
     ( $ch:expr ) => {{
@@ -10,11 +11,14 @@ macro_rules! print_char {
     }};
 }
 
+/// Print to `Debugger` output.
 #[macro_export]
 macro_rules! dprint {
     ( $condition:expr, $category:expr, $fmt:expr $(, $($tt:tt)* )? ) => {{
+        // This is not very hygenic. But makes macro more ergonomic to use.
         #[allow(unused_imports)]
         use crate::output::{Condition::*, Category::*};
+
         crate::output::Output::Debugger(crate::output::Condition::Sometimes)
             .print_category($category);
         crate::output::Output::Debugger($condition)
@@ -28,10 +32,10 @@ macro_rules! dprint {
     }};
 }
 
+/// Print to `Debugger` output, with a newline.
 #[macro_export]
 macro_rules! dprintln {
     ( $condition:expr ) => {{
-        #[allow(unused_imports)]
         crate::dprint!(
             $condition,
             crate::output::Category::Normal,
@@ -44,7 +48,7 @@ macro_rules! dprintln {
             $condition,
             $category,
             concat!($fmt, "\n")
-            $(,$($tt)*)?
+            $(, $($tt)* )?
         );
     }};
 
@@ -54,6 +58,8 @@ macro_rules! dprintln {
     }};
 }
 
+/// Main color/style for debugger output.
+/// May be overridden.
 const DEBUGGER_COLOR: &str = "34";
 
 #[derive(Clone, Copy, Debug)]
@@ -62,6 +68,7 @@ pub enum Output {
     Debugger(Condition),
 }
 
+/// A condition of `Sometimes` will not print anything if `Output::is_minimal() == true`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Condition {
     Always,
@@ -70,23 +77,39 @@ pub enum Condition {
 
 #[derive(Clone, Copy, Debug)]
 pub enum Category {
+    /// No decoration.
     Normal,
+    /// Implies that NO change was made to memory/registers/breakpoints/etc.
     Info,
+    /// Implies that a change was made to memory/registers/breakpoints/etc.
     Warning,
+    /// An error occurred while parsing or executing a command.
     Error,
 }
 
 impl Output {
     thread_local! {
+        /// Only access using `Output::is_minimal` and `Output::set_minimal`.
         static IS_MINIMAL: RefCell<bool> = const { RefCell::new(false) };
     }
+    /// Whether output willl be printed 'minimally'.
+    ///
+    /// Should return `true` iff `--minimal` argument was given.
     pub fn is_minimal() -> bool {
         Self::IS_MINIMAL.with(|value| *value.borrow())
     }
+    /// Set whether output will be printed 'minimally'.
+    ///
+    /// Use this method to handle `--minimal` argument.
     pub fn set_minimal(new_value: bool) -> bool {
         Self::IS_MINIMAL.with(|value| value.replace(new_value))
     }
 
+    /// If cursor is NOT at the start of a line, then start a new line (ie. print '\n').
+    ///
+    /// Relies on previously-printed strings to keep track of cursor position. This is done
+    /// automatically within the `Output` struct, but free `print`, `eprint`, etc. calls will
+    /// not track the state.
     pub fn start_new_line(&self) {
         if !LineTracker::is_line_start() {
             self.print_char('\n');
@@ -103,15 +126,18 @@ impl Output {
         self.print_fmt(format_args!("{}", value as i16));
     }
 
+    /// Print a value returned by the `format_args!` macro.
     pub fn print_fmt(&self, args: fmt::Arguments) {
         let minimal = Self::is_minimal();
         match self {
             Self::Normal => {
                 NormalWriter { minimal }.write_fmt(args).unwrap();
+                // TODO(refactor): Move this line to `NormalWriter::write_str` (and likewise for
+                // `DebuggerWriter`)
                 LineTracker.write_fmt(args).unwrap();
             }
             Self::Debugger(condition) => {
-                if condition == &Condition::Sometimes && minimal {
+                if minimal && condition == &Condition::Sometimes {
                     return;
                 }
                 DebuggerWriter { minimal }.write_fmt(args).unwrap();
@@ -120,8 +146,12 @@ impl Output {
         }
     }
 
+    /// Print a decoration symbol, to indicate the purpose of the next message printed.
+    ///
+    /// Only works for `Output::Debugger(_)`.
     pub fn print_category(&self, category: Category) {
-        assert!(
+        // TODO(feat): Return early for `Output::Normal` in release mode
+        debug_assert!(
             matches!(self, Self::Debugger(_)),
             "`Output::print_category()` called on `Output::Normal`"
         );
@@ -177,6 +207,7 @@ impl Output {
     }
 
     fn print_char_display(&self, value: u16) {
+        // TODO(feat): Early return if `is_minimal` for release mode
         debug_assert!(
             !Self::is_minimal(),
             "`print_char_display` should not be called if `--minimal`"
@@ -239,6 +270,15 @@ impl fmt::Write for DebuggerWriter {
     }
 }
 
+/// Tracks whether the cursor is at the start of a line (at column 1).
+///
+/// Uses `fmt::Write`, in order to handle `fmt::Arguments`, and therefore anything which implements
+/// `fmt::Display`.
+///
+/// If the last printable character is a newline character ('\n' or '\r'), then the state will be
+/// set to `true`.
+/// Otherwise it will be set to false.
+/// If the string does not contain any printable characters, then the state will not change.
 struct LineTracker;
 impl LineTracker {
     thread_local! {
@@ -253,6 +293,7 @@ impl LineTracker {
 }
 impl fmt::Write for LineTracker {
     fn write_str(&mut self, string: &str) -> fmt::Result {
+        // TODO(fix): This will break with "\x1b[0m" for example. String should be scanned forwards
         for ch in string.chars().rev() {
             let is_line_start = match ch {
                 '\n' | '\r' => true,
@@ -267,6 +308,9 @@ impl fmt::Write for LineTracker {
     }
 }
 
+/// Applies an ANSI color/style attribute to a string, when displayed.
+///
+/// Given attributes are re-applied after any 'reset' code (`\x1b[0m`) is encountered.
 struct Colored<'a> {
     color: &'static str,
     string: &'a str,
@@ -309,6 +353,7 @@ impl<'a> fmt::Display for Colored<'a> {
     }
 }
 
+/// Removes all ANSI escape codes (color codes) from a string, when displayed.
 struct Decolored<'a> {
     string: &'a str,
 }
@@ -331,4 +376,3 @@ impl<'a> fmt::Display for Decolored<'a> {
         Ok(())
     }
 }
-
