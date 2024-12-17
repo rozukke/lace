@@ -416,8 +416,8 @@ impl Debugger {
                     for (i, breakpoint) in self.breakpoints.iter().enumerate() {
                         dprintln!(
                             Always,
-                            Normal,
-                            "  {} 0x{:04x}",
+                            Info,
+                            "{} 0x{:04x}",
                             if i + 1 == self.breakpoints.len() {
                                 "╰─"
                             } else {
