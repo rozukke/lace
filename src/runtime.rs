@@ -129,7 +129,7 @@ impl RunEnvironment {
     pub fn run(&mut self) {
         loop {
             if let Some(debugger) = &mut self.debugger {
-                Output::Debugger(Condition::Always).start_new_line();
+                Output::Debugger(Condition::Always, Default::default()).start_new_line();
                 match debugger.wait_for_action(&mut self.state) {
                     Action::Proceed => (),
                     Action::StopDebugger => {

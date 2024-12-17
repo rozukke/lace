@@ -19,9 +19,9 @@ macro_rules! dprint {
         #[allow(unused_imports)]
         use crate::output::{Condition::*, Category::*};
 
-        crate::output::Output::Debugger(crate::output::Condition::Sometimes)
+        crate::output::Output::Debugger(crate::output::Condition::Sometimes, $category)
             .print_category($category);
-        crate::output::Output::Debugger($condition)
+        crate::output::Output::Debugger($condition, $category)
             .print_fmt(format_args!($fmt $(, $($tt)* )?)
         );
     }};
@@ -65,7 +65,7 @@ const DEBUGGER_COLOR: &str = "34";
 #[derive(Clone, Copy, Debug)]
 pub enum Output {
     Normal,
-    Debugger(Condition),
+    Debugger(Condition, Category),
 }
 
 /// A condition of `Sometimes` will not print anything if `Output::is_minimal() == true`.
@@ -75,9 +75,10 @@ pub enum Condition {
     Sometimes,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub enum Category {
     /// No decoration.
+    #[default]
     Normal,
     /// Implies that NO change was made to memory/registers/breakpoints/etc.
     Info,
@@ -136,11 +137,17 @@ impl Output {
                 // `DebuggerWriter`)
                 LineTracker.write_fmt(args).unwrap();
             }
-            Self::Debugger(condition) => {
+            Self::Debugger(condition, category) => {
                 if minimal && condition == &Condition::Sometimes {
                     return;
                 }
-                DebuggerWriter { minimal }.write_fmt(args).unwrap();
+                let color = match category {
+                    Category::Normal => "34",
+                    Category::Info => "35",
+                    Category::Warning => "33",
+                    Category::Error => "31",
+                };
+                DebuggerWriter { minimal, color }.write_fmt(args).unwrap();
                 LineTracker.write_fmt(args).unwrap();
             }
         }
@@ -152,7 +159,7 @@ impl Output {
     pub fn print_category(&self, category: Category) {
         // TODO(feat): Return early for `Output::Normal` in release mode
         debug_assert!(
-            matches!(self, Self::Debugger(_)),
+            matches!(self, Self::Debugger(..)),
             "`Output::print_category()` called on `Output::Normal`"
         );
 
@@ -256,14 +263,15 @@ impl fmt::Write for NormalWriter {
 
 struct DebuggerWriter {
     minimal: bool,
+    color: &'static str,
 }
 impl fmt::Write for DebuggerWriter {
     fn write_str(&mut self, string: &str) -> fmt::Result {
         if self.minimal {
             print!("{}", Decolored::new(string));
         } else {
-            eprint!("\x1b[{}m", DEBUGGER_COLOR);
-            eprint!("{}", Colored::new(DEBUGGER_COLOR, string));
+            eprint!("\x1b[{}m", self.color);
+            eprint!("{}", Colored::new(self.color, string));
             eprint!("\x1b[0m");
         }
         Ok(())
