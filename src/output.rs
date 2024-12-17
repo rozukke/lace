@@ -58,10 +58,6 @@ macro_rules! dprintln {
     }};
 }
 
-/// Main color/style for debugger output.
-/// May be overridden.
-const DEBUGGER_COLOR: &str = "34";
-
 #[derive(Clone, Copy, Debug)]
 pub enum Output {
     Normal,
@@ -75,7 +71,7 @@ pub enum Condition {
     Sometimes,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum Category {
     /// No decoration.
     #[default]
@@ -86,6 +82,8 @@ pub enum Category {
     Warning,
     /// An error occurred while parsing or executing a command.
     Error,
+    /// Use `{` and `}` to delimit ANSI color/style attributes (instead of `\x1b[` and `m`)
+    Special,
 }
 
 impl Output {
@@ -141,13 +139,12 @@ impl Output {
                 if minimal && condition == &Condition::Sometimes {
                     return;
                 }
-                let color = match category {
-                    Category::Normal => "34",
-                    Category::Info => "35",
-                    Category::Warning => "33",
-                    Category::Error => "31",
-                };
-                DebuggerWriter { minimal, color }.write_fmt(args).unwrap();
+                DebuggerWriter {
+                    minimal,
+                    category: *category,
+                }
+                .write_fmt(args)
+                .unwrap();
                 LineTracker.write_fmt(args).unwrap();
             }
         }
@@ -168,6 +165,7 @@ impl Output {
             Category::Info => self.print_str("  · "),
             Category::Warning => self.print_str("  ➔ "),
             Category::Error => self.print_str("  ⨯ "),
+            Category::Special => (),
         }
     }
 
@@ -263,17 +261,55 @@ impl fmt::Write for NormalWriter {
 
 struct DebuggerWriter {
     minimal: bool,
-    color: &'static str,
+    category: Category,
 }
 impl fmt::Write for DebuggerWriter {
     fn write_str(&mut self, string: &str) -> fmt::Result {
         if self.minimal {
             eprint!("{}", Decolored::new(string));
-        } else {
-            eprint!("\x1b[{}m", self.color);
-            eprint!("{}", Colored::new(self.color, string));
-            eprint!("\x1b[0m");
+            return Ok(());
         }
+
+        const PRIMARY_COLOR: &str = "34";
+        let color = match self.category {
+            Category::Normal => PRIMARY_COLOR,
+            Category::Info => "35",
+            Category::Warning => "33",
+            Category::Error => "31",
+
+            Category::Special => {
+                // Acts similar to `Colored::fmt`
+                eprint!("\x1b[{}m", PRIMARY_COLOR);
+
+                let mut chars = string.chars();
+                while let Some(ch) = chars.next() {
+                    if ch != '{' {
+                        eprint!("{}", ch);
+                        continue;
+                    }
+
+                    eprint!("\x1b[");
+                    while let Some(ch) = chars.next() {
+                        if ch == '}' {
+                            break;
+                        }
+                        eprint!("{}", ch);
+                        // Re-apply color when reset
+                        if ch == '0' {
+                            eprint!(";{}", PRIMARY_COLOR);
+                        }
+                    }
+                    eprint!("m");
+                }
+
+                return Ok(());
+            }
+        };
+
+        eprint!("\x1b[{}m", color);
+        eprint!("{}", Colored::new(color, string));
+        eprint!("\x1b[0m");
+
         Ok(())
     }
 }
