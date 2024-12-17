@@ -268,7 +268,7 @@ struct DebuggerWriter {
 impl fmt::Write for DebuggerWriter {
     fn write_str(&mut self, string: &str) -> fmt::Result {
         if self.minimal {
-            print!("{}", Decolored::new(string));
+            eprint!("{}", Decolored::new(string));
         } else {
             eprint!("\x1b[{}m", self.color);
             eprint!("{}", Colored::new(self.color, string));
