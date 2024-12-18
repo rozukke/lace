@@ -674,6 +674,21 @@ mod test {
     }
 
     #[test]
+    fn parse_branch_lit() {
+        let air = AsmParser::new("br x2").unwrap().parse().unwrap();
+        assert_eq!(
+            air.get(0),
+            &AsmLine {
+                line: 1,
+                stmt: AirStmt::Branch {
+                    flag: Flag::Nzp,
+                    dest_label: Label::Ref(0x2 + 0x2)
+                }
+            }
+        )
+    }
+
+    #[test]
     fn parse_fill() {
         let air = AsmParser::new("label .fill x30").unwrap().parse().unwrap();
         assert_eq!(
@@ -758,6 +773,7 @@ mod test {
         label add r0 r0 r0
               br label
               br not_existing
+              br x30
         "#,
         )
         .unwrap()
@@ -791,6 +807,16 @@ mod test {
                 stmt: AirStmt::Branch {
                     flag: Flag::Nzp,
                     dest_label: Label::empty("not_existing")
+                }
+            }
+        );
+        assert_eq!(
+            air.get(3),
+            &AsmLine {
+                line: 4,
+                stmt: AirStmt::Branch {
+                    flag: Flag::Nzp,
+                    dest_label: Label::Ref(0x5 + 0x30),
                 }
             }
         );
