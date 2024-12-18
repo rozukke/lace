@@ -364,6 +364,21 @@ impl Debugger {
                 }
             },
 
+            Command::Jump { location } => {
+                let address = self.resolve_location_address(state, &location)?;
+                if address < 0x3000 || address >= 0xFE00 {
+                    dprintln!(
+                        Always,
+                        Error,
+                        "Address is not in user address space. Must be in range [0x300, 0xFE00)."
+                    );
+                    return None;
+                }
+                *state.pc_mut() = address;
+                self.was_pc_changed = true;
+                dprintln!(Always, Warning, "Set program counter to 0x{:04x}", address);
+            }
+
             Command::Registers => {
                 Output::Debugger(Condition::Always, Default::default()).print_registers(state);
             }

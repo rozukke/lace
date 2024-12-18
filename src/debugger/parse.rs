@@ -91,6 +91,7 @@ impl<'a> CommandIter<'a> {
             "next" | "n" => CommandName::Next,
             "get" | "g" => CommandName::Get,
             "set" | "s" => CommandName::Set,
+            "jump" | "j" => CommandName::Jump,
             "source" | "o" => CommandName::Source,
             "eval" | "v" => CommandName::Eval,
             "breaklist" | "bl" => CommandName::BreakList,
@@ -145,6 +146,15 @@ impl<'a> CommandIter<'a> {
             }
             Some(Argument::Label(label)) => Location::Memory(MemoryLocation::Label(label)),
             None => return Err(Error::MissingArgument { name }),
+        })
+    }
+
+    pub fn next_memory_location(&mut self, name: CommandName) -> Result<MemoryLocation> {
+        Ok(match self.next_argument()? {
+            Some(Argument::Integer(address)) => MemoryLocation::Address(resize_int(address)?),
+            Some(Argument::Label(label)) => MemoryLocation::Label(label),
+            None => return Err(Error::MissingArgument { name }),
+            _ => return Err(Error::WrongArgumentKind { name }),
         })
     }
 

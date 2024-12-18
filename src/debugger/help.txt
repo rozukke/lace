@@ -28,6 +28,10 @@ Available Commands:
           - {3}LOCATION{0}: Register | Address+ | Label+
           - {3}VALUE{0}: Integer
 
+    {1}jump{0} (j) {3}LOCATION{0}
+        Unconditionally jump to an address/label.
+          - {3}LOCATION{0}: Address+ | Label+
+
     {1}registers{0} (r)
         Print the value of all registers.
 

@@ -18,6 +18,7 @@ pub enum Command {
     BreakRemove { location: MemoryLocation },
     Get { location: Location },
     Set { location: Location, value: u16 },
+    Jump { location: MemoryLocation },
     Registers,
     Reset,
     Source { location: MemoryLocation },
@@ -40,6 +41,7 @@ pub(super) enum CommandName {
     BreakRemove,
     Get,
     Set,
+    Jump,
     Registers,
     Reset,
     Source,
@@ -61,6 +63,7 @@ impl fmt::Display for CommandName {
             Self::BreakRemove => write!(f, "break remove"),
             Self::Get => write!(f, "get"),
             Self::Set => write!(f, "set"),
+            Self::Jump => write!(f, "jump"),
             Self::Registers => write!(f, "registers"),
             Self::Reset => write!(f, "reset"),
             Self::Source => write!(f, "source"),
@@ -166,6 +169,11 @@ impl TryFrom<&str> for Command {
                 let location = iter.next_location(name)?;
                 let value = iter.next_integer(name)?;
                 Self::Set { location, value }
+            }
+
+            CommandName::Jump => {
+                let location = iter.next_memory_location(name)?;
+                Self::Jump { location }
             }
 
             CommandName::BreakList => Self::BreakList,

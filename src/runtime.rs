@@ -237,6 +237,11 @@ impl RunState {
         self.pc
     }
     #[inline]
+    pub(super) fn pc_mut(&mut self) -> &mut u16 {
+        &mut self.pc
+    }
+
+    #[inline]
     pub(super) fn flag(&self) -> RunFlag {
         self.flag
     }
