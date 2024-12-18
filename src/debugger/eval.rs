@@ -1,9 +1,9 @@
 use miette::Result;
 
-use crate::air::AsmLine;
+use crate::air::{AirStmt, AsmLine};
 use crate::runtime::RunState;
 use crate::symbol::Span;
-use crate::AsmParser;
+use crate::{dprintln, AsmParser};
 
 // TODO(feat): Warn on `eval br* ...` and suggest `jump ...`
 
@@ -23,6 +23,21 @@ pub fn eval(state: &mut RunState, line: String) {
 fn eval_inner(state: &mut RunState, line: &'static str) -> Result<()> {
     // Parse
     let stmt = AsmParser::new_simple(line)?.parse_simple()?;
+    // Don't allow *condition* branch instructions
+    // Since CC is set to 0b000 at start, this could lead to confusion when `BR` instructions are
+    // not executed
+    match stmt {
+        AirStmt::Branch { .. } => {
+            dprintln!(
+                Always,
+                Error,
+                "Evaluation of `BR*` instructions is not supported."
+            );
+            dprintln!(Always, Error, "Consider using `jump` command instead.");
+            return Ok(());
+        }
+        _ => (),
+    }
     // Check labels
     let mut asm = AsmLine::new(0, stmt, Span::dummy());
     asm.backpatch()?;
