@@ -433,8 +433,8 @@ impl AsmParser {
         match self.toks.peek() {
             Some(tok) => match tok.kind {
                 TokenKind::Label => {
-                    let span = tok.span;
-                    let label = Label::try_fill(self.get_span(span));
+                    let label_tok = self.expect(TokenKind::Label)?;
+                    let label = Label::try_fill(self.get_span(label_tok.span));
                     Ok(label)
                 }
                 TokenKind::Lit(_) => {
