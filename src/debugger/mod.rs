@@ -181,10 +181,10 @@ impl Debugger {
         if pc >= 0xFE00 && pc < 0xFFFF {
             dprintln!(
                 Always,
-                Normal,
-                "WARNING: Program counter entered device address space."
+                Error,
+                "Reached end of user program memory. Pausing execution."
             );
-            return Action::Proceed;
+            self.status = Status::WaitForAction;
         }
 
         let instr = RelevantInstr::try_from(state.mem(pc)).ok();

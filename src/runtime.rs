@@ -134,6 +134,7 @@ impl RunEnvironment {
         loop {
             if let Some(debugger) = &mut self.debugger {
                 Output::Debugger(Condition::Always, Default::default()).start_new_line();
+
                 match debugger.wait_for_action(&mut self.state) {
                     Action::Proceed => (),
                     Action::StopDebugger => {
@@ -147,12 +148,17 @@ impl RunEnvironment {
                         return;
                     }
                 }
+
                 // If still stuck on HALT
                 // Never *execute* HALT while debugger is active
                 // Wait for pc to change, such as `reset`, `exit`, or `quit`
                 if RelevantInstr::try_from(self.state.mem[self.state.pc as usize])
                     == Ok(RelevantInstr::TrapHalt)
                 {
+                    continue;
+                }
+                // Debugger should catch this on next loop, and warn
+                if self.state.pc >= 0xFE00 {
                     continue;
                 }
                 // From this point, next instruction will always be executed
