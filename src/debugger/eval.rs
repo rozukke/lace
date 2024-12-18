@@ -21,8 +21,11 @@ pub fn eval(state: &mut RunState, line: String) {
 fn eval_inner(state: &mut RunState, line: &'static str) -> Result<()> {
     // Parse
     let stmt = AsmParser::new_simple(line)?.parse_simple()?;
+    // Check labels
+    let mut asm = AsmLine::new(0, stmt, Span::dummy());
+    asm.backpatch()?;
     // Emit
-    let instr = AsmLine::new(0, stmt, Span::dummy()).emit()?;
+    let instr = asm.emit()?;
     // Execute
     RunState::OP_TABLE[(instr >> 12) as usize](state, instr);
     Ok(())
