@@ -806,7 +806,8 @@ mod test {
                 stmt: AirStmt::Branch {
                     flag: Flag::Nzp,
                     dest_label: Label::Ref(0x2 + 0x2)
-                }
+                },
+                span: Span::new(SrcOffset(0), "br x2".len())
             }
         )
     }
@@ -988,7 +989,18 @@ mod test {
                 stmt: AirStmt::Branch {
                     flag: Flag::Nzp,
                     dest_label: Label::Ref(0x5 + 0x30),
-                }
+                },
+                span: Span::new(
+                    SrcOffset(
+                        r#"
+        label add r0 r0 r0
+              br label
+              br not_existing
+              "#
+                        .len()
+                    ),
+                    "br x30".len()
+                )
             }
         );
     }
