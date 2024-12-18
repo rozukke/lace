@@ -234,8 +234,7 @@ impl AsmParser {
                 })
             }
             InstrKind::Br(flag) => {
-                let label_tok = self.expect(TokenKind::Label)?;
-                let dest_label = Label::try_fill(self.get_span(label_tok.span));
+                let dest_label = self.expect_lit_or_label(9)?;
                 Ok(AirStmt::Branch { flag, dest_label })
             }
             InstrKind::Jmp => {
@@ -243,8 +242,7 @@ impl AsmParser {
                 Ok(AirStmt::Jump { src_reg })
             }
             InstrKind::Jsr => {
-                let label_tok = self.expect(TokenKind::Label)?;
-                let dest_label = Label::try_fill(self.get_span(label_tok.span));
+                let dest_label = self.expect_lit_or_label(11)?;
                 Ok(AirStmt::JumbSub { dest_label })
             }
             InstrKind::Jsrr => {
@@ -253,14 +251,12 @@ impl AsmParser {
             }
             InstrKind::Ld => {
                 let dest = self.expect_reg()?;
-                let label_tok = self.expect(TokenKind::Label)?;
-                let src_label = Label::try_fill(self.get_span(label_tok.span));
+                let src_label = self.expect_lit_or_label(9)?;
                 Ok(AirStmt::Load { dest, src_label })
             }
             InstrKind::Ldi => {
                 let dest = self.expect_reg()?;
-                let label_tok = self.expect(TokenKind::Label)?;
-                let src_label = Label::try_fill(self.get_span(label_tok.span));
+                let src_label = self.expect_lit_or_label(9)?;
                 Ok(AirStmt::LoadInd { dest, src_label })
             }
             InstrKind::Ldr => {
@@ -275,8 +271,7 @@ impl AsmParser {
             }
             InstrKind::Lea => {
                 let dest = self.expect_reg()?;
-                let label_tok = self.expect(TokenKind::Label)?;
-                let src_label = Label::try_fill(self.get_span(label_tok.span));
+                let src_label = self.expect_lit_or_label(9)?;
                 Ok(AirStmt::LoadEAddr { dest, src_label })
             }
             InstrKind::Not => {
@@ -288,8 +283,7 @@ impl AsmParser {
             InstrKind::Rti => Ok(AirStmt::Interrupt),
             InstrKind::St => {
                 let src_reg = self.expect_reg()?;
-                let label_tok = self.expect(TokenKind::Label)?;
-                let dest_label = Label::try_fill(self.get_span(label_tok.span));
+                let dest_label = self.expect_lit_or_label(9)?;
                 Ok(AirStmt::Store {
                     src_reg,
                     dest_label,
@@ -297,8 +291,7 @@ impl AsmParser {
             }
             InstrKind::Sti => {
                 let src_reg = self.expect_reg()?;
-                let label_tok = self.expect(TokenKind::Label)?;
-                let dest_label = Label::try_fill(self.get_span(label_tok.span));
+                let dest_label = self.expect_lit_or_label(9)?;
                 Ok(AirStmt::StoreInd {
                     src_reg,
                     dest_label,
@@ -428,6 +421,31 @@ impl AsmParser {
                     return Err(error::parse_generic_unexpected(
                         self.src,
                         "literal or register",
+                        *tok,
+                    ))
+                }
+            },
+            None => return Err(error::parse_eof(self.src)),
+        }
+    }
+
+    fn expect_lit_or_label(&mut self, bits: u8) -> Result<Label> {
+        match self.toks.peek() {
+            Some(tok) => match tok.kind {
+                TokenKind::Label => {
+                    let label_tok = self.expect(TokenKind::Label)?;
+                    let label = Label::try_fill(self.get_span(label_tok.span));
+                    Ok(label)
+                }
+                TokenKind::Lit(_) => {
+                    let val = self.expect_lit(Bits::Signed(bits))?;
+                    let label = Label::Ref(self.line + 1 + val);
+                    Ok(label)
+                }
+                _ => {
+                    return Err(error::parse_generic_unexpected(
+                        self.src,
+                        "literal or label",
                         *tok,
                     ))
                 }
@@ -656,6 +674,21 @@ mod test {
     }
 
     #[test]
+    fn parse_branch_lit() {
+        let air = AsmParser::new("br x2").unwrap().parse().unwrap();
+        assert_eq!(
+            air.get(0),
+            &AsmLine {
+                line: 1,
+                stmt: AirStmt::Branch {
+                    flag: Flag::Nzp,
+                    dest_label: Label::Ref(0x2 + 0x2)
+                }
+            }
+        )
+    }
+
+    #[test]
     fn parse_fill() {
         let air = AsmParser::new("label .fill x30").unwrap().parse().unwrap();
         assert_eq!(
@@ -740,6 +773,7 @@ mod test {
         label add r0 r0 r0
               br label
               br not_existing
+              br x30
         "#,
         )
         .unwrap()
@@ -773,6 +807,16 @@ mod test {
                 stmt: AirStmt::Branch {
                     flag: Flag::Nzp,
                     dest_label: Label::empty("not_existing")
+                }
+            }
+        );
+        assert_eq!(
+            air.get(3),
+            &AsmLine {
+                line: 4,
+                stmt: AirStmt::Branch {
+                    flag: Flag::Nzp,
+                    dest_label: Label::Ref(0x5 + 0x30),
                 }
             }
         );
