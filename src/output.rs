@@ -273,7 +273,7 @@ impl fmt::Write for DebuggerWriter {
         const PRIMARY_COLOR: &str = "34";
         let color = match self.category {
             Category::Normal => PRIMARY_COLOR,
-            Category::Info => "35",
+            Category::Info => PRIMARY_COLOR,
             Category::Warning => "33",
             Category::Error => "31",
 
