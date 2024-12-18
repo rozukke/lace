@@ -96,6 +96,10 @@ impl RunEnvironment {
     }
 
     pub fn from_raw(raw: &[u16]) -> Result<RunEnvironment> {
+        if raw.len() == 0 {
+            exception!("provided file is empty");
+        }
+
         let orig = raw[0] as usize;
         if orig as usize + raw.len() > MEMORY_MAX {
             exception!("assembly file is too long and cannot fit in memory");
