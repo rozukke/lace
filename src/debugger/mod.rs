@@ -6,10 +6,10 @@ mod source;
 use self::command::{Command, Label, Location, MemoryLocation};
 use self::source::{SourceMode, SourceReader};
 use crate::air::AsmLine;
+use crate::dprintln;
 use crate::output::{Condition, Output};
 use crate::runtime::RunState;
 use crate::symbol::with_symbol_table;
-use crate::{dprint, dprintln};
 
 // TODO(refactor): Delete struct and replace with `Option<String>`
 #[derive(Debug)]
