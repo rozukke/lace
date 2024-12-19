@@ -3,7 +3,7 @@ use std::{i16, u16, u32};
 use miette::{bail, Result, Severity};
 
 use crate::{
-    debugger::Breakpoint,
+    debugger::Breakpoints,
     symbol::{Flag, Label, Register, Span},
 };
 
@@ -15,7 +15,7 @@ pub struct Air {
     /// AIR
     pub ast: Vec<AsmLine>,
 
-    pub breakpoints: Vec<Breakpoint>,
+    pub breakpoints: Breakpoints,
 
     pub src: &'static str,
 }
@@ -25,7 +25,7 @@ impl Air {
         Air {
             orig: None,
             ast: Vec::new(),
-            breakpoints: Vec::new(),
+            breakpoints: Breakpoints::new(),
             src,
         }
     }

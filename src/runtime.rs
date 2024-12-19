@@ -78,11 +78,7 @@ impl RunEnvironment {
         let mut env = Self::try_from(&air)?;
 
         // Add orig to each breakpoint
-        let orig = env.state.pc;
-        let mut breakpoints = air.breakpoints;
-        for breakpoint in breakpoints.iter_mut() {
-            breakpoint.address += orig;
-        }
+        let breakpoints = air.breakpoints.with_orig(env.state.pc);
 
         env.debugger = Some(Debugger::new(
             debugger_opts,

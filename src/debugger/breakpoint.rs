@@ -3,7 +3,7 @@
 /// Could be another collection, but [`Vec`] was used for simplicity.
 ///
 /// List must remain sorted, and 2 breakpoints cannot have the same address.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Breakpoints(Vec<Breakpoint>);
 
 /// A [`Breakpoint`] is just an address, and a flag for whether it was 'predefined'.
@@ -17,6 +17,10 @@ pub struct Breakpoint {
 }
 
 impl Breakpoints {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
     /// Get the [`Breakpoint`] with the given address.
     ///
     /// Returns `None` if no breakpoint exists.
@@ -57,10 +61,19 @@ impl Breakpoints {
         initial_len != self.0.len()
     }
 
+    /// Add the `orig` address to each [`Breakpoint`] item.
+    ///
+    /// Should only be called once per program run.
+    pub fn with_orig(mut self, orig: u16) -> Self {
+        for breakpoint in &mut self.0 {
+            breakpoint.address += orig;
+        }
+        self
+    }
+
     pub fn len(&self) -> usize {
         self.0.len()
     }
-
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
@@ -68,11 +81,8 @@ impl Breakpoints {
     pub fn iter(&self) -> impl Iterator<Item = &Breakpoint> {
         self.0.iter()
     }
-}
-
-impl From<Vec<Breakpoint>> for Breakpoints {
-    fn from(vec: Vec<Breakpoint>) -> Self {
-        Self(vec)
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Breakpoint> {
+        self.0.iter_mut()
     }
 }
 

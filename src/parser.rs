@@ -211,7 +211,7 @@ impl AsmParser {
                     }
                     TokenKind::Breakpoint => {
                         let addr = self.air.len() as u16;
-                        self.air.breakpoints.push(Breakpoint {
+                        self.air.breakpoints.insert(Breakpoint {
                             address: addr,
                             is_predefined: true,
                         });
