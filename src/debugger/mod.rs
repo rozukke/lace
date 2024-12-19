@@ -330,7 +330,10 @@ impl Debugger {
 
             Command::BreakAdd { location } => {
                 let address = self.resolve_location_address(state, &location)?;
-                if self.breakpoints.contains(address) {
+                if self.breakpoints.insert(Breakpoint {
+                    address,
+                    is_predefined: false,
+                }) {
                     dprintln!(
                         Always,
                         Error,
@@ -338,10 +341,6 @@ impl Debugger {
                         address
                     );
                 } else {
-                    self.breakpoints.insert(Breakpoint {
-                        address,
-                        is_predefined: false,
-                    });
                     dprintln!(Always, Warning, "Added breakpoint at 0x{:04x}.", address);
                 }
             }
