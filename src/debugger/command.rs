@@ -32,6 +32,7 @@ pub enum Command {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum CommandName {
+    // TODO(feat): Optional subcommand, to show help info for a specific command
     Help,
     Step,
     Next,
@@ -116,6 +117,8 @@ impl Command {
         name: CommandName,
         mut iter: CommandIter<'_>,
     ) -> Result<Command, ArgumentError> {
+        let mut expected_args = 0;
+
         let command = match name {
             CommandName::Help => Self::Help,
             CommandName::Continue => Self::Continue,
@@ -126,37 +129,44 @@ impl Command {
             CommandName::Reset => Self::Reset,
 
             CommandName::Step => {
+                expected_args = 1;
                 let count = iter.next_positive_integer_or_default("count")?;
                 Self::Step { count }
             }
             CommandName::Next => Self::Next,
 
             CommandName::Get => {
-                let location = iter.next_location("location")?;
+                expected_args = 1;
+                let location = iter.next_location("location", expected_args)?;
                 Self::Get { location }
             }
             CommandName::Set => {
-                let location = iter.next_location("location")?;
-                let value = iter.next_integer("value")?;
+                expected_args = 2;
+                let location = iter.next_location("location", expected_args)?;
+                let value = iter.next_integer("value", expected_args)?;
                 Self::Set { location, value }
             }
 
             CommandName::Jump => {
-                let location = iter.next_memory_location("location")?;
+                expected_args = 1;
+                let location = iter.next_memory_location("location", expected_args)?;
                 Self::Jump { location }
             }
 
             CommandName::BreakList => Self::BreakList,
             CommandName::BreakAdd => {
+                expected_args = 1;
                 let location = iter.next_memory_location_or_default("location")?;
                 Self::BreakAdd { location }
             }
             CommandName::BreakRemove => {
+                expected_args = 1;
                 let location = iter.next_memory_location_or_default("location")?;
                 Self::BreakRemove { location }
             }
 
             CommandName::Source => {
+                expected_args = 1;
                 let location = iter.next_memory_location_or_default("location")?;
                 Self::Source { location }
             }
@@ -164,16 +174,19 @@ impl Command {
             CommandName::Eval => {
                 let instruction = iter.collect_rest();
                 if instruction.is_empty() {
-                    return Err(ArgumentError::MissingArgument {
+                    return Err(ArgumentError::MissingArgumentList {
                         argument: "instruction",
                     });
                 }
-                Self::Eval { instruction }
+                debug_assert!(
+                    iter.expect_end_of_command(0, 0).is_ok(),
+                    "no more arguments should exist",
+                );
+                return Ok(Self::Eval { instruction });
             }
         };
 
-        // All commands except `eval`
-        iter.expect_end_of_command()?;
+        iter.expect_end_of_command(expected_args, iter.arg_count() + 1)?;
 
         Ok(command)
     }

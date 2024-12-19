@@ -85,6 +85,10 @@ pub struct CommandIter<'a> {
     base: usize,
     /// Characters between base..head are currently being parsed.
     head: usize,
+    /// Amount of arguments requested (successfully or not).
+    ///
+    /// Must only be incremented by [`Self::next_argument`]
+    arg_count: u8,
 }
 
 impl<'a> CommandIter<'a> {
@@ -93,7 +97,12 @@ impl<'a> CommandIter<'a> {
             buffer,
             base: 0,
             head: 0,
+            arg_count: 0,
         }
+    }
+
+    pub fn arg_count(&self) -> u8 {
+        self.arg_count
     }
 
     /// Parse and consume command name.
@@ -162,7 +171,11 @@ impl<'a> CommandIter<'a> {
     }
 
     /// Parse and consume next integer argument.
-    pub fn next_integer(&mut self, argument: &'static str) -> Result<u16, ArgumentError> {
+    pub fn next_integer(
+        &mut self,
+        argument: &'static str,
+        expected: u8,
+    ) -> Result<u16, ArgumentError> {
         Ok(
             match self
                 .next_argument()
@@ -170,7 +183,7 @@ impl<'a> CommandIter<'a> {
             {
                 Some(Argument::Integer(count)) => resize_int(count)
                     .map_err(|error| ArgumentError::InvalidValue { argument, error })?,
-                None => return Err(ArgumentError::MissingArgument { argument }),
+                None => return Err(ArgumentError::MissingArgument { argument, expected }),
                 _ => {
                     return Err(ArgumentError::InvalidValue {
                         argument,
@@ -205,7 +218,11 @@ impl<'a> CommandIter<'a> {
     }
 
     /// Parse and consume next [`Location`] argument: a register or [`MemoryLocation`].
-    pub fn next_location(&mut self, argument: &'static str) -> Result<Location, ArgumentError> {
+    pub fn next_location(
+        &mut self,
+        argument: &'static str,
+        expected: u8,
+    ) -> Result<Location, ArgumentError> {
         Ok(
             match self
                 .next_argument()
@@ -217,7 +234,7 @@ impl<'a> CommandIter<'a> {
                         .map_err(|error| ArgumentError::InvalidValue { argument, error })?,
                 )),
                 Some(Argument::Label(label)) => Location::Memory(MemoryLocation::Label(label)),
-                None => return Err(ArgumentError::MissingArgument { argument }),
+                None => return Err(ArgumentError::MissingArgument { argument, expected }),
             },
         )
     }
@@ -226,6 +243,7 @@ impl<'a> CommandIter<'a> {
     pub fn next_memory_location(
         &mut self,
         argument: &'static str,
+        expected: u8,
     ) -> Result<MemoryLocation, ArgumentError> {
         Ok(
             match self
@@ -237,7 +255,7 @@ impl<'a> CommandIter<'a> {
                         .map_err(|error| ArgumentError::InvalidValue { argument, error })?,
                 ),
                 Some(Argument::Label(label)) => MemoryLocation::Label(label),
-                None => return Err(ArgumentError::MissingArgument { argument }),
+                None => return Err(ArgumentError::MissingArgument { argument, expected }),
                 _ => {
                     return Err(ArgumentError::InvalidValue {
                         argument,
@@ -276,7 +294,7 @@ impl<'a> CommandIter<'a> {
     }
 
     /// Returns an error if the command contains any arguments which haven't been consumed.
-    pub fn expect_end_of_command(&mut self) -> Result<(), ArgumentError> {
+    pub fn expect_end_of_command(&mut self, expected: u8, actual: u8) -> Result<(), ArgumentError> {
         self.skip_whitespace();
         let ch = self.peek();
         debug_assert!(
@@ -284,7 +302,7 @@ impl<'a> CommandIter<'a> {
             "semicolons/newlines should have been handled already"
         );
         if !matches!(ch, None | Some(';' | '\n')) {
-            return Err(ArgumentError::TooManyArguments {});
+            return Err(ArgumentError::TooManyArguments { expected, actual });
         }
         Ok(())
     }
@@ -294,6 +312,8 @@ impl<'a> CommandIter<'a> {
     /// Leading/trailing whitespace is trimmed.
     ///
     /// Used for `eval` command.
+    ///
+    // This can be `String` bc it will be allocated later regardless for [`Command::Eval`].
     pub fn collect_rest(&mut self) -> String {
         let rest = self.buffer[self.head..].trim().to_string();
         self.head = self.buffer.len();
@@ -377,6 +397,8 @@ impl<'a> CommandIter<'a> {
         );
         self.reset_head();
         self.skip_whitespace();
+
+        self.arg_count += 1;
 
         if self.is_end_of_argument() {
             return Ok(None);

@@ -27,8 +27,16 @@ pub enum CommandError {
 pub enum ArgumentError {
     MissingArgument {
         argument: &'static str,
+        expected: u8,
     },
-    TooManyArguments {},
+    /// For `eval`.
+    MissingArgumentList {
+        argument: &'static str,
+    },
+    TooManyArguments {
+        expected: u8,
+        actual: u8,
+    },
     InvalidValue {
         argument: &'static str,
         error: ValueError,
@@ -61,11 +69,18 @@ impl fmt::Display for CommandError {
 
             Self::InvalidArgument { name, error } => {
                 match error {
-                    ArgumentError::MissingArgument { argument } => {
-                        write!(f, "Missing argument `{}`", argument)?;
+                    ArgumentError::MissingArgument { argument, expected } => {
+                        write!(f, "Missing argument `{}` (expected {})", argument, expected)?;
                     }
-                    ArgumentError::TooManyArguments {} => {
-                        write!(f, "Too many arguments")?;
+                    ArgumentError::MissingArgumentList { argument } => {
+                        write!(f, "Missing argument list `{}`", argument)?;
+                    }
+                    ArgumentError::TooManyArguments { expected, actual } => {
+                        write!(
+                            f,
+                            "Too many arguments (expected {}, found {})",
+                            expected, actual
+                        )?;
                     }
 
                     ArgumentError::InvalidValue { argument, error } => {
