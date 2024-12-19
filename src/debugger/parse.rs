@@ -132,7 +132,8 @@ impl<'a> CommandIter<'a> {
 
         // This could be written a bit nicer. But it doesn't seem necessary.
         if matches(name, &["break", "b"]) {
-            let name = name.to_string();
+            let name = "break";
+
             let Some(subname) = self.next_command_name_part() else {
                 return Err(Error::MissingSubcommand { name });
             };

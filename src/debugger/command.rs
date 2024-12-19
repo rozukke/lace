@@ -104,10 +104,10 @@ pub enum Error {
         name: String,
     },
     MissingSubcommand {
-        name: String,
+        name: &'static str,
     },
     InvalidSubcommand {
-        name: String,
+        name: &'static str,
         subname: String,
     },
     InvalidArgument {
@@ -141,33 +141,34 @@ impl fmt::Display for Error {
             Self::MissingSubcommand { name } => {
                 write!(f, "Missing subcommand for `{}`.", name)
             }
-            Self::InvalidArgument { name, error } => match error {
-                ArgumentError::MissingArgument { argument } => {
-                    write!(f, "Missing argument `{}` for command `{}`.", argument, name)
+
+            Self::InvalidArgument { name, error } => {
+                match error {
+                    ArgumentError::MissingArgument { argument } => {
+                        write!(f, "Missing argument `{}`", argument)?;
+                    }
+                    ArgumentError::TooManyArguments {} => {
+                        write!(f, "Too many arguments")?;
+                    }
+                    ArgumentError::WrongArgumentType { argument } => {
+                        write!(f, "Invalid type for argument `{}`", argument)?;
+                    }
+                    ArgumentError::MalformedArgument {} => {
+                        write!(f, "Malformed argument")?;
+                    }
+                    ArgumentError::MalformedInteger {} => {
+                        write!(f, "Malformed integer argument")?;
+                    }
+                    ArgumentError::MalformedLabel {} => {
+                        write!(f, "Malformed label argument")?;
+                    }
+                    ArgumentError::IntegerTooLarge {} => {
+                        write!(f, "Integer argument too large")?;
+                    }
                 }
-                ArgumentError::TooManyArguments {} => {
-                    write!(f, "Too many arguments for command `{}`.", name)
-                }
-                ArgumentError::WrongArgumentType { argument } => {
-                    write!(
-                        f,
-                        "Invalid type for argument `{}` for command `{}`.",
-                        argument, name
-                    )
-                }
-                ArgumentError::MalformedArgument {} => {
-                    write!(f, "Malformed argument for command `{}`.", name)
-                }
-                ArgumentError::MalformedInteger {} => {
-                    write!(f, "Malformed integer argument for command `{}`.", name)
-                }
-                ArgumentError::MalformedLabel {} => {
-                    write!(f, "Malformed label argument for command `{}`.", name)
-                }
-                ArgumentError::IntegerTooLarge {} => {
-                    write!(f, "Integer argument too large for command `{}`.", name)
-                }
-            },
+
+                write!(f, " for command `{}`", name)
+            }
         }
     }
 }
