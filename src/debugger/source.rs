@@ -5,23 +5,19 @@ use console::Key;
 
 use crate::{dprint, dprintln, output::Output};
 
-// TODO(feat): If argument ends in '...' (or something) then switch to `SourceMode::Terminal` once
-// arguments are exhausted
-
+/// Read from argument first, if `Some`. Then read from stream.
 #[allow(private_interfaces)] // Perhaps a bad practice
 #[derive(Debug)]
-pub enum SourceMode {
-    Argument(Argument),
-    Stdin(Stdin),
-    Terminal(Terminal),
+pub struct Source {
+    argument: Option<Argument>,
+    stream: Stream,
 }
 
-/// Stdin which is not attached to a terminal, i.e. piped.
+/// Stdin or interactive terminal
 #[derive(Debug)]
-struct Stdin {
-    stdin: io::Stdin,
-    /// Command must be stored somewhere to be referenced
-    buffer: String,
+enum Stream {
+    Stdin(Stdin),
+    Terminal(Terminal),
 }
 
 /// Command-line argument
@@ -30,6 +26,14 @@ struct Argument {
     buffer: String,
     /// Byte index
     cursor: usize,
+}
+
+/// Stdin which is not attached to a terminal, i.e. piped.
+#[derive(Debug)]
+struct Stdin {
+    stdin: io::Stdin,
+    /// Command must be stored somewhere to be referenced
+    buffer: String,
 }
 
 /// Interactive unbuffered terminal
@@ -51,44 +55,71 @@ struct Terminal {
     history_file: File,
 }
 
+fn echo_command_prompt(command: Option<&str>) {
+    // Echo prompt and command for non-terminal source
+    // Equivalent code found in terminal source
+    if !Output::is_minimal() || command.is_some() {
+        dprint!(Always, Normal, "\x1b[1mCommand: ");
+        dprintln!(
+            Always,
+            Normal,
+            "{}",
+            command.unwrap_or("\x1b[3m(end of input)").trim()
+        );
+    }
+}
+
 pub trait SourceReader {
     /// `None` indicates EOF
     /// Returned string slice MAY include leading or trailing whitespace
     fn read(&mut self) -> Option<&str>;
 }
 
-impl SourceMode {
+impl Source {
     pub fn from(argument: Option<String>) -> Self {
-        if let Some(argument) = argument {
-            return SourceMode::Argument(Argument::from(argument));
+        Self {
+            argument: argument.map(|argument| Argument::from(argument)),
+            stream: Stream::new(),
         }
-        let stdin = io::stdin();
-        if stdin.is_terminal() {
-            return SourceMode::Terminal(Terminal::new());
-        }
-        SourceMode::Stdin(Stdin::from(stdin))
     }
 }
 
-impl SourceReader for SourceMode {
+impl SourceReader for Source {
     fn read(&mut self) -> Option<&str> {
-        let command = match self {
-            Self::Argument(argument) => argument.read(),
-            Self::Stdin(stdin) => stdin.read(),
-            Self::Terminal(terminal) => return terminal.read(),
-        };
-        // Echo prompt and command for non-terminal source
-        // Equivalent code found in terminal source
-        if !Output::is_minimal() || command.is_some() {
-            dprint!(Always, Normal, "\x1b[1mCommand: ");
-            dprintln!(
-                Always,
-                Normal,
-                "{}",
-                command.unwrap_or("\x1b[3m(end of input)").trim()
-            );
+        // Always try to read from argument first
+        // If argument is `None`, or if read from argument returns `None`, then read from stream
+        // Note that `self.argument` cannot then be set to `None`, due to lifetime of returned value
+        if let Some(argument) = &mut self.argument {
+            if let Some(command) = argument.read() {
+                echo_command_prompt(Some(command));
+                return Some(command);
+            }
         }
-        command
+        self.stream.read()
+    }
+}
+
+impl Stream {
+    pub fn new() -> Self {
+        let stdin = io::stdin();
+        if stdin.is_terminal() {
+            return Self::Terminal(Terminal::new());
+        }
+        Self::Stdin(Stdin::from(stdin))
+    }
+}
+
+impl SourceReader for Stream {
+    fn read(&mut self) -> Option<&str> {
+        match self {
+            Self::Stdin(stdin) => {
+                let command = stdin.read();
+                echo_command_prompt(command);
+                command
+            }
+            // Don't echo command for terminal source, that would be redundant
+            Self::Terminal(terminal) => return terminal.read(),
+        }
     }
 }
 

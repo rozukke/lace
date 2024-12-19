@@ -4,7 +4,7 @@ mod parse;
 mod source;
 
 use self::command::{Command, Label, Location, MemoryLocation};
-use self::source::{SourceMode, SourceReader};
+use self::source::{Source, SourceReader};
 use crate::air::AsmLine;
 use crate::dprintln;
 use crate::output::{Condition, Output};
@@ -19,7 +19,7 @@ pub struct DebuggerOptions {
 
 pub struct Debugger {
     status: Status,
-    source: SourceMode,
+    source: Source,
 
     // TODO(refactor): Make private, use method to increment
     pub(super) instruction_count: u32,
@@ -163,7 +163,7 @@ impl Debugger {
     ) -> Self {
         Self {
             status: Status::default(),
-            source: SourceMode::from(opts.command),
+            source: Source::from(opts.command),
             instruction_count: 0,
             was_pc_changed: true,
             initial_state,

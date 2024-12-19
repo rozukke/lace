@@ -5,8 +5,6 @@ use crate::runtime::RunState;
 use crate::symbol::Span;
 use crate::{dprintln, AsmParser};
 
-// TODO(feat): Warn on `eval br* ...` and suggest `jump ...`
-
 pub fn eval(state: &mut RunState, line: String) {
     // Required to make temporarily 'static
     // Automatically dropped at end of scope
