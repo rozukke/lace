@@ -87,7 +87,7 @@ pub trait SourceRead {
 impl Source {
     pub fn from(argument: Option<String>) -> Self {
         Self {
-            argument: argument.map(|argument| Argument::from(argument)),
+            argument: argument.map(Argument::from),
             stream: Stream::new(),
         }
     }
@@ -126,8 +126,7 @@ impl SourceRead for Stream {
                 echo_command(command);
                 command
             }
-            // Don't echo command for terminal source, that would be redundant
-            Self::Terminal(terminal) => return terminal.read(),
+            Self::Terminal(terminal) => terminal.read(),
         }
     }
 }
@@ -283,12 +282,7 @@ impl Terminal {
         write!(self.term, "{}", current).unwrap();
 
         self.term
-            .move_cursor_left(
-                self.get_current()
-                    .len()
-                    .checked_sub(self.visible_cursor)
-                    .unwrap_or(0), // If invariance is somehow violated
-            )
+            .move_cursor_left(self.get_current().len().saturating_sub(self.visible_cursor))
             .unwrap();
 
         self.term.flush().unwrap();
@@ -331,7 +325,7 @@ impl Terminal {
             }
             Key::Del => {
                 self.update_next();
-                if self.visible_cursor + 1 <= self.get_current().len() {
+                if self.visible_cursor < self.get_current().len() {
                     self.buffer.remove(self.visible_cursor);
                 }
             }
@@ -387,11 +381,11 @@ impl Terminal {
         );
 
         // Push to history if different to last command
-        if !self
+        if self
             .history
             .list
             .last()
-            .is_some_and(|previous| previous == &self.buffer)
+            .is_none_or(|previous| previous != &self.buffer)
         {
             self.history.push(self.buffer.clone());
         }
@@ -413,7 +407,7 @@ impl Terminal {
             // Take rest of buffer and reset head index
             None => {
                 self.cursor = 0;
-                &rest
+                rest
             }
         }
     }
@@ -462,7 +456,7 @@ impl TerminalHistory {
             };
             history.push(line);
         }
-        return history;
+        history
     }
 
     /// Get file path and open file.

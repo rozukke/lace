@@ -178,7 +178,7 @@ impl Debugger {
         let pc = state.pc();
 
         // 0xFFFF signifies a HALT so don't warn for that
-        if pc >= 0xFE00 && pc < 0xFFFF {
+        if (0xFE00..0xFFFF).contains(&pc) {
             dprintln!(
                 Always,
                 Error,
@@ -218,7 +218,7 @@ impl Debugger {
             }
         }
 
-        return self.wait_for_single_action(state, instr);
+        self.wait_for_single_action(state, instr)
     }
 
     // TODO(refactor): Rename `wait_for_single_action`
@@ -366,7 +366,7 @@ impl Debugger {
 
             Command::Jump { location } => {
                 let address = self.resolve_location_address(state, &location)?;
-                if address < 0x3000 || address >= 0xFE00 {
+                if !(0x3000..0xFE00).contains(&address) {
                     dprintln!(
                         Always,
                         Error,

@@ -513,7 +513,7 @@ impl RunState {
             // reg
             0x27 => {
                 Output::Normal.start_new_line();
-                Output::Normal.print_registers(&self);
+                Output::Normal.print_registers(self);
             }
             // unknown
             _ => exception!(

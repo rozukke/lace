@@ -14,11 +14,11 @@ macro_rules! dprint {
     ( $condition:expr, $category:expr, $fmt:expr $(, $($tt:tt)* )? ) => {{
         // This is not very hygenic. But makes macro more ergonomic to use.
         #[allow(unused_imports)]
-        use crate::output::{Condition::*, Category::*};
+        use $crate::output::{Condition::*, Category::*};
 
-        crate::output::Output::Debugger(crate::output::Condition::Sometimes, $category)
+        $crate::output::Output::Debugger($crate::output::Condition::Sometimes, $category)
             .print_category($category);
-        crate::output::Output::Debugger($condition, $category)
+        $crate::output::Output::Debugger($condition, $category)
             .print(format_args!($fmt $(, $($tt)* )?)
         );
         eprint!("\x1b[0m"); // This is not ideal here
@@ -26,7 +26,7 @@ macro_rules! dprint {
 
     // Trigger type error if missing condition/kind
     ( $fmt:literal $($tt:tt)* ) => {{
-        crate::output::Output::Debugger($fmt);
+        $crate::output::Output::Debugger($fmt);
     }};
 }
 
@@ -34,15 +34,15 @@ macro_rules! dprint {
 #[macro_export]
 macro_rules! dprintln {
     ( $condition:expr ) => {{
-        crate::dprint!(
+        $crate::dprint!(
             $condition,
-            crate::output::Category::Normal,
+            $crate::output::Category::Normal,
             "\n"
         );
     }};
 
     ( $condition:expr, $category:expr, $fmt:expr $(, $($tt:tt)* )? ) => {{
-        crate::dprint!(
+        $crate::dprint!(
             $condition,
             $category,
             concat!($fmt, "\n")
@@ -52,7 +52,7 @@ macro_rules! dprintln {
 
     // Let `dprint` issue any other compiler errors
     ( $($tt:tt)* ) => {{
-        crate::dprint!($($tt)*);
+        $crate::dprint!($($tt)*);
     }};
 }
 
@@ -319,7 +319,7 @@ impl fmt::Write for DebuggerWriter {
                     }
 
                     eprint!("\x1b[");
-                    while let Some(ch) = chars.next() {
+                    for ch in chars.by_ref() {
                         if ch == '}' {
                             break;
                         }
@@ -395,7 +395,7 @@ impl<'a> Colored<'a> {
         Self { color, string }
     }
 }
-impl<'a> fmt::Display for Colored<'a> {
+impl fmt::Display for Colored<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("\x1b[")?;
         f.write_str(self.color)?;
@@ -407,7 +407,7 @@ impl<'a> fmt::Display for Colored<'a> {
             // Re-apply global color
             if ch == '\x1b' {
                 f.write_char('\x1b')?;
-                while let Some(ch) = chars.next() {
+                for ch in chars.by_ref() {
                     f.write_char(ch)?;
                     if ch == 'm' {
                         break;
@@ -437,7 +437,7 @@ impl<'a> Decolored<'a> {
         Self { string }
     }
 }
-impl<'a> fmt::Display for Decolored<'a> {
+impl fmt::Display for Decolored<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut chars = self.string.chars();
         while let Some(ch) = chars.next() {

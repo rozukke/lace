@@ -34,17 +34,17 @@ impl Radix {
                 _ => return None,
             },
             Self::Octal => match ch {
-                '0'..='7' => ch as u8 - '0' as u8,
+                '0'..='7' => ch as u8 - b'0',
                 _ => return None,
             },
             Self::Decimal => match ch {
-                '0'..='9' => ch as u8 - '0' as u8,
+                '0'..='9' => ch as u8 - b'0',
                 _ => return None,
             },
             Self::Hex => match ch {
-                '0'..='9' => ch as u8 - '0' as u8,
-                'a'..='f' => ch as u8 - 'a' as u8 + 10,
-                'A'..='F' => ch as u8 - 'A' as u8 + 10,
+                '0'..='9' => ch as u8 - b'0',
+                'a'..='f' => ch as u8 - b'a' + 10,
+                'A'..='F' => ch as u8 - b'A' + 10,
                 _ => return None,
             },
         })
@@ -138,7 +138,7 @@ impl<'a> CommandIter<'a> {
             };
 
             if let Some(command) = find_match(
-                &subname,
+                subname,
                 &[
                     (CommandName::BreakList, &["list", "l"]),
                     (CommandName::BreakAdd, &["add", "a"]),
@@ -154,9 +154,9 @@ impl<'a> CommandIter<'a> {
             });
         }
 
-        return Err(Error::InvalidCommandName {
+        Err(Error::InvalidCommandName {
             name: name.to_string(),
-        });
+        })
     }
 
     /// Parse and consume next integer argument.
@@ -408,9 +408,8 @@ impl<'a> CommandIter<'a> {
         };
 
         // Check next character is digit
-        if !self
-            .peek()
-            .is_some_and(|ch| radix.parse_digit(ch).is_some())
+        if self
+            .peek().is_none_or(|ch| radix.parse_digit(ch).is_none())
         {
             // Sign, '#', or pre-prefix zeros were given, so it must be an invalid integer token
             if sign.is_some() || has_leading_zeros || prefix_is_symbol {
