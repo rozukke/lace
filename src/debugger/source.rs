@@ -77,7 +77,7 @@ fn echo_command(command: Option<&str>) {
 }
 
 /// A trait for objects which can yield a command, by iterating a string or reading a file.
-pub trait SourceReader {
+pub trait SourceRead {
     /// `None` indicates EOF.
     /// Returned string slice MAY include leading or trailing whitespace.
     fn read(&mut self) -> Option<&str>;
@@ -92,7 +92,7 @@ impl Source {
     }
 }
 
-impl SourceReader for Source {
+impl SourceRead for Source {
     fn read(&mut self) -> Option<&str> {
         // Always try to read from argument first
         // If argument is `None`, or if read from argument returns `None`, then read from stream
@@ -117,7 +117,7 @@ impl Stream {
     }
 }
 
-impl SourceReader for Stream {
+impl SourceRead for Stream {
     fn read(&mut self) -> Option<&str> {
         match self {
             Self::Stdin(stdin) => {
@@ -140,7 +140,7 @@ impl Argument {
     }
 }
 
-impl SourceReader for Argument {
+impl SourceRead for Argument {
     fn read(&mut self) -> Option<&str> {
         // EOF
         if self.cursor >= self.buffer.len() {
@@ -183,7 +183,7 @@ impl Stdin {
     }
 }
 
-impl SourceReader for Stdin {
+impl SourceRead for Stdin {
     fn read(&mut self) -> Option<&str> {
         self.buffer.clear();
 
@@ -413,7 +413,7 @@ impl Terminal {
     }
 }
 
-impl SourceReader for Terminal {
+impl SourceRead for Terminal {
     fn read(&mut self) -> Option<&str> {
         // Reached end of line buffer: read new line
         if self.cursor == 0 {

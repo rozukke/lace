@@ -4,7 +4,7 @@ mod parse;
 mod source;
 
 use self::command::{Command, Label, Location, MemoryLocation};
-use self::source::{Source, SourceReader};
+use self::source::{Source, SourceRead};
 use crate::air::AsmLine;
 use crate::dprintln;
 use crate::output::{Condition, Output};
