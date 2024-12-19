@@ -45,7 +45,10 @@ pub enum ArgumentError {
 
 #[derive(Debug, PartialEq)]
 pub enum ValueError {
-    WrongArgumentType {},
+    WrongArgumentType {
+        expected: &'static str,
+        actual: &'static str,
+    },
     MalformedArgument {},
     MalformedInteger {},
     MalformedLabel {},
@@ -89,8 +92,12 @@ impl fmt::Display for CommandError {
                         write!(f, "For argument `{}`: ", argument)?;
 
                         match error {
-                            ValueError::WrongArgumentType {} => {
-                                write!(f, "Incorrect value type")?;
+                            ValueError::WrongArgumentType { expected, actual } => {
+                                write!(
+                                    f,
+                                    "Incorrect value type (expected {}, found {})",
+                                    expected, actual
+                                )?;
                             }
                             ValueError::MalformedArgument {} => {
                                 write!(f, "Malformed argument")?;
@@ -108,7 +115,7 @@ impl fmt::Display for CommandError {
                     }
                 }
 
-                Ok(())
+                write!(f, ".")
             }
         }
     }

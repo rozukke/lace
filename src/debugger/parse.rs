@@ -79,6 +79,16 @@ fn find_match(name: &str, commands: &[(CommandName, &[&str])]) -> Option<Command
     None
 }
 
+impl Argument {
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Argument::Register(_) => "register",
+            Argument::Integer(_) => "integer",
+            Argument::Label(_) => "label",
+        }
+    }
+}
+
 pub struct CommandIter<'a> {
     buffer: &'a str,
     /// Characters before this index have been successfully parsed.
@@ -170,6 +180,9 @@ impl<'a> CommandIter<'a> {
         })
     }
 
+    // TODO(refactor): These public argument parsing methods are very samesame. They could be
+    // abstracted to avoid duplication (mostly helpful to facilitate future changes).
+
     /// Parse and consume next integer argument.
     pub fn next_integer(
         &mut self,
@@ -184,10 +197,13 @@ impl<'a> CommandIter<'a> {
                 Some(Argument::Integer(count)) => resize_int(count)
                     .map_err(|error| ArgumentError::InvalidValue { argument, error })?,
                 None => return Err(ArgumentError::MissingArgument { argument, expected }),
-                _ => {
+                Some(value) => {
                     return Err(ArgumentError::InvalidValue {
                         argument,
-                        error: ValueError::WrongArgumentType {},
+                        error: ValueError::WrongArgumentType {
+                            expected: "integer",
+                            actual: value.kind(),
+                        },
                     })
                 }
             },
@@ -195,6 +211,8 @@ impl<'a> CommandIter<'a> {
     }
 
     /// Parse and consume next positive integer argument, defaulting to `1`.
+    ///
+    /// Non-positive values will also be converted to `1`.
     pub fn next_positive_integer_or_default(
         &mut self,
         argument: &'static str,
@@ -207,10 +225,13 @@ impl<'a> CommandIter<'a> {
                 Some(Argument::Integer(count)) => resize_int(count.max(1))
                     .map_err(|error| ArgumentError::InvalidValue { argument, error })?,
                 None => 1,
-                _ => {
+                Some(value) => {
                     return Err(ArgumentError::InvalidValue {
                         argument,
-                        error: ValueError::WrongArgumentType {},
+                        error: ValueError::WrongArgumentType {
+                            expected: "integer",
+                            actual: value.kind(),
+                        },
                     })
                 }
             },
@@ -256,10 +277,13 @@ impl<'a> CommandIter<'a> {
                 ),
                 Some(Argument::Label(label)) => MemoryLocation::Label(label),
                 None => return Err(ArgumentError::MissingArgument { argument, expected }),
-                _ => {
+                Some(value) => {
                     return Err(ArgumentError::InvalidValue {
                         argument,
-                        error: ValueError::WrongArgumentType {},
+                        error: ValueError::WrongArgumentType {
+                            expected: "address or label",
+                            actual: value.kind(),
+                        },
                     })
                 }
             },
@@ -283,10 +307,13 @@ impl<'a> CommandIter<'a> {
                 ),
                 Some(Argument::Label(label)) => MemoryLocation::Label(label),
                 None => MemoryLocation::PC,
-                _ => {
+                Some(value) => {
                     return Err(ArgumentError::InvalidValue {
                         argument,
-                        error: ValueError::WrongArgumentType {},
+                        error: ValueError::WrongArgumentType {
+                            expected: "address or label",
+                            actual: value.kind(),
+                        },
                     })
                 }
             },
