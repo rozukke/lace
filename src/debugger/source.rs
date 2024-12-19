@@ -1,6 +1,7 @@
 use std::fmt;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, IsTerminal, Read, Write};
+use std::path::PathBuf;
 
 use console::Key;
 
@@ -47,14 +48,21 @@ struct Terminal {
     /// Byte index
     cursor: usize,
 
-    history: Vec<String>,
-    /// Focused item in history, or new entry if index==length
-    history_index: usize,
     /// Visible line cursor in terminal
     visible_cursor: usize,
 
+    history: TerminalHistory,
+}
+
+#[derive(Debug)]
+struct TerminalHistory {
+    list: Vec<String>,
+    /// Focused item in history, or new entry if index==length
+    index: usize,
     /// `None` indicates failure to open file
-    history_file: Option<File>,
+    file: Option<File>,
+    // /// `None` indicates failure to retrieve file path
+    // path: PathBuf,
 }
 
 fn echo_command_prompt(command: Option<&str>) {
@@ -201,30 +209,21 @@ impl SourceReader for Stdin {
 
 impl Terminal {
     pub fn new() -> Self {
-        let mut history_file = Self::get_history_file();
-
-        let history = Self::read_history_file(history_file.as_mut());
-        let history_index = history.len();
-
         Self {
             term: console::Term::stdout(),
             buffer: String::new(),
             cursor: 0,
-            history,
-            history_index,
             visible_cursor: 0,
-            history_file,
+            history: TerminalHistory::new(),
         }
     }
 
-    const FILE_NAME: &str = "lace-debugger-history";
-
     fn is_next(&self) -> bool {
         debug_assert!(
-            self.history_index <= self.history.len(),
+            self.history.index <= self.history.list.len(),
             "index went past history"
         );
-        self.history_index >= self.history.len()
+        self.history.index >= self.history.list.len()
     }
 
     /// Run before modifying `next`
@@ -235,10 +234,11 @@ impl Terminal {
         }
         self.buffer = self
             .history
-            .get(self.history_index)
+            .list
+            .get(self.history.index)
             .expect("checked above")
             .clone();
-        self.history_index = self.history.len();
+        self.history.index = self.history.list.len();
     }
 
     /// Get next or historic command, from index
@@ -246,7 +246,10 @@ impl Terminal {
         if self.is_next() {
             &self.buffer
         } else {
-            self.history.get(self.history_index).expect("checked above")
+            self.history
+                .list
+                .get(self.history.index)
+                .expect("checked above")
         }
     }
 
@@ -267,7 +270,10 @@ impl Terminal {
         let current = if self.is_next() {
             &self.buffer
         } else {
-            self.history.get(self.history_index).expect("checked above")
+            self.history
+                .list
+                .get(self.history.index)
+                .expect("checked above")
         };
         write!(self.term, "{}", current).unwrap();
 
@@ -339,14 +345,14 @@ impl Terminal {
 
             // Back/forth through history
             Key::ArrowUp => {
-                if self.history_index > 0 {
-                    self.history_index -= 1;
+                if self.history.index > 0 {
+                    self.history.index -= 1;
                     self.visible_cursor = self.get_current().len();
                 }
             }
             Key::ArrowDown => {
-                if self.history_index < self.history.len() {
-                    self.history_index += 1;
+                if self.history.index < self.history.list.len() {
+                    self.history.index += 1;
                     self.visible_cursor = self.get_current().len();
                 }
             }
@@ -378,13 +384,14 @@ impl Terminal {
         // Push to history if different to last command
         if !self
             .history
+            .list
             .last()
             .is_some_and(|previous| previous == &self.buffer)
         {
-            self.push_history();
+            self.history.push(self.buffer.clone());
         }
         // Always reset index to next command
-        self.history_index = self.history.len();
+        self.history.index = self.history.list.len();
     }
 
     /// Returns next command from line buffer
@@ -405,40 +412,45 @@ impl Terminal {
             }
         }
     }
+}
 
-    fn push_history(&mut self) {
-        self.history.push(self.buffer.clone());
-        if let Some(file) = &mut self.history_file {
-            if writeln!(file, "{}", self.buffer).is_err() {
-                Self::report_history_error("Failed to write to file");
+impl SourceReader for Terminal {
+    fn read(&mut self) -> Option<&str> {
+        // Reached end of line buffer: read new line
+        if self.cursor == 0 {
+            self.read_line();
+        }
+        Some(self.get_next_command())
+    }
+}
+
+impl TerminalHistory {
+    const FILE_NAME: &str = "lace-debugger-history";
+
+    pub fn new() -> Self {
+        let mut file = Self::get_file();
+        let list = Self::read_file(file.as_mut());
+        let index = list.len();
+        Self { list, index, file }
+    }
+
+    pub fn push(&mut self, command: String) {
+        if let Some(file) = &mut self.file {
+            if writeln!(file, "{}", command).is_err() {
+                Self::report_error("Failed to write to file");
             }
         }
     }
 
-    fn read_history_file(file: Option<&mut File>) -> Vec<String> {
-        let Some(file) = file else {
-            return Vec::new();
-        };
-        let mut history = Vec::new();
-        for line in BufReader::new(file).lines() {
-            let Ok(line) = line else {
-                Self::report_history_error("Failed to read from file");
-                break;
-            };
-            history.push(line);
-        }
-        return history;
-    }
-
-    fn get_history_file() -> Option<File> {
+    fn get_file() -> Option<File> {
         let Some(parent_dir) = dirs_next::cache_dir() else {
-            Self::report_history_error(format_args!(
+            Self::report_error(format_args!(
                 "Cannot retrieve user cache directory. Eg. $XDG_CACHE_HOME"
             ));
             return None;
         };
         if !parent_dir.is_dir() {
-            Self::report_history_error(format_args!(
+            Self::report_error(format_args!(
                 "Parent directory is not a directory: {}",
                 parent_dir.display(),
             ));
@@ -447,7 +459,7 @@ impl Terminal {
 
         let file_path = parent_dir.join(Self::FILE_NAME);
         if file_path.exists() && !file_path.is_file() {
-            Self::report_history_error(format_args!(
+            Self::report_error(format_args!(
                 "File exists but is not a file: {}",
                 file_path.display(),
             ));
@@ -462,31 +474,33 @@ impl Terminal {
         {
             Ok(file) => Some(file),
             Err(_error) => {
-                Self::report_history_error(format_args!(
-                    "Failed to open file: {}",
-                    file_path.display(),
-                ));
+                Self::report_error(format_args!("Failed to open file: {}", file_path.display(),));
                 None
             }
         }
     }
 
-    fn report_history_error(message: impl fmt::Display) {
+    fn read_file(file: Option<&mut File>) -> Vec<String> {
+        let Some(file) = file else {
+            return Vec::new();
+        };
+        let mut history = Vec::new();
+        for line in BufReader::new(file).lines() {
+            let Ok(line) = line else {
+                Self::report_error("Failed to read from file");
+                break;
+            };
+            history.push(line);
+        }
+        return history;
+    }
+
+    fn report_error(message: impl fmt::Display) {
         dprintln!(
             Always,
             Error,
             "Error with debugger history file: {}",
             message,
         );
-    }
-}
-
-impl SourceReader for Terminal {
-    fn read(&mut self) -> Option<&str> {
-        // Reached end of line buffer: read new line
-        if self.cursor == 0 {
-            self.read_line();
-        }
-        Some(self.get_next_command())
     }
 }
