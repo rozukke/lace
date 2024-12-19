@@ -8,7 +8,7 @@ use crate::runtime::RunState;
 /// Note that color depends on the [`Category`] used, and can be overridden.
 pub const DEBUGGER_PRIMARY_COLOR: &str = "34";
 
-/// Print to `Debugger` output.
+/// Print to [`Output::Debugger`].
 #[macro_export]
 macro_rules! dprint {
     ( $condition:expr, $category:expr, $fmt:expr $(, $($tt:tt)* )? ) => {{
@@ -29,7 +29,7 @@ macro_rules! dprint {
     }};
 }
 
-/// Print to `Debugger` output, with a newline.
+/// Print to [`Output::Debugger`], with a newline.
 #[macro_export]
 macro_rules! dprintln {
     ( $condition:expr ) => {{
@@ -95,7 +95,7 @@ pub enum Category {
 
 impl Output {
     thread_local! {
-        /// Only access using `Output::is_minimal` and `Output::set_minimal`.
+        /// Only access using [`Output::is_minimal`] and [`Output::set_minimal`].
         static IS_MINIMAL: RefCell<bool> = const { RefCell::new(false) };
     }
     /// Whether output willl be printed 'minimally'.
@@ -114,7 +114,7 @@ impl Output {
     /// If cursor is NOT at the start of a line, then start a new line (ie. print '\n').
     ///
     /// Relies on previously-printed strings to keep track of cursor position. This is done
-    /// automatically within the `Output` struct, but free `print`, `eprint`, etc. calls will
+    /// automatically within the [`Output`] struct, but free [`print!`], [`eprint!`], etc. calls will
     /// not track the state.
     pub fn start_new_line(&self) {
         if !LineTracker::is_line_start() {
@@ -122,7 +122,7 @@ impl Output {
         }
     }
 
-    /// Print a value, which implements `fmt::Display`.
+    /// Print a value, which implements [`fmt::Display`].
     pub fn print(&self, value: impl fmt::Display) {
         self.print_fmt(format_args!("{}", value));
     }
@@ -134,7 +134,7 @@ impl Output {
 
     /// Print a decoration symbol, to indicate the purpose of the next message printed.
     ///
-    /// Only works for `Output::Debugger(_)`.
+    /// Only works for [`Output::Debugger`].
     pub fn print_category(&self, category: Category) {
         // TODO(feat): Return early for `Output::Normal` in release mode
         debug_assert!(
@@ -344,8 +344,8 @@ impl fmt::Write for DebuggerWriter {
 
 /// Tracks whether the cursor is at the start of a line (at column 1).
 ///
-/// Uses `fmt::Write`, in order to handle `fmt::Arguments`, and therefore anything which implements
-/// `fmt::Display`.
+/// Uses [`fmt::Write`], in order to handle [`fmt::Arguments`], and therefore anything which implements
+/// [`fmt::Display`].
 ///
 /// If the last printable character is a newline character ('\n' or '\r'), then the state will be
 /// set to `true`.
