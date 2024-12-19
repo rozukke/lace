@@ -9,7 +9,7 @@ use crate::{
     debugger::{Action, Debugger, DebuggerOptions, RelevantInstr},
     dprintln, env,
     output::{Condition, Output},
-    print_char, Air,
+    Air,
 };
 use colored::Colorize;
 use console::Term;
@@ -463,7 +463,7 @@ impl RunState {
             // out
             0x21 => {
                 let chr = (self.reg(0) & 0xFF) as u8 as char;
-                print_char!(chr);
+                Output::Normal.print(chr);
                 stdout().flush().unwrap();
             }
             // puts
@@ -475,7 +475,7 @@ impl RunState {
                     if chr_ascii == '\0' {
                         break;
                     }
-                    print_char!(chr_ascii);
+                    Output::Normal.print(chr_ascii);
                 }
                 stdout().flush().unwrap();
             }
@@ -483,7 +483,7 @@ impl RunState {
             0x23 => {
                 let ch = read_input();
                 *self.reg_mut(0) = ch as u16;
-                print_char!(ch as char);
+                Output::Normal.print(ch as char);
                 stdout().flush().unwrap();
             }
             // putsp
@@ -495,7 +495,7 @@ impl RunState {
                         if chr_ascii == '\0' {
                             break 'string;
                         }
-                        print_char!(chr_ascii);
+                        Output::Normal.print(chr_ascii);
                     }
                 }
                 stdout().flush().unwrap();

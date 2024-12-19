@@ -8,14 +8,6 @@ use crate::runtime::RunState;
 /// Note that color depends on the [`Category`] used, and can be overridden.
 pub const DEBUGGER_PRIMARY_COLOR: &str = "34";
 
-/// Print a single character to `Normal` output.
-#[macro_export]
-macro_rules! print_char {
-    ( $ch:expr ) => {{
-        crate::output::Output::Normal.print_char($ch);
-    }};
-}
-
 /// Print to `Debugger` output.
 #[macro_export]
 macro_rules! dprint {
@@ -27,7 +19,7 @@ macro_rules! dprint {
         crate::output::Output::Debugger(crate::output::Condition::Sometimes, $category)
             .print_category($category);
         crate::output::Output::Debugger($condition, $category)
-            .print_fmt(format_args!($fmt $(, $($tt)* )?)
+            .print(format_args!($fmt $(, $($tt)* )?)
         );
     }};
 
@@ -126,25 +118,134 @@ impl Output {
     /// not track the state.
     pub fn start_new_line(&self) {
         if !LineTracker::is_line_start() {
-            self.print_char('\n');
+            self.print('\n');
         }
     }
 
-    /// Print a single character.
-    pub fn print_char(&self, ch: char) {
-        self.print_fmt(format_args!("{}", ch))
-    }
-    /// Print a string.
-    pub fn print_str(&self, string: &str) {
-        self.print_fmt(format_args!("{}", string))
-    }
-    /// Print an integer, as a *signed* decimal.
-    pub fn print_decimal(&self, value: u16) {
-        self.print_fmt(format_args!("{}", value as i16));
+    /// Print a value, which implements `fmt::Display`.
+    pub fn print(&self, value: impl fmt::Display) {
+        self.print_fmt(format_args!("{}", value));
     }
 
-    /// Print a value returned by the `format_args!` macro.
-    pub fn print_fmt(&self, args: fmt::Arguments) {
+    /// Print an integer, as a *signed* decimal.
+    pub fn print_decimal(&self, value: u16) {
+        self.print(format_args!("{}", value as i16));
+    }
+
+    /// Print a decoration symbol, to indicate the purpose of the next message printed.
+    ///
+    /// Only works for `Output::Debugger(_)`.
+    pub fn print_category(&self, category: Category) {
+        // TODO(feat): Return early for `Output::Normal` in release mode
+        debug_assert!(
+            matches!(self, Self::Debugger(..)),
+            "`Output::print_category()` called on `Output::Normal`"
+        );
+
+        match category {
+            Category::Normal => (),
+            Category::Info => self.print("  · "),
+            Category::Warning => self.print("  ➔ "),
+            Category::Error => self.print("  ⨯ "),
+            Category::Special => (),
+        }
+    }
+
+    /// Print all registers (R0-7, PC, and CC) in a fancy table.
+    ///
+    /// Prints values as hex, signed decimal, unsigned decimal, and character.
+    ///
+    /// PC and CC will be only displayed as hex and 3-bit binary respectively.
+    pub fn print_registers(&self, state: &RunState) {
+        if Self::is_minimal() {
+            for i in 0..8 {
+                self.print(format_args!("R{} {}\n", i, state.reg(i)));
+            }
+            self.print(format_args!("PC {}\n", state.pc()));
+            self.print(format_args!("CC {:03b}\n", state.flag() as u8));
+            return;
+        }
+
+        self.print("\x1b[2m┌────────────────────────────────────┐\x1b[0m\n");
+        self.print("\x1b[2m│        \x1b[3mhex     int    uint    char\x1b[0m\x1b[2m │\x1b[0m\n");
+
+        // R0-7
+        // TODO(fix): Incorrect style for register names
+        for i in 0..8 {
+            self.print("\x1b[2m│\x1b[0m");
+            self.print(format_args!(" \x1b[1mR\x1b[1m{}\x1b[0m  ", i));
+            self.print_integer(state.reg(i));
+            self.print(" \x1b[2m│\x1b[0m\n");
+        }
+
+        // PC, CC
+        self.print("\x1b[2m│\x1b[0m");
+        self.print(" \x1b[1mPC\x1b[0m");
+        self.print(format_args!("  0x{:04x}", state.pc()));
+        self.print("                ");
+        self.print(" \x1b[1mCC\x1b[0m");
+        self.print(format_args!("  {:03b}", state.flag() as u8));
+        self.print(" \x1b[2m│\x1b[0m\n");
+
+        self.print("\x1b[2m└────────────────────────────────────┘\x1b[0m\n");
+    }
+
+    /// Prints a register as hex, signed decimal, unsigned decimal, and character.
+    pub fn print_integer(&self, value: u16) {
+        if Self::is_minimal() {
+            self.print_decimal(value);
+            return;
+        }
+        self.print(format_args!("0x{:04x}", value));
+        self.print(format_args!("  {:-6}", value));
+        self.print(format_args!("  {:-6}", value as i16));
+        self.print("     ");
+        self.print_char_display(value);
+    }
+
+    /// Print a character in a descriptive way:
+    ///
+    /// - 'Significant' control characters display their abbreviated names.
+    /// - ASCII space is displayed as `[_]`.
+    /// - Printable ASCII characters are displayed normally.
+    /// - Any other ASCII character is printed as `───`
+    /// - Any non-ASCII (UTF-16) character is displayed as `┄┄┄`
+    fn print_char_display(&self, value: u16) {
+        // TODO(feat): Early return if `is_minimal` for release mode
+        debug_assert!(
+            !Self::is_minimal(),
+            "`print_display` should not be called if `--minimal`"
+        );
+        // Print 3 characters
+        match value {
+            // ASCII control characters which are arbitrarily considered significant
+            0x00 => self.print("NUL"),
+            0x08 => self.print("BS "),
+            0x09 => self.print("HT "),
+            0x0a => self.print("LF "),
+            0x0b => self.print("VT "),
+            0x0c => self.print("FF "),
+            0x0d => self.print("CR "),
+            0x1b => self.print("ESC"),
+            0x7f => self.print("DEL"),
+
+            // Space
+            0x20 => self.print("[_]"),
+
+            // Printable ASCII characters
+            0x21..=0x7e => self.print(format_args!("{:-6}", value as u8 as char)),
+
+            // Any ASCII character not already matched (unimportant control characters)
+            0x00..=0x7f => self.print("\x1b[2m───\x1b[0m"),
+            // Any non-ASCII character
+            0x0080.. => self.print("\x1b[2m┄┄┄\x1b[0m"),
+        }
+    }
+
+    /// Print a value returned by the [`format_args!`] macro.
+    ///
+    /// Use [`Output::print`] wrapper method.
+    fn print_fmt(&self, args: fmt::Arguments) {
         let minimal = Self::is_minimal();
         match self {
             Self::Normal => {
@@ -165,114 +266,6 @@ impl Output {
                 .unwrap();
                 LineTracker.write_fmt(args).unwrap();
             }
-        }
-    }
-
-    /// Print a decoration symbol, to indicate the purpose of the next message printed.
-    ///
-    /// Only works for `Output::Debugger(_)`.
-    pub fn print_category(&self, category: Category) {
-        // TODO(feat): Return early for `Output::Normal` in release mode
-        debug_assert!(
-            matches!(self, Self::Debugger(..)),
-            "`Output::print_category()` called on `Output::Normal`"
-        );
-
-        match category {
-            Category::Normal => (),
-            Category::Info => self.print_str("  · "),
-            Category::Warning => self.print_str("  ➔ "),
-            Category::Error => self.print_str("  ⨯ "),
-            Category::Special => (),
-        }
-    }
-
-    /// Print all registers (R0-7, PC, and CC) in a fancy table.
-    ///
-    /// Prints values as hex, signed decimal, unsigned decimal, and character.
-    ///
-    /// PC and CC will be only displayed as hex and 3-bit binary respectively.
-    pub fn print_registers(&self, state: &RunState) {
-        if Self::is_minimal() {
-            for i in 0..8 {
-                self.print_fmt(format_args!("R{} {}\n", i, state.reg(i)));
-            }
-            self.print_fmt(format_args!("PC {}\n", state.pc()));
-            self.print_fmt(format_args!("CC {:03b}\n", state.flag() as u8));
-            return;
-        }
-
-        self.print_str("\x1b[2m┌────────────────────────────────────┐\x1b[0m\n");
-        self.print_str(
-            "\x1b[2m│        \x1b[3mhex     int    uint    char\x1b[0m\x1b[2m │\x1b[0m\n",
-        );
-        // TODO(fix): Incorrect style for register names
-        for i in 0..8 {
-            self.print_fmt(format_args!("\x1b[2m│\x1b[0m"));
-            self.print_fmt(format_args!(" \x1b[1mR{}\x1b[0m  ", i));
-            self.print_integer(state.reg(i));
-            self.print_str(" \x1b[2m│\x1b[0m\n");
-        }
-        self.print_fmt(format_args!("\x1b[2m│\x1b[0m"));
-        self.print_fmt(format_args!(" \x1b[1mPC\x1b[0m  0x{:04x}", state.pc()));
-        self.print_fmt(format_args!("                "));
-        self.print_fmt(format_args!(
-            " \x1b[1mCC\x1b[0m  {:03b}",
-            state.flag() as u8
-        ));
-        self.print_str(" \x1b[2m│\x1b[0m\n");
-        self.print_str("\x1b[2m└────────────────────────────────────┘\x1b[0m\n");
-    }
-
-    /// Prints a register as hex, signed decimal, unsigned decimal, and character.
-    pub fn print_integer(&self, value: u16) {
-        if Self::is_minimal() {
-            self.print_decimal(value);
-            return;
-        }
-        self.print_fmt(format_args!("0x{:04x}  ", value));
-        self.print_fmt(format_args!("{:-6}  ", value));
-        self.print_fmt(format_args!("{:-6}  ", value as i16));
-        self.print_char_display(value);
-    }
-
-    /// Print a character in a descriptive way:
-    ///
-    /// - 'Significant' control characters display their abbreviated names.
-    /// - ASCII space is displayed as `[_]`.
-    /// - Printable ASCII characters are displayed normally.
-    /// - Any other ASCII character is printed as `───`
-    /// - Any non-ASCII (UTF-16) character is displayed as `┄┄┄`
-    fn print_char_display(&self, value: u16) {
-        // TODO(feat): Early return if `is_minimal` for release mode
-        debug_assert!(
-            !Self::is_minimal(),
-            "`print_char_display` should not be called if `--minimal`"
-        );
-        self.print_str("   ");
-        // Print 3 characters
-        match value {
-            // ASCII control characters which are arbitrarily considered significant
-            0x00 => self.print_str("NUL"),
-            0x08 => self.print_str("BS "),
-            0x09 => self.print_str("HT "),
-            0x0a => self.print_str("LF "),
-            0x0b => self.print_str("VT "),
-            0x0c => self.print_str("FF "),
-            0x0d => self.print_str("CR "),
-            0x1b => self.print_str("ESC"),
-            0x7f => self.print_str("DEL"),
-
-            // Space
-            0x20 => self.print_str("[_]"),
-
-            // Printable ASCII characters
-            0x21..=0x7e => self.print_fmt(format_args!("{:-6}", value as u8 as char)),
-
-            // Any ASCII character not already matched (unimportant control characters)
-            0x00..=0x7f => self.print_str("\x1b[2m───\x1b[0m"),
-            // Any non-ASCII character
-            0x0080.. => self.print_str("\x1b[2m┄┄┄\x1b[0m"),
         }
     }
 }
