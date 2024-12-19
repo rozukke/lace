@@ -4,6 +4,7 @@ use std::io::{self, BufRead, BufReader, IsTerminal, Read, Write};
 
 use console::Key;
 
+use crate::output::DEBUGGER_PRIMARY_COLOR;
 use crate::{dprint, dprintln, output::Output};
 
 /// Read from argument first, if `Some`. Then read from stream.
@@ -262,7 +263,12 @@ impl Terminal {
         if Output::is_minimal() {
             write!(&mut self.term, "{}", prompt).unwrap();
         } else {
-            write!(&mut self.term, "\x1b[1;34m{}\x1b[0m", prompt).unwrap();
+            write!(
+                &mut self.term,
+                "\x1b[1;{}m{}\x1b[0m",
+                DEBUGGER_PRIMARY_COLOR, prompt,
+            )
+            .unwrap();
         }
 
         // Inline `self.get_current()` due to borrowing issues

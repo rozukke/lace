@@ -3,6 +3,8 @@ use std::fmt::{self, Write as _};
 
 use crate::runtime::RunState;
 
+pub const DEBUGGER_PRIMARY_COLOR: &str = "34";
+
 /// Print a single character to `Normal` output.
 #[macro_export]
 macro_rules! print_char {
@@ -270,16 +272,15 @@ impl fmt::Write for DebuggerWriter {
             return Ok(());
         }
 
-        const PRIMARY_COLOR: &str = "34";
         let color = match self.category {
-            Category::Normal => PRIMARY_COLOR,
-            Category::Info => PRIMARY_COLOR,
+            Category::Normal => DEBUGGER_PRIMARY_COLOR,
+            Category::Info => DEBUGGER_PRIMARY_COLOR,
             Category::Warning => "33",
             Category::Error => "31",
 
             Category::Special => {
                 // Acts similar to `Colored::fmt`
-                eprint!("\x1b[{}m", PRIMARY_COLOR);
+                eprint!("\x1b[{}m", DEBUGGER_PRIMARY_COLOR);
 
                 let mut chars = string.chars();
                 while let Some(ch) = chars.next() {
@@ -296,7 +297,7 @@ impl fmt::Write for DebuggerWriter {
                         eprint!("{}", ch);
                         // Re-apply color when reset
                         if ch == '0' {
-                            eprint!(";{}", PRIMARY_COLOR);
+                            eprint!(";{}", DEBUGGER_PRIMARY_COLOR);
                         }
                     }
                     eprint!("m");
