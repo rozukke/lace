@@ -72,6 +72,7 @@ impl fmt::Display for CommandName {
     }
 }
 
+/// Register or memory location.
 /// `Location::Memory(MemoryLocation::PC)` is valid, but should not be
 /// constructed, as it would imply using `get`/`set` with the PC, which is not
 /// possible.
@@ -88,12 +89,14 @@ pub enum MemoryLocation {
     Label(Label),
 }
 
+/// Label with word offset.
 #[derive(Debug, PartialEq)]
 pub struct Label {
     pub name: String,
     pub offset: i16,
 }
 
+/// Error parsing a command.
 // TODO(refactor): Rename these variants
 // TODO(opt): Most `String` fields could be `&str` (with difficulty, no doubt)
 #[derive(Debug, PartialEq)]
