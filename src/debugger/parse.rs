@@ -56,6 +56,28 @@ fn resize_int<T: TryFrom<i32>>(integer: i32) -> Result<T> {
     integer.try_into().map_err(|_| Error::IntegerTooLarge)
 }
 
+/// Returns `true` if `name` matchs any item of `candidates` (case insensitive).
+fn matches(name: &str, candidates: &[&str]) -> bool {
+    for candidate in candidates {
+        if name.eq_ignore_ascii_case(candidate) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Returns the first [`CommandName`], which has a corresponding candidate which matches `name`(case insensitive).
+///
+/// Returns `None` if no match was found.
+fn find_match(name: &str, commands: &[(CommandName, &[&str])]) -> Option<CommandName> {
+    for (command, candidates) in commands {
+        if matches(name, candidates) {
+            return Some(*command);
+        }
+    }
+    None
+}
+
 pub struct CommandIter<'a> {
     buffer: &'a str,
     /// Characters before this index have been successfully parsed.
@@ -84,49 +106,57 @@ impl<'a> CommandIter<'a> {
         let name = name.unwrap_or("");
 
         // TODO(feat): Add more aliases (such as undocumented typo aliases)
-        // TODO(opt): Don't alloc a new string for case-insensitive match
-        Ok(match name.to_lowercase().as_str() {
-            "help" | "--help" | "h" | "-h" => CommandName::Help,
-            "continue" | "cont" | "c" => CommandName::Continue,
-            "finish" | "fin" | "f" => CommandName::Finish,
-            "exit" | "e" => CommandName::Exit,
-            "quit" | "q" => CommandName::Quit,
-            "registers" | "reg" | "r" => CommandName::Registers,
-            "reset" => CommandName::Reset,
-            "step" | "t" => CommandName::Step,
-            "next" | "n" => CommandName::Next,
-            "get" | "g" => CommandName::Get,
-            "set" | "s" => CommandName::Set,
-            "jump" | "j" => CommandName::Jump,
-            "source" | "o" => CommandName::Source,
-            "eval" | "v" => CommandName::Eval,
-            "breaklist" | "bl" => CommandName::BreakList,
-            "breakadd" | "ba" => CommandName::BreakAdd,
-            "breakremove" | "br" => CommandName::BreakRemove,
-            "break" | "b" => {
-                let name = name.to_string();
-                let Some(subname) = self.next_command_name_part() else {
-                    return Err(Error::MissingSubcommand { name });
-                };
-                // TODO(opt): Don't alloc a new string for case-insensitive match
-                match subname.to_lowercase().as_str() {
-                    "list" | "l" => CommandName::BreakList,
-                    "add" | "a" => CommandName::BreakAdd,
-                    "remove" | "r" => CommandName::BreakRemove,
-                    _ => {
-                        return Err(Error::InvalidSubcommand {
-                            name,
-                            subname: subname.to_string(),
-                        });
-                    }
-                }
+        let commands: &[(_, &[_])] = &[
+            (CommandName::Help, &["help", "--help", "h", "-h"]),
+            (CommandName::Continue, &["continue", "cont", "c"]),
+            (CommandName::Finish, &["finish", "fin", "f"]),
+            (CommandName::Exit, &["exit", "e"]),
+            (CommandName::Quit, &["quit", "q"]),
+            (CommandName::Registers, &["registers", "reg", "r"]),
+            (CommandName::Reset, &["reset"]),
+            (CommandName::Step, &["step", "t"]),
+            (CommandName::Next, &["next", "n"]),
+            (CommandName::Get, &["get", "g"]),
+            (CommandName::Set, &["set", "s"]),
+            (CommandName::Jump, &["jump", "j"]),
+            (CommandName::Source, &["source", "o"]),
+            (CommandName::Eval, &["eval", "v"]),
+            (CommandName::BreakList, &["breaklist", "bl"]),
+            (CommandName::BreakAdd, &["breakadd", "ba"]),
+            (CommandName::BreakRemove, &["breakremove", "br"]),
+        ];
+
+        if let Some(command) = find_match(name, commands) {
+            return Ok(command);
+        };
+
+        // This could be written a bit nicer. But it doesn't seem necessary.
+        if matches(name, &["break", "b"]) {
+            let name = name.to_string();
+            let Some(subname) = self.next_command_name_part() else {
+                return Err(Error::MissingSubcommand { name });
+            };
+
+            if let Some(command) = find_match(
+                &subname,
+                &[
+                    (CommandName::BreakList, &["list", "l"]),
+                    (CommandName::BreakAdd, &["add", "a"]),
+                    (CommandName::BreakRemove, &["remove", "r"]),
+                ],
+            ) {
+                return Ok(command);
             }
-            _ => {
-                return Err(Error::InvalidCommandName {
-                    name: name.to_string(),
-                })
-            }
-        })
+
+            return Err(Error::InvalidSubcommand {
+                name,
+                subname: subname.to_string(),
+            });
+        }
+
+        return Err(Error::InvalidCommandName {
+            name: name.to_string(),
+        });
     }
 
     /// Parse and consume next integer argument.
