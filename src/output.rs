@@ -137,11 +137,13 @@ impl Output {
     ///
     /// Only works for [`Output::Debugger`].
     pub fn print_category(&self, category: Category) {
-        // TODO(feat): Return early for `Output::Normal` in release mode
         debug_assert!(
             matches!(self, Self::Debugger(..)),
             "`Output::print_category()` called on `Output::Normal`"
         );
+        if !matches!(self, Self::Debugger(..)) {
+            return;
+        }
 
         match category {
             Category::Normal => (),
@@ -211,11 +213,14 @@ impl Output {
     /// - Any other ASCII character is printed as `───`
     /// - Any non-ASCII (UTF-16) character is displayed as `┄┄┄`
     fn print_char_display(&self, value: u16) {
-        // TODO(feat): Early return if `is_minimal` for release mode
         debug_assert!(
             !Self::is_minimal(),
             "`print_display` should not be called if `--minimal`"
         );
+        if Self::is_minimal() {
+            return;
+        }
+
         // Print 3 characters
         match value {
             // ASCII control characters which are arbitrarily considered significant
@@ -250,9 +255,6 @@ impl Output {
         match self {
             Self::Normal => {
                 NormalWriter { minimal }.write_fmt(args).unwrap();
-                // TODO(refactor): Move this line to `NormalWriter::write_str` (and likewise for
-                // `DebuggerWriter`)
-                LineTracker.write_fmt(args).unwrap();
             }
             Self::Debugger(condition, category) => {
                 if minimal && condition == &Condition::Sometimes {
@@ -264,7 +266,6 @@ impl Output {
                 }
                 .write_fmt(args)
                 .unwrap();
-                LineTracker.write_fmt(args).unwrap();
             }
         }
     }
@@ -281,6 +282,7 @@ impl fmt::Write for NormalWriter {
         } else {
             print!("{}", string);
         }
+        LineTracker.write_str(string).unwrap();
         Ok(())
     }
 }
@@ -330,12 +332,13 @@ impl fmt::Write for DebuggerWriter {
                     eprint!("m");
                 }
 
+                LineTracker.write_str(string).unwrap();
                 return Ok(());
             }
         };
 
         eprint!("{}", Colored::new(color, string));
-
+        LineTracker.write_str(string).unwrap();
         Ok(())
     }
 }
