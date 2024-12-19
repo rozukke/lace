@@ -120,7 +120,9 @@ impl Command {
         let mut expected_args = 0;
 
         let command = match name {
-            CommandName::Help => Self::Help,
+            // Allow trailing arguments
+            CommandName::Help => return Ok(Self::Help),
+
             CommandName::Continue => Self::Continue,
             CommandName::Finish => Self::Finish,
             CommandName::Exit => Self::Exit,
@@ -178,6 +180,7 @@ impl Command {
                         argument: "instruction",
                     });
                 }
+                // Don't return `Err` for invalid argument count, as this shouldn't happen
                 debug_assert!(
                     iter.expect_end_of_command(0, 0).is_ok(),
                     "no more arguments should exist",

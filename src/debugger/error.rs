@@ -68,6 +68,8 @@ impl fmt::Display for CommandError {
             }
 
             Self::InvalidArgument { name, error } => {
+                write!(f, "In command `{}`: ", name)?;
+
                 match error {
                     ArgumentError::MissingArgument { argument, expected } => {
                         write!(f, "Missing argument `{}` (expected {})", argument, expected)?;
@@ -84,9 +86,11 @@ impl fmt::Display for CommandError {
                     }
 
                     ArgumentError::InvalidValue { argument, error } => {
+                        write!(f, "For argument `{}`: ", argument)?;
+
                         match error {
                             ValueError::WrongArgumentType {} => {
-                                write!(f, "Invalid type")?;
+                                write!(f, "Incorrect value type")?;
                             }
                             ValueError::MalformedArgument {} => {
                                 write!(f, "Malformed argument")?;
@@ -101,12 +105,10 @@ impl fmt::Display for CommandError {
                                 write!(f, "Integer argument too large")?;
                             }
                         }
-
-                        write!(f, " for argument `{}`", argument)?;
                     }
                 }
 
-                write!(f, " for command `{}`", name)
+                Ok(())
             }
         }
     }
