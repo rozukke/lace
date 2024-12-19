@@ -1,5 +1,6 @@
 mod breakpoint;
 mod command;
+mod error;
 mod eval;
 mod parse;
 mod source;

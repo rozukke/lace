@@ -1,6 +1,5 @@
-use super::command::{
-    ArgumentError, CommandName, Error, Label, Location, MemoryLocation, ValueError,
-};
+use super::command::{CommandName, Label, Location, MemoryLocation};
+use super::error::{ArgumentError, CommandError, ValueError};
 use crate::symbol::Register;
 
 #[derive(Debug, PartialEq)]
@@ -100,7 +99,7 @@ impl<'a> CommandIter<'a> {
     /// Parse and consume command name.
     ///
     /// Considers multi-word command names (i.e. subcommands) as one name. Eg. `break add`.
-    pub fn get_command_name(&mut self) -> Result<CommandName, Error> {
+    pub fn get_command_name(&mut self) -> Result<CommandName, CommandError> {
         let name = self.next_command_name_part();
         // Command source should always return a string containing non-whitespace
         // characters, so initial command name should always exist.
@@ -137,7 +136,7 @@ impl<'a> CommandIter<'a> {
             let name = "break";
 
             let Some(subname) = self.next_command_name_part() else {
-                return Err(Error::MissingSubcommand { name });
+                return Err(CommandError::MissingSubcommand { name });
             };
 
             if let Some(command) = find_match(
@@ -151,13 +150,13 @@ impl<'a> CommandIter<'a> {
                 return Ok(command);
             }
 
-            return Err(Error::InvalidSubcommand {
+            return Err(CommandError::InvalidSubcommand {
                 name,
                 subname: subname.to_string(),
             });
         }
 
-        Err(Error::InvalidCommand {
+        Err(CommandError::InvalidCommand {
             name: name.to_string(),
         })
     }
