@@ -103,36 +103,28 @@ pub enum Error {
     InvalidCommand {
         name: String,
     },
+    MissingSubcommand {
+        name: String,
+    },
     InvalidSubcommand {
         name: String,
         subname: String,
     },
-    MissingSubcommand {
-        name: String,
-    },
-    MissingArgument {
+    InvalidArgument {
         name: CommandName,
-        argument: &'static str,
+        error: ArgumentError,
     },
-    TooManyArguments {
-        name: CommandName,
-    },
-    WrongArgumentType {
-        name: CommandName,
-        argument: &'static str,
-    },
-    MalformedArgument {
-        name: CommandName,
-    },
-    MalformedInteger {
-        name: CommandName,
-    },
-    MalformedLabel {
-        name: CommandName,
-    },
-    IntegerTooLarge {
-        name: CommandName,
-    },
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ArgumentError {
+    MissingArgument { argument: &'static str },
+    TooManyArguments {},
+    WrongArgumentType { argument: &'static str },
+    MalformedArgument {},
+    MalformedInteger {},
+    MalformedLabel {},
+    IntegerTooLarge {},
 }
 
 impl std::error::Error for Error {}
@@ -146,32 +138,36 @@ impl fmt::Display for Error {
                 "Invalid subcommand `{}` for command `{}`.",
                 subname, name
             ),
-            Self::MissingSubcommand { name } => write!(f, "Missing subcommand for `{}`.", name),
-            Self::MissingArgument { name, argument } => {
-                write!(f, "Missing argument `{}` for command `{}`.", argument, name)
+            Self::MissingSubcommand { name } => {
+                write!(f, "Missing subcommand for `{}`.", name)
             }
-            Self::TooManyArguments { name } => {
-                write!(f, "Too many arguments for command `{}`.", name)
-            }
-            Self::WrongArgumentType { name, argument } => {
-                write!(
-                    f,
-                    "Invalid type for argument `{}` for command `{}`.",
-                    argument, name
-                )
-            }
-            Self::MalformedArgument { name } => {
-                write!(f, "Malformed argument for command `{}`.", name)
-            }
-            Self::MalformedInteger { name } => {
-                write!(f, "Malformed integer argument for command `{}`.", name)
-            }
-            Self::MalformedLabel { name } => {
-                write!(f, "Malformed label argument for command `{}`.", name)
-            }
-            Self::IntegerTooLarge { name } => {
-                write!(f, "Integer argument too large for command `{}`.", name)
-            }
+            Self::InvalidArgument { name, error } => match error {
+                ArgumentError::MissingArgument { argument } => {
+                    write!(f, "Missing argument `{}` for command `{}`.", argument, name)
+                }
+                ArgumentError::TooManyArguments {} => {
+                    write!(f, "Too many arguments for command `{}`.", name)
+                }
+                ArgumentError::WrongArgumentType { argument } => {
+                    write!(
+                        f,
+                        "Invalid type for argument `{}` for command `{}`.",
+                        argument, name
+                    )
+                }
+                ArgumentError::MalformedArgument {} => {
+                    write!(f, "Malformed argument for command `{}`.", name)
+                }
+                ArgumentError::MalformedInteger {} => {
+                    write!(f, "Malformed integer argument for command `{}`.", name)
+                }
+                ArgumentError::MalformedLabel {} => {
+                    write!(f, "Malformed label argument for command `{}`.", name)
+                }
+                ArgumentError::IntegerTooLarge {} => {
+                    write!(f, "Integer argument too large for command `{}`.", name)
+                }
+            },
         }
     }
 }
@@ -183,6 +179,15 @@ impl TryFrom<&str> for Command {
         let mut iter = CommandIter::from(line);
 
         let name = iter.get_command_name()?;
+        Command::parse_arguments(name, iter).map_err(|error| Error::InvalidArgument { name, error })
+    }
+}
+
+impl Command {
+    fn parse_arguments(
+        name: CommandName,
+        mut iter: CommandIter<'_>,
+    ) -> Result<Command, ArgumentError> {
         let command = match name {
             CommandName::Help => Self::Help,
             CommandName::Continue => Self::Continue,
@@ -193,46 +198,45 @@ impl TryFrom<&str> for Command {
             CommandName::Reset => Self::Reset,
 
             CommandName::Step => {
-                let count = iter.next_positive_integer_or_default(name, "count")?;
+                let count = iter.next_positive_integer_or_default("count")?;
                 Self::Step { count }
             }
             CommandName::Next => Self::Next,
 
             CommandName::Get => {
-                let location = iter.next_location(name, "location")?;
+                let location = iter.next_location("location")?;
                 Self::Get { location }
             }
             CommandName::Set => {
-                let location = iter.next_location(name, "location")?;
-                let value = iter.next_integer(name, "value")?;
+                let location = iter.next_location("location")?;
+                let value = iter.next_integer("value")?;
                 Self::Set { location, value }
             }
 
             CommandName::Jump => {
-                let location = iter.next_memory_location(name, "location")?;
+                let location = iter.next_memory_location("location")?;
                 Self::Jump { location }
             }
 
             CommandName::BreakList => Self::BreakList,
             CommandName::BreakAdd => {
-                let location = iter.next_memory_location_or_default(name, "location")?;
+                let location = iter.next_memory_location_or_default("location")?;
                 Self::BreakAdd { location }
             }
             CommandName::BreakRemove => {
-                let location = iter.next_memory_location_or_default(name, "location")?;
+                let location = iter.next_memory_location_or_default("location")?;
                 Self::BreakRemove { location }
             }
 
             CommandName::Source => {
-                let location = iter.next_memory_location_or_default(name, "location")?;
+                let location = iter.next_memory_location_or_default("location")?;
                 Self::Source { location }
             }
 
             CommandName::Eval => {
                 let instruction = iter.collect_rest();
                 if instruction.is_empty() {
-                    return Err(Error::MissingArgument {
-                        name,
+                    return Err(ArgumentError::MissingArgument {
                         argument: "instruction",
                     });
                 }
@@ -241,7 +245,7 @@ impl TryFrom<&str> for Command {
         };
 
         // All commands except `eval`
-        iter.expect_end_of_command(name)?;
+        iter.expect_end_of_command()?;
 
         Ok(command)
     }

@@ -1,7 +1,5 @@
-use super::command::{CommandName, Error, Label, Location, MemoryLocation};
+use super::command::{ArgumentError, CommandName, Error, Label, Location, MemoryLocation};
 use crate::symbol::Register;
-
-type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, PartialEq)]
 enum Argument {
@@ -52,10 +50,10 @@ impl Radix {
 }
 
 /// Try to convert an `i32` into another integer type.
-fn resize_int<T: TryFrom<i32>>(integer: i32, name: CommandName) -> Result<T> {
+fn resize_int<T: TryFrom<i32>>(integer: i32) -> Result<T, ArgumentError> {
     integer
         .try_into()
-        .map_err(|_| Error::IntegerTooLarge { name })
+        .map_err(|_| ArgumentError::IntegerTooLarge {})
 }
 
 /// Returns `true` if `name` matchs any item of `candidates` (case insensitive).
@@ -100,7 +98,7 @@ impl<'a> CommandIter<'a> {
     /// Parse and consume command name.
     ///
     /// Considers multi-word command names (i.e. subcommands) as one name. Eg. `break add`.
-    pub fn get_command_name(&mut self) -> Result<CommandName> {
+    pub fn get_command_name(&mut self) -> Result<CommandName, Error> {
         let name = self.next_command_name_part();
         // Command source should always return a string containing non-whitespace
         // characters, so initial command name should always exist.
@@ -162,50 +160,48 @@ impl<'a> CommandIter<'a> {
     }
 
     /// Parse and consume next integer argument.
-    pub fn next_integer(&mut self, name: CommandName, argument: &'static str) -> Result<u16> {
-        Ok(match self.next_argument(name)? {
-            Some(Argument::Integer(count)) => resize_int(count, name)?,
-            None => return Err(Error::MissingArgument { name, argument }),
-            _ => return Err(Error::WrongArgumentType { name, argument }),
+    pub fn next_integer(&mut self, argument: &'static str) -> Result<u16, ArgumentError> {
+        Ok(match self.next_argument()? {
+            Some(Argument::Integer(count)) => resize_int(count)?,
+            None => return Err(ArgumentError::MissingArgument { argument }),
+            _ => return Err(ArgumentError::WrongArgumentType { argument }),
         })
     }
 
     /// Parse and consume next positive integer argument, defaulting to `1`.
     pub fn next_positive_integer_or_default(
         &mut self,
-        name: CommandName,
         argument: &'static str,
-    ) -> Result<u16> {
-        Ok(match self.next_argument(name)? {
-            Some(Argument::Integer(count)) => resize_int(count.max(1), name)?,
+    ) -> Result<u16, ArgumentError> {
+        Ok(match self.next_argument()? {
+            Some(Argument::Integer(count)) => resize_int(count.max(1))?,
             None => 1,
-            _ => return Err(Error::WrongArgumentType { name, argument }),
+            _ => return Err(ArgumentError::WrongArgumentType { argument }),
         })
     }
 
     /// Parse and consume next [`Location`] argument: a register or [`MemoryLocation`].
-    pub fn next_location(&mut self, name: CommandName, argument: &'static str) -> Result<Location> {
-        Ok(match self.next_argument(name)? {
+    pub fn next_location(&mut self, argument: &'static str) -> Result<Location, ArgumentError> {
+        Ok(match self.next_argument()? {
             Some(Argument::Register(register)) => Location::Register(register),
             Some(Argument::Integer(address)) => {
-                Location::Memory(MemoryLocation::Address(resize_int(address, name)?))
+                Location::Memory(MemoryLocation::Address(resize_int(address)?))
             }
             Some(Argument::Label(label)) => Location::Memory(MemoryLocation::Label(label)),
-            None => return Err(Error::MissingArgument { name, argument }),
+            None => return Err(ArgumentError::MissingArgument { argument }),
         })
     }
 
     /// Parse and consume next [`MemoryLocation`] argument.
     pub fn next_memory_location(
         &mut self,
-        name: CommandName,
         argument: &'static str,
-    ) -> Result<MemoryLocation> {
-        Ok(match self.next_argument(name)? {
-            Some(Argument::Integer(address)) => MemoryLocation::Address(resize_int(address, name)?),
+    ) -> Result<MemoryLocation, ArgumentError> {
+        Ok(match self.next_argument()? {
+            Some(Argument::Integer(address)) => MemoryLocation::Address(resize_int(address)?),
             Some(Argument::Label(label)) => MemoryLocation::Label(label),
-            None => return Err(Error::MissingArgument { name, argument }),
-            _ => return Err(Error::WrongArgumentType { name, argument }),
+            None => return Err(ArgumentError::MissingArgument { argument }),
+            _ => return Err(ArgumentError::WrongArgumentType { argument }),
         })
     }
 
@@ -213,19 +209,18 @@ impl<'a> CommandIter<'a> {
     /// ([`MemoryLocation::PC`]).
     pub fn next_memory_location_or_default(
         &mut self,
-        name: CommandName,
         argument: &'static str,
-    ) -> Result<MemoryLocation> {
-        Ok(match self.next_argument(name)? {
-            Some(Argument::Integer(address)) => MemoryLocation::Address(resize_int(address, name)?),
+    ) -> Result<MemoryLocation, ArgumentError> {
+        Ok(match self.next_argument()? {
+            Some(Argument::Integer(address)) => MemoryLocation::Address(resize_int(address)?),
             Some(Argument::Label(label)) => MemoryLocation::Label(label),
             None => MemoryLocation::PC,
-            _ => return Err(Error::WrongArgumentType { name, argument }),
+            _ => return Err(ArgumentError::WrongArgumentType { argument }),
         })
     }
 
     /// Returns an error if the command contains any arguments which haven't been consumed.
-    pub fn expect_end_of_command(&mut self, name: CommandName) -> Result<()> {
+    pub fn expect_end_of_command(&mut self) -> Result<(), ArgumentError> {
         self.skip_whitespace();
         let ch = self.peek();
         debug_assert!(
@@ -233,7 +228,7 @@ impl<'a> CommandIter<'a> {
             "semicolons/newlines should have been handled already"
         );
         if !matches!(ch, None | Some(';' | '\n')) {
-            return Err(Error::TooManyArguments { name });
+            return Err(ArgumentError::TooManyArguments {});
         }
         Ok(())
     }
@@ -319,7 +314,7 @@ impl<'a> CommandIter<'a> {
     }
 
     /// Parse and consume the next [`Argument`].
-    fn next_argument(&mut self, name: CommandName) -> Result<Option<Argument>> {
+    fn next_argument(&mut self) -> Result<Option<Argument>, ArgumentError> {
         debug_assert!(
             self.head == self.base,
             "should have been called with head==base"
@@ -333,13 +328,13 @@ impl<'a> CommandIter<'a> {
         if let Some(register) = self.next_register() {
             return Ok(Some(Argument::Register(register)));
         }
-        if let Some(integer) = self.next_integer_token(false, name)? {
+        if let Some(integer) = self.next_integer_token(false)? {
             return Ok(Some(Argument::Integer(integer)));
         }
-        if let Some(label) = self.next_label_token(name)? {
+        if let Some(label) = self.next_label_token()? {
             return Ok(Some(Argument::Label(label)));
         }
-        Err(Error::MalformedArgument { name })
+        Err(ArgumentError::MalformedArgument {})
     }
 
     /// Parse and consume the next [`Register`] argument.
@@ -392,7 +387,7 @@ impl<'a> CommandIter<'a> {
     ///  - Missing sign character '-' or '+', if `require_sign == true`
     ///  - Multiple zeros before radix prefix. Eg. `00x4`
     ///  - Absolute value out of bounds for `i32`. (Does *NOT* check if integer fits in specific bit size)
-    fn next_integer_token(&mut self, require_sign: bool, name: CommandName) -> Result<Option<i32>> {
+    fn next_integer_token(&mut self, require_sign: bool) -> Result<Option<i32>, ArgumentError> {
         self.reset_head();
         // Don't skip whitespace
 
@@ -400,11 +395,10 @@ impl<'a> CommandIter<'a> {
         let first_sign: Option<Sign> = self.next_integer_sign();
 
         // Take optional prefix
-        let Some((radix, has_leading_zeros, prefix_is_symbol)) = self.next_integer_prefix(name)?
-        else {
+        let Some((radix, has_leading_zeros, prefix_is_symbol)) = self.next_integer_prefix()? else {
             // Sign was already given, so it must be an invalid token
             if first_sign.is_some() {
-                return Err(Error::MalformedInteger { name });
+                return Err(ArgumentError::MalformedInteger {});
             }
             return Ok(None);
         };
@@ -416,19 +410,19 @@ impl<'a> CommandIter<'a> {
             (None, Some(sign)) => Some(sign),
             (None, None) => {
                 if require_sign {
-                    return Err(Error::MalformedInteger { name });
+                    return Err(ArgumentError::MalformedInteger {});
                 }
                 None
             }
             // Disallow multiple sign characters: '-x-...', '++...', etc
-            (Some(_), Some(_)) => return Err(Error::MalformedInteger { name }),
+            (Some(_), Some(_)) => return Err(ArgumentError::MalformedInteger {}),
         };
 
         // Check next character is digit
         if self.peek().is_none_or(|ch| radix.parse_digit(ch).is_none()) {
             // Sign, '#', or pre-prefix zeros were given, so it must be an invalid integer token
             if sign.is_some() || has_leading_zeros || prefix_is_symbol {
-                return Err(Error::MalformedInteger { name });
+                return Err(ArgumentError::MalformedInteger {});
             }
             return Ok(None);
         };
@@ -441,13 +435,13 @@ impl<'a> CommandIter<'a> {
                 break;
             }
             let Some(digit) = radix.parse_digit(ch) else {
-                return Err(Error::MalformedInteger { name });
+                return Err(ArgumentError::MalformedInteger {});
             };
             self.next();
 
             // Re-checked later on convert to smaller int types
             if integer > i32::MAX / radix as i32 {
-                return Err(Error::IntegerTooLarge { name });
+                return Err(ArgumentError::IntegerTooLarge {});
             }
 
             integer *= radix as i32;
@@ -458,7 +452,7 @@ impl<'a> CommandIter<'a> {
         }
 
         if !self.is_end_of_argument() {
-            return Err(Error::MalformedInteger { name });
+            return Err(ArgumentError::MalformedInteger {});
         }
         self.set_base();
         Ok(Some(integer))
@@ -487,7 +481,7 @@ impl<'a> CommandIter<'a> {
     /// Returns radix, whether leading zeros are included, and whether radix prefix is a
     /// non-alphabetic symbol (i.e. `#`).
     // TODO(refactor): Possibly return a named struct type
-    fn next_integer_prefix(&mut self, name: CommandName) -> Result<Option<(Radix, bool, bool)>> {
+    fn next_integer_prefix(&mut self) -> Result<Option<(Radix, bool, bool)>, ArgumentError> {
         // Don't reset head
         // Don't skip whitespace
 
@@ -509,7 +503,7 @@ impl<'a> CommandIter<'a> {
             Some('#') => {
                 // Disallow '0#...'
                 if has_leading_zeros {
-                    return Err(Error::MalformedInteger { name });
+                    return Err(ArgumentError::MalformedInteger {});
                 }
                 (Radix::Decimal, true)
             }
@@ -527,7 +521,7 @@ impl<'a> CommandIter<'a> {
             Some('-' | '+') => {
                 // Disallow '0-...' and '0+...'
                 // Disallow '--...', '-+...', etc
-                return Err(Error::MalformedInteger { name });
+                return Err(ArgumentError::MalformedInteger {});
             }
             // Not an integer
             _ => return Ok(None),
@@ -550,7 +544,7 @@ impl<'a> CommandIter<'a> {
     }
 
     /// Consume the next [`Label`] argument.
-    fn next_label_token(&mut self, name: CommandName) -> Result<Option<Label>> {
+    fn next_label_token(&mut self) -> Result<Option<Label>, ArgumentError> {
         self.reset_head();
         // Don't skip whitespace
 
@@ -564,10 +558,10 @@ impl<'a> CommandIter<'a> {
         }
 
         let label = self.take().to_string();
-        let offset = resize_int(self.next_integer_token(true, name)?.unwrap_or(0), name)?;
+        let offset = resize_int(self.next_integer_token(true)?.unwrap_or(0))?;
 
         if !self.is_end_of_argument() {
-            return Err(Error::MalformedLabel { name });
+            return Err(ArgumentError::MalformedLabel {});
         }
         self.set_base();
         Ok(Some(Label {
