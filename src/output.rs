@@ -21,6 +21,7 @@ macro_rules! dprint {
         crate::output::Output::Debugger($condition, $category)
             .print(format_args!($fmt $(, $($tt)* )?)
         );
+        eprint!("\x1b[0m"); // This is not ideal here
     }};
 
     // Trigger type error if missing condition/kind
@@ -170,7 +171,6 @@ impl Output {
         self.print("\x1b[2m│        \x1b[3mhex     int    uint    char\x1b[0m\x1b[2m │\x1b[0m\n");
 
         // R0-7
-        // TODO(fix): Incorrect style for register names
         for i in 0..8 {
             self.print("\x1b[2m│\x1b[0m");
             self.print(format_args!(" \x1b[1mR\x1b[1m{}\x1b[0m  ", i));
@@ -334,9 +334,7 @@ impl fmt::Write for DebuggerWriter {
             }
         };
 
-        eprint!("\x1b[{}m", color);
         eprint!("{}", Colored::new(color, string));
-        eprint!("\x1b[0m");
 
         Ok(())
     }
@@ -421,7 +419,7 @@ impl<'a> fmt::Display for Colored<'a> {
             f.write_char(ch)?;
         }
 
-        f.write_str("\x1b[0m")?;
+        // Do not reset color. This should be done by caller (Eg. `dprint!`)
 
         Ok(())
     }
