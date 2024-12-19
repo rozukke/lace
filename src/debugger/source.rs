@@ -1,7 +1,6 @@
 use std::fmt;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, IsTerminal, Read, Write};
-use std::path::PathBuf;
 
 use console::Key;
 
@@ -61,8 +60,6 @@ struct TerminalHistory {
     index: usize,
     /// `None` indicates failure to open file
     file: Option<File>,
-    // /// `None` indicates failure to retrieve file path
-    // path: PathBuf,
 }
 
 fn echo_command_prompt(command: Option<&str>) {
@@ -443,6 +440,21 @@ impl TerminalHistory {
         self.list.push(command);
     }
 
+    fn read_file(file: Option<&mut File>) -> Vec<String> {
+        let Some(file) = file else {
+            return Vec::new();
+        };
+        let mut history = Vec::new();
+        for line in BufReader::new(file).lines() {
+            let Ok(line) = line else {
+                Self::report_error("Failed to read from file");
+                break;
+            };
+            history.push(line);
+        }
+        return history;
+    }
+
     fn get_file() -> Option<File> {
         let Some(parent_dir) = dirs_next::cache_dir() else {
             Self::report_error(format_args!(
@@ -479,21 +491,6 @@ impl TerminalHistory {
                 None
             }
         }
-    }
-
-    fn read_file(file: Option<&mut File>) -> Vec<String> {
-        let Some(file) = file else {
-            return Vec::new();
-        };
-        let mut history = Vec::new();
-        for line in BufReader::new(file).lines() {
-            let Ok(line) = line else {
-                Self::report_error("Failed to read from file");
-                break;
-            };
-            history.push(line);
-        }
-        return history;
     }
 
     fn report_error(message: impl fmt::Display) {
