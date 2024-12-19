@@ -97,20 +97,42 @@ pub struct Label {
 }
 
 /// Error parsing a command.
-// TODO(refactor): Rename these variants
 // TODO(opt): Most `String` fields could be `&str` (with difficulty, no doubt)
 #[derive(Debug, PartialEq)]
 pub enum Error {
-    InvalidCommandName { name: String },
-    InvalidSubcommand { name: String, subname: String },
-    MissingSubcommand { name: String },
-    MissingArgument { name: CommandName },
-    TooManyArguments { name: CommandName },
-    WrongArgumentKind { name: CommandName },
-    MalformedArgument,
-    MalformedInteger,
-    MalformedLabel,
-    IntegerTooLarge,
+    InvalidCommand {
+        name: String,
+    },
+    InvalidSubcommand {
+        name: String,
+        subname: String,
+    },
+    MissingSubcommand {
+        name: String,
+    },
+    MissingArgument {
+        name: CommandName,
+        argument: &'static str,
+    },
+    TooManyArguments {
+        name: CommandName,
+    },
+    WrongArgumentType {
+        name: CommandName,
+        argument: &'static str,
+    },
+    MalformedArgument {
+        name: CommandName,
+    },
+    MalformedInteger {
+        name: CommandName,
+    },
+    MalformedLabel {
+        name: CommandName,
+    },
+    IntegerTooLarge {
+        name: CommandName,
+    },
 }
 
 impl std::error::Error for Error {}
@@ -118,24 +140,38 @@ impl std::error::Error for Error {}
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidCommandName { name } => write!(f, "Not a command: `{}`.", name),
+            Self::InvalidCommand { name } => write!(f, "Not a command: `{}`.", name),
             Self::InvalidSubcommand { name, subname } => write!(
                 f,
                 "Invalid subcommand `{}` for command `{}`.",
                 subname, name
             ),
             Self::MissingSubcommand { name } => write!(f, "Missing subcommand for `{}`.", name),
-            Self::MissingArgument { name } => write!(f, "Missing argument for command `{}`.", name),
+            Self::MissingArgument { name, argument } => {
+                write!(f, "Missing argument `{}` for command `{}`.", argument, name)
+            }
             Self::TooManyArguments { name } => {
                 write!(f, "Too many arguments for command `{}`.", name)
             }
-            Self::WrongArgumentKind { name } => {
-                write!(f, "Invalid argument type for command `{}`.", name)
+            Self::WrongArgumentType { name, argument } => {
+                write!(
+                    f,
+                    "Invalid type for argument `{}` for command `{}`.",
+                    argument, name
+                )
             }
-            Self::MalformedArgument => write!(f, "Malformed argument."),
-            Self::MalformedInteger => write!(f, "Malformed integer argument."),
-            Self::MalformedLabel => write!(f, "Malformed label argument."),
-            Self::IntegerTooLarge => write!(f, "Integer argument too large."),
+            Self::MalformedArgument { name } => {
+                write!(f, "Malformed argument for command `{}`.", name)
+            }
+            Self::MalformedInteger { name } => {
+                write!(f, "Malformed integer argument for command `{}`.", name)
+            }
+            Self::MalformedLabel { name } => {
+                write!(f, "Malformed label argument for command `{}`.", name)
+            }
+            Self::IntegerTooLarge { name } => {
+                write!(f, "Integer argument too large for command `{}`.", name)
+            }
         }
     }
 }
@@ -145,8 +181,6 @@ impl TryFrom<&str> for Command {
 
     fn try_from(line: &str) -> std::result::Result<Self, Self::Error> {
         let mut iter = CommandIter::from(line);
-
-        // TODO(fix): Check bounds-checking for integer arguments?
 
         let name = iter.get_command_name()?;
         let command = match name {
@@ -159,43 +193,49 @@ impl TryFrom<&str> for Command {
             CommandName::Reset => Self::Reset,
 
             CommandName::Step => {
-                let count = iter.next_positive_integer_or_default(name)?;
+                let count = iter.next_positive_integer_or_default(name, "count")?;
                 Self::Step { count }
             }
             CommandName::Next => Self::Next,
 
             CommandName::Get => {
-                let location = iter.next_location(name)?;
+                let location = iter.next_location(name, "location")?;
                 Self::Get { location }
             }
             CommandName::Set => {
-                let location = iter.next_location(name)?;
-                let value = iter.next_integer(name)?;
+                let location = iter.next_location(name, "location")?;
+                let value = iter.next_integer(name, "value")?;
                 Self::Set { location, value }
             }
 
             CommandName::Jump => {
-                let location = iter.next_memory_location(name)?;
+                let location = iter.next_memory_location(name, "location")?;
                 Self::Jump { location }
             }
 
             CommandName::BreakList => Self::BreakList,
             CommandName::BreakAdd => {
-                let location = iter.next_memory_location_or_default(name)?;
+                let location = iter.next_memory_location_or_default(name, "location")?;
                 Self::BreakAdd { location }
             }
             CommandName::BreakRemove => {
-                let location = iter.next_memory_location_or_default(name)?;
+                let location = iter.next_memory_location_or_default(name, "location")?;
                 Self::BreakRemove { location }
             }
 
             CommandName::Source => {
-                let location = iter.next_memory_location_or_default(name)?;
+                let location = iter.next_memory_location_or_default(name, "location")?;
                 Self::Source { location }
             }
 
             CommandName::Eval => {
                 let instruction = iter.collect_rest();
+                if instruction.is_empty() {
+                    return Err(Error::MissingArgument {
+                        name,
+                        argument: "instruction",
+                    });
+                }
                 Self::Eval { instruction }
             }
         };
