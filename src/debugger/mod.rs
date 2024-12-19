@@ -11,7 +11,6 @@ use crate::output::{Condition, Output};
 use crate::runtime::RunState;
 use crate::symbol::with_symbol_table;
 
-// TODO(refactor): Delete struct and replace with `Option<String>`
 #[derive(Debug)]
 pub struct DebuggerOptions {
     pub command: Option<String>,
@@ -21,11 +20,10 @@ pub struct Debugger {
     status: Status,
     source: Source,
 
-    // TODO(refactor): Make private, use method to increment
-    pub(super) instruction_count: u32,
-    // TODO(refactor): Rename `was_pc_changed` to something better (it doesn't necessarily indicate
-    // that the pc was changed, just that it COULD have)
-    was_pc_changed: bool,
+    /// Amount of instructions executed since last command
+    instruction_count: u32,
+    /// Whether PC should be displayed on next command prompt
+    should_echo_pc: bool,
 
     initial_state: RunState,
 
@@ -165,7 +163,7 @@ impl Debugger {
             status: Status::default(),
             source: Source::from(opts.command),
             instruction_count: 0,
-            was_pc_changed: true,
+            should_echo_pc: true,
             initial_state,
             breakpoints: breakpoints.into(),
             current_breakpoint: None,
@@ -282,9 +280,9 @@ impl Debugger {
     fn next_action(&mut self, state: &mut RunState) -> Option<Action> {
         Output::Debugger(Condition::Always, Default::default()).start_new_line();
 
-        if self.was_pc_changed {
+        if self.should_echo_pc {
             dprintln!(Sometimes, Info, "Program counter at: 0x{:04x}.", state.pc());
-            self.was_pc_changed = false;
+            self.should_echo_pc = false;
         }
         if self.instruction_count > 0 {
             dprintln!(
@@ -310,24 +308,24 @@ impl Debugger {
 
             Command::Continue => {
                 self.status = Status::Continue;
-                self.was_pc_changed = true;
+                self.should_echo_pc = true;
                 dprintln!(Always, Info, "Continuing...");
             }
             Command::Finish => {
                 self.status = Status::Finish;
-                self.was_pc_changed = true;
+                self.should_echo_pc = true;
                 dprintln!(Always, Info, "Finishing subroutine...");
             }
 
             Command::Step { count } => {
                 self.status = Status::Step { count: count - 1 };
-                self.was_pc_changed = true;
+                self.should_echo_pc = true;
             }
             Command::Next => {
                 self.status = Status::Next {
                     return_addr: state.pc() + 1,
                 };
-                self.was_pc_changed = true;
+                self.should_echo_pc = true;
             }
 
             Command::Get { location } => match location {
@@ -375,7 +373,7 @@ impl Debugger {
                     return None;
                 }
                 *state.pc_mut() = address;
-                self.was_pc_changed = true;
+                self.should_echo_pc = true;
                 dprintln!(Always, Warning, "Set program counter to 0x{:04x}", address);
             }
 
@@ -385,7 +383,7 @@ impl Debugger {
 
             Command::Reset => {
                 *state = self.initial_state.clone();
-                self.was_pc_changed = true;
+                self.should_echo_pc = true;
                 dprintln!(Always, Warning, "Reset program to initial state.");
             }
 
@@ -394,7 +392,7 @@ impl Debugger {
             }
 
             Command::Eval { instruction } => {
-                self.was_pc_changed = true;
+                self.should_echo_pc = true;
                 eval::eval(state, instruction);
             }
 
@@ -542,6 +540,10 @@ impl Debugger {
 
     fn orig(&self) -> u16 {
         self.initial_state.pc()
+    }
+
+    pub(super) fn increment_instruction_count(&mut self) {
+        self.instruction_count += 1;
     }
 }
 

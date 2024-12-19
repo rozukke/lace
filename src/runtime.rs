@@ -162,8 +162,8 @@ impl RunEnvironment {
                     continue;
                 }
                 // From this point, next instruction will always be executed
-                // Unless debugger is `quit`, making this counter irrelevant anyway
-                debugger.instruction_count += 1;
+                // (Unless debugger is `quit`, making this counter irrelevant anyway)
+                debugger.increment_instruction_count();
             }
 
             if self.state.pc == u16::MAX {
