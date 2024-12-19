@@ -1,3 +1,4 @@
+use std::fmt;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, IsTerminal, Read, Write};
 
@@ -52,7 +53,8 @@ struct Terminal {
     /// Visible line cursor in terminal
     visible_cursor: usize,
 
-    history_file: File,
+    /// `None` indicates failure to open file
+    history_file: Option<File>,
 }
 
 fn echo_command_prompt(command: Option<&str>) {
@@ -199,11 +201,9 @@ impl SourceReader for Stdin {
 
 impl Terminal {
     pub fn new() -> Self {
-        // TODO(feat/error): Handle file errors better
-
         let mut history_file = Self::get_history_file();
 
-        let history = Self::read_history_file(&mut history_file);
+        let history = Self::read_history_file(history_file.as_mut());
         let history_index = history.len();
 
         Self {
@@ -218,38 +218,6 @@ impl Terminal {
     }
 
     const FILE_NAME: &str = "lace-debugger-history";
-
-    fn get_history_file() -> File {
-        let parent_dir = dirs_next::cache_dir().unwrap_or_else(|| {
-            panic!("Cannot retrieve user cache directory");
-        });
-        assert!(
-            parent_dir.is_dir(),
-            "History file parent is not a directory"
-        );
-
-        let file_path = parent_dir.join(Self::FILE_NAME);
-        assert!(
-            !file_path.exists() || file_path.is_file(),
-            "History file exists but is not a file"
-        );
-
-        let file = fs::OpenOptions::new()
-            .create(true)
-            .read(true)
-            .append(true)
-            .open(file_path)
-            .unwrap();
-
-        file
-    }
-
-    fn read_history_file(file: &mut File) -> Vec<String> {
-        BufReader::new(file)
-            .lines()
-            .map(|result| result.expect("Error reading history file"))
-            .collect()
-    }
 
     fn is_next(&self) -> bool {
         debug_assert!(
@@ -440,7 +408,76 @@ impl Terminal {
 
     fn push_history(&mut self) {
         self.history.push(self.buffer.clone());
-        writeln!(self.history_file, "{}", self.buffer).unwrap();
+        if let Some(file) = &mut self.history_file {
+            if writeln!(file, "{}", self.buffer).is_err() {
+                Self::report_history_error("Failed to write to file");
+            }
+        }
+    }
+
+    fn read_history_file(file: Option<&mut File>) -> Vec<String> {
+        let Some(file) = file else {
+            return Vec::new();
+        };
+        let mut history = Vec::new();
+        for line in BufReader::new(file).lines() {
+            let Ok(line) = line else {
+                Self::report_history_error("Failed to read from file");
+                break;
+            };
+            history.push(line);
+        }
+        return history;
+    }
+
+    fn get_history_file() -> Option<File> {
+        let Some(parent_dir) = dirs_next::cache_dir() else {
+            Self::report_history_error(format_args!(
+                "Cannot retrieve user cache directory. Eg. $XDG_CACHE_HOME"
+            ));
+            return None;
+        };
+        if !parent_dir.is_dir() {
+            Self::report_history_error(format_args!(
+                "Parent directory is not a directory: {}",
+                parent_dir.display(),
+            ));
+            return None;
+        }
+
+        let file_path = parent_dir.join(Self::FILE_NAME);
+        if file_path.exists() && !file_path.is_file() {
+            Self::report_history_error(format_args!(
+                "File exists but is not a file: {}",
+                file_path.display(),
+            ));
+            return None;
+        }
+
+        match fs::OpenOptions::new()
+            .create(true)
+            .read(true)
+            .append(true)
+            .open(&file_path)
+        {
+            Ok(file) => Some(file),
+            Err(_error) => {
+                Self::report_history_error(format_args!(
+                    "Failed to open file: {}",
+                    file_path.display(),
+                ));
+                None
+            }
+        }
+    }
+
+    fn report_history_error(message: impl fmt::Display) {
+        dprintln!(
+            Always,
+            Error,
+            "Error with debugger history file: {}",
+            message,
+        );
     }
 }
 
