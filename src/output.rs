@@ -3,6 +3,9 @@ use std::fmt::{self, Write as _};
 
 use crate::runtime::RunState;
 
+/// Main color used by [`Output::Debugger`].
+///
+/// Note that color depends on the [`Category`] used, and can be overridden.
 pub const DEBUGGER_PRIMARY_COLOR: &str = "34";
 
 /// Print a single character to `Normal` output.
@@ -60,16 +63,26 @@ macro_rules! dprintln {
     }};
 }
 
+/// Output channel.
 #[derive(Clone, Copy, Debug)]
 pub enum Output {
+    /// For program output.
+    /// Writes to `stdout`.
+    /// No ANSI color/style attributes are applied.
     Normal,
+    /// For debugger output.
+    /// Writes to `stderr`.
+    /// ANSI color/style attributes, and/or line decorations, will be applied depending on [`Category`].
+    /// Whether or not anything is printed depends on the [`Condition`].
     Debugger(Condition, Category),
 }
 
 /// A condition of `Sometimes` will not print anything if `Output::is_minimal() == true`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Condition {
+    /// Always print.
     Always,
+    /// Only print if `Output::minimal() == false`.
     Sometimes,
 }
 
@@ -117,12 +130,15 @@ impl Output {
         }
     }
 
+    /// Print a single character.
     pub fn print_char(&self, ch: char) {
         self.print_fmt(format_args!("{}", ch))
     }
+    /// Print a string.
     pub fn print_str(&self, string: &str) {
         self.print_fmt(format_args!("{}", string))
     }
+    /// Print an integer, as a *signed* decimal.
     pub fn print_decimal(&self, value: u16) {
         self.print_fmt(format_args!("{}", value as i16));
     }
@@ -171,6 +187,11 @@ impl Output {
         }
     }
 
+    /// Print all registers (R0-7, PC, and CC) in a fancy table.
+    ///
+    /// Prints values as hex, signed decimal, unsigned decimal, and character.
+    ///
+    /// PC and CC will be only displayed as hex and 3-bit binary respectively.
     pub fn print_registers(&self, state: &RunState) {
         if Self::is_minimal() {
             for i in 0..8 {
@@ -185,6 +206,7 @@ impl Output {
         self.print_str(
             "\x1b[2m│        \x1b[3mhex     int    uint    char\x1b[0m\x1b[2m │\x1b[0m\n",
         );
+        // TODO(fix): Incorrect style for register names
         for i in 0..8 {
             self.print_fmt(format_args!("\x1b[2m│\x1b[0m"));
             self.print_fmt(format_args!(" \x1b[1mR{}\x1b[0m  ", i));
@@ -202,6 +224,7 @@ impl Output {
         self.print_str("\x1b[2m└────────────────────────────────────┘\x1b[0m\n");
     }
 
+    /// Prints a register as hex, signed decimal, unsigned decimal, and character.
     pub fn print_integer(&self, value: u16) {
         if Self::is_minimal() {
             self.print_decimal(value);
@@ -213,6 +236,13 @@ impl Output {
         self.print_char_display(value);
     }
 
+    /// Print a character in a descriptive way:
+    ///
+    /// - 'Significant' control characters display their abbreviated names.
+    /// - ASCII space is displayed as `[_]`.
+    /// - Printable ASCII characters are displayed normally.
+    /// - Any other ASCII character is printed as `───`
+    /// - Any non-ASCII (UTF-16) character is displayed as `┄┄┄`
     fn print_char_display(&self, value: u16) {
         // TODO(feat): Early return if `is_minimal` for release mode
         debug_assert!(
@@ -247,6 +277,7 @@ impl Output {
     }
 }
 
+/// Writer for [`Output::Normal`]
 struct NormalWriter {
     minimal: bool,
 }
@@ -261,6 +292,9 @@ impl fmt::Write for NormalWriter {
     }
 }
 
+/// Writer for [`Output::Debugger`]
+///
+/// [`Condition`] must be checked by caller.
 struct DebuggerWriter {
     minimal: bool,
     category: Category,
@@ -357,6 +391,8 @@ impl fmt::Write for LineTracker {
 ///
 /// Given attributes are re-applied after any 'reset' code (`\x1b[0m`) is encountered.
 struct Colored<'a> {
+    /// Note: This is only `'static` for convenience. If needed, another lifetime parameter could
+    /// be created.
     color: &'static str,
     string: &'a str,
 }
