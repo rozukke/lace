@@ -25,6 +25,7 @@ enum Radix {
 }
 
 impl Radix {
+    /// Parse a single digit in a given radix.
     pub fn parse_digit(&self, ch: char) -> Option<u8> {
         Some(match self {
             Self::Binary => match ch {
@@ -50,15 +51,16 @@ impl Radix {
     }
 }
 
+/// Try to convert an `i32` into another integer type.
 fn resize_int<T: TryFrom<i32>>(integer: i32) -> Result<T> {
     integer.try_into().map_err(|_| Error::IntegerTooLarge)
 }
 
 pub struct CommandIter<'a> {
     buffer: &'a str,
-    /// Characters before this index have been successfully parsed
+    /// Characters before this index have been successfully parsed.
     base: usize,
-    /// Characters between base..head are currently being parsed
+    /// Characters between base..head are currently being parsed.
     head: usize,
 }
 
@@ -71,6 +73,9 @@ impl<'a> CommandIter<'a> {
         }
     }
 
+    /// Parse and consume command name.
+    ///
+    /// Considers multi-word command names (i.e. subcommands) as one name. Eg. `break add`.
     pub fn get_command_name(&mut self) -> Result<CommandName> {
         let name = self.next_command_name_part();
         // Command source should always return a string containing non-whitespace
@@ -79,6 +84,7 @@ impl<'a> CommandIter<'a> {
         let name = name.unwrap_or("");
 
         // TODO(feat): Add more aliases (such as undocumented typo aliases)
+        // TODO(opt): Don't alloc a new string for case-insensitive match
         Ok(match name.to_lowercase().as_str() {
             "help" | "--help" | "h" | "-h" => CommandName::Help,
             "continue" | "cont" | "c" => CommandName::Continue,
@@ -102,6 +108,7 @@ impl<'a> CommandIter<'a> {
                 let Some(subname) = self.next_command_name_part() else {
                     return Err(Error::MissingSubcommand { name });
                 };
+                // TODO(opt): Don't alloc a new string for case-insensitive match
                 match subname.to_lowercase().as_str() {
                     "list" | "l" => CommandName::BreakList,
                     "add" | "a" => CommandName::BreakAdd,
@@ -122,6 +129,7 @@ impl<'a> CommandIter<'a> {
         })
     }
 
+    /// Parse and consume next integer argument.
     pub fn next_integer(&mut self, name: CommandName) -> Result<u16> {
         Ok(match self.next_argument()? {
             Some(Argument::Integer(count)) => resize_int(count)?,
@@ -130,6 +138,7 @@ impl<'a> CommandIter<'a> {
         })
     }
 
+    /// Parse and consume next positive integer argument, defaulting to `1`.
     pub fn next_positive_integer_or_default(&mut self, name: CommandName) -> Result<u16> {
         Ok(match self.next_argument()? {
             Some(Argument::Integer(count)) => resize_int(count.max(1))?,
@@ -138,6 +147,7 @@ impl<'a> CommandIter<'a> {
         })
     }
 
+    /// Parse and consume next [`Location`] argument: a register or [`MemoryLocation`].
     pub fn next_location(&mut self, name: CommandName) -> Result<Location> {
         Ok(match self.next_argument()? {
             Some(Argument::Register(register)) => Location::Register(register),
@@ -149,6 +159,7 @@ impl<'a> CommandIter<'a> {
         })
     }
 
+    /// Parse and consume next [`MemoryLocation`] argument.
     pub fn next_memory_location(&mut self, name: CommandName) -> Result<MemoryLocation> {
         Ok(match self.next_argument()? {
             Some(Argument::Integer(address)) => MemoryLocation::Address(resize_int(address)?),
@@ -158,6 +169,8 @@ impl<'a> CommandIter<'a> {
         })
     }
 
+    /// Parse and consume next [`MemoryLocation`] argument, defaulting to program counter
+    /// ([`MemoryLocation::PC`]).
     pub fn next_memory_location_or_default(&mut self, name: CommandName) -> Result<MemoryLocation> {
         Ok(match self.next_argument()? {
             Some(Argument::Integer(address)) => MemoryLocation::Address(resize_int(address)?),
@@ -167,6 +180,7 @@ impl<'a> CommandIter<'a> {
         })
     }
 
+    /// Returns an error if the command contains any arguments which haven't been consumed.
     pub fn expect_end_of_command(&mut self, name: CommandName) -> Result<()> {
         self.skip_whitespace();
         let ch = self.peek();
@@ -180,13 +194,16 @@ impl<'a> CommandIter<'a> {
         Ok(())
     }
 
+    /// Consume the rest of the command as one string.
+    ///
+    /// Used for `eval` command.
     pub fn collect_rest(&mut self) -> String {
         let rest = self.buffer[self.head..].trim().to_string();
         self.head = self.buffer.len();
         rest
     }
 
-    /// Get next character at head, WITHOUT incrementing head
+    /// Get next character at head, WITHOUT incrementing head.
     fn peek(&self) -> Option<char> {
         if self.head >= self.buffer.len() {
             return None;
@@ -194,19 +211,19 @@ impl<'a> CommandIter<'a> {
         let next = self.buffer[self.head..].chars().next()?;
         Some(next)
     }
-    /// Get next character at head, incrementing head
+    /// Get next character at head, incrementing head.
     fn next(&mut self) -> Option<char> {
         let next = self.peek()?;
         self.head += next.len_utf8();
         Some(next)
     }
 
-    /// Get characters between base..head, WITHOUT updating base
+    /// Get characters between base..head, WITHOUT updating base.
     fn get(&self) -> &str {
         assert!(self.base <= self.head, "base exceeded head");
         &self.buffer[self.base..self.head]
     }
-    /// Get characters between base..head, updating base
+    /// Get characters between base..head, updating base.
     fn take(&mut self) -> &str {
         assert!(self.base <= self.head, "base exceeded head");
         let slice = &self.buffer[self.base..self.head];
@@ -214,11 +231,11 @@ impl<'a> CommandIter<'a> {
         slice
     }
 
-    /// Update base to head
+    /// Update base to head.
     fn set_base(&mut self) {
         self.base = self.head;
     }
-    /// Backtrack head to base
+    /// Backtrack head to base.
     fn reset_head(&mut self) {
         self.head = self.base;
     }
@@ -232,6 +249,7 @@ impl<'a> CommandIter<'a> {
         matches!(ch, None | Some(' ' | ';' | '\n'))
     }
 
+    /// Consume all whitespace before next non-whitespace character.
     fn skip_whitespace(&mut self) {
         while self.peek().is_some_and(|ch| ch.is_whitespace()) {
             self.next();
@@ -239,7 +257,7 @@ impl<'a> CommandIter<'a> {
         self.set_base();
     }
 
-    /// Used for both main command and subcommand (such as `break add`)
+    /// Used for both main command and subcommand (eg. `break add`).
     fn next_command_name_part(&mut self) -> Option<&str> {
         self.skip_whitespace();
         self.reset_head();
@@ -254,6 +272,7 @@ impl<'a> CommandIter<'a> {
         Some(self.take())
     }
 
+    /// Parse and consume the next [`Argument`].
     fn next_argument(&mut self) -> Result<Option<Argument>> {
         debug_assert!(
             self.head == self.base,
@@ -277,6 +296,7 @@ impl<'a> CommandIter<'a> {
         Err(Error::MalformedArgument)
     }
 
+    /// Parse and consume the next [`Register`] argument.
     fn next_register(&mut self) -> Option<Register> {
         self.reset_head();
         // Don't skip whitespace
@@ -304,6 +324,8 @@ impl<'a> CommandIter<'a> {
         Some(register)
     }
 
+    /// Parse and consume the next integer argument.
+    ///
     /// Extremely liberal in accepted syntax.
     ///
     /// Accepts:
@@ -398,7 +420,8 @@ impl<'a> CommandIter<'a> {
         Ok(Some(integer))
     }
 
-    /// Should only be called by `next_token_integer`
+    /// Consume the sign character for an integer.
+    /// Must only be called by `next_token_integer`.
     fn next_integer_sign(&mut self) -> Option<Sign> {
         // Don't reset head
         // Don't skip whitespace
@@ -414,10 +437,12 @@ impl<'a> CommandIter<'a> {
         Some(sign)
     }
 
-    /// Get radix from integer prefix
-    /// Should only be called by `next_token_integer`
+    /// Get radix from integer prefix.
+    /// Must only be called by `next_token_integer`.
+    ///
     /// Returns radix, whether leading zeros are included, and whether radix prefix is a
-    /// non-alphabetic symbol (i.e. `#`)
+    /// non-alphabetic symbol (i.e. `#`).
+    // TODO(refactor): Possibly return a named struct type
     fn next_integer_prefix(&mut self) -> Result<Option<(Radix, bool, bool)>> {
         // Don't reset head
         // Don't skip whitespace
@@ -471,13 +496,16 @@ impl<'a> CommandIter<'a> {
         Ok(Some((radix, has_leading_zeros, prefix_is_symbol)))
     }
 
+    /// Returns `true` if the given character can appear at the start of a label.
     fn label_can_start_with(ch: char) -> bool {
         matches!(ch, 'a'..='z' | 'A'..='Z' | '_')
     }
+    /// Returns `true` if the given character can appear as a subsequent character of a label.
     fn label_can_contain(ch: char) -> bool {
         matches!(ch, 'a'..='z' | 'A'..='Z' | '0'..='9' | '_')
     }
 
+    /// Consume the next [`Label`] argument.
     fn next_label_token(&mut self) -> Result<Option<Label>> {
         self.reset_head();
         // Don't skip whitespace
