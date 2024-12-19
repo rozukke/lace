@@ -440,6 +440,7 @@ impl TerminalHistory {
                 Self::report_error("Failed to write to file");
             }
         }
+        self.list.push(command);
     }
 
     fn get_file() -> Option<File> {
