@@ -14,18 +14,18 @@ pub struct Source {
     stream: Stream,
 }
 
-/// Stdin or interactive terminal
+/// Stdin or interactive terminal.
 #[derive(Debug)]
 enum Stream {
     Stdin(Stdin),
     Terminal(Terminal),
 }
 
-/// Command-line argument
+/// Command-line argument.
 #[derive(Debug)]
 struct Argument {
     buffer: String,
-    /// Byte index
+    /// Byte index.
     cursor: usize,
 }
 
@@ -33,36 +33,36 @@ struct Argument {
 #[derive(Debug)]
 struct Stdin {
     stdin: io::Stdin,
-    /// Command must be stored somewhere to be referenced
+    /// Command must be stored somewhere to be referenced.
     buffer: String,
 }
 
-/// Interactive unbuffered terminal
+/// Interactive unbuffered terminal.
 // TODO(feat): Support CTRL+Arrow keybinds
 #[derive(Debug)]
 struct Terminal {
     term: console::Term,
-
     buffer: String,
-    /// Byte index
+    /// Byte index.
     cursor: usize,
-
-    /// Visible line cursor in terminal
+    /// Visible line cursor in terminal.
     visible_cursor: usize,
-
+    /// History list and file.
     history: TerminalHistory,
 }
 
+/// All history information for `Terminal`.
 #[derive(Debug)]
 struct TerminalHistory {
     list: Vec<String>,
-    /// Focused item in history, or new entry if index==length
+    /// Focused item in history, or new entry if index==length.
     index: usize,
-    /// `None` indicates failure to open file
+    /// `None` indicates failure to open file.
     file: Option<File>,
 }
 
-fn echo_command_prompt(command: Option<&str>) {
+/// Print prompt and command.
+fn echo_command(command: Option<&str>) {
     // Echo prompt and command for non-terminal source
     // Equivalent code found in terminal source
     if !Output::is_minimal() || command.is_some() {
@@ -76,9 +76,10 @@ fn echo_command_prompt(command: Option<&str>) {
     }
 }
 
+/// A trait for objects which can yield a command, by iterating a string or reading a file.
 pub trait SourceReader {
-    /// `None` indicates EOF
-    /// Returned string slice MAY include leading or trailing whitespace
+    /// `None` indicates EOF.
+    /// Returned string slice MAY include leading or trailing whitespace.
     fn read(&mut self) -> Option<&str>;
 }
 
@@ -98,7 +99,7 @@ impl SourceReader for Source {
         // Note that `self.argument` cannot then be set to `None`, due to lifetime of returned value
         if let Some(argument) = &mut self.argument {
             if let Some(command) = argument.read() {
-                echo_command_prompt(Some(command));
+                echo_command(Some(command));
                 return Some(command);
             }
         }
@@ -121,7 +122,7 @@ impl SourceReader for Stream {
         match self {
             Self::Stdin(stdin) => {
                 let command = stdin.read();
-                echo_command_prompt(command);
+                echo_command(command);
                 command
             }
             // Don't echo command for terminal source, that would be redundant
@@ -172,7 +173,7 @@ impl Stdin {
         }
     }
 
-    /// `None` indicates EOF
+    /// `None` indicates EOF.
     fn read_char(&mut self) -> Option<char> {
         let mut buffer = [0; 1];
         if self.stdin.read(&mut buffer).unwrap() == 0 {
@@ -215,6 +216,7 @@ impl Terminal {
         }
     }
 
+    /// Returns `true` if current command is a new command, rather than a focused history item.
     fn is_next(&self) -> bool {
         debug_assert!(
             self.history.index <= self.history.list.len(),
@@ -223,8 +225,8 @@ impl Terminal {
         self.history.index >= self.history.list.len()
     }
 
-    /// Run before modifying `next`
-    /// If focused on a historic item, clone it to `next` and update index
+    /// Run before modifying `next`.
+    /// If focused on a historic item, clone it to `next` and update index.
     fn update_next(&mut self) {
         if self.is_next() {
             return;
@@ -238,7 +240,7 @@ impl Terminal {
         self.history.index = self.history.list.len();
     }
 
-    /// Get next or historic command, from index
+    /// Get next or historic command, from index.
     fn get_current(&self) -> &str {
         if self.is_next() {
             &self.buffer
@@ -286,7 +288,7 @@ impl Terminal {
         self.term.flush().unwrap();
     }
 
-    // Return of `true` indicates to break loop
+    // Return of `true` indicates to break loop.
     fn read_key(&mut self) -> bool {
         let key = self.term.read_key().unwrap();
         match key {
@@ -359,7 +361,7 @@ impl Terminal {
         false
     }
 
-    /// Read entire (multi-command) line from terminal
+    /// Read entire (multi-command) line from terminal.
     fn read_line(&mut self) {
         self.buffer.clear();
         self.visible_cursor = 0;
@@ -391,7 +393,7 @@ impl Terminal {
         self.history.index = self.history.list.len();
     }
 
-    /// Returns next command from line buffer
+    /// Returns next command from line buffer.
     fn get_next_command(&mut self) -> &str {
         let rest = &self.buffer[self.cursor..];
         match rest.find(';') {
@@ -431,6 +433,7 @@ impl TerminalHistory {
         Self { list, index, file }
     }
 
+    /// Push command into list and write to file
     pub fn push(&mut self, command: String) {
         if let Some(file) = &mut self.file {
             if writeln!(file, "{}", command).is_err() {
@@ -440,6 +443,7 @@ impl TerminalHistory {
         self.list.push(command);
     }
 
+    /// Returns empty vector if failed to read.
     fn read_file(file: Option<&mut File>) -> Vec<String> {
         let Some(file) = file else {
             return Vec::new();
@@ -455,6 +459,9 @@ impl TerminalHistory {
         return history;
     }
 
+    /// Get file path and open file.
+    ///
+    /// Returns `None` if anything fails.
     fn get_file() -> Option<File> {
         let Some(parent_dir) = dirs_next::cache_dir() else {
             Self::report_error(format_args!(
