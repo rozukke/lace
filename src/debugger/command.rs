@@ -116,11 +116,23 @@ pub enum Error {
     },
 }
 
+// TODO(refactor): Move to error module ?
+// TODO(rename): Type names and variants
 #[derive(Debug, PartialEq)]
 pub enum ArgumentError {
-    MissingArgument { argument: &'static str },
+    MissingArgument {
+        argument: &'static str,
+    },
     TooManyArguments {},
-    WrongArgumentType { argument: &'static str },
+    InvalidValue {
+        argument: &'static str,
+        error: ValueError,
+    },
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ValueError {
+    WrongArgumentType {},
     MalformedArgument {},
     MalformedInteger {},
     MalformedLabel {},
@@ -150,20 +162,27 @@ impl fmt::Display for Error {
                     ArgumentError::TooManyArguments {} => {
                         write!(f, "Too many arguments")?;
                     }
-                    ArgumentError::WrongArgumentType { argument } => {
-                        write!(f, "Invalid type for argument `{}`", argument)?;
-                    }
-                    ArgumentError::MalformedArgument {} => {
-                        write!(f, "Malformed argument")?;
-                    }
-                    ArgumentError::MalformedInteger {} => {
-                        write!(f, "Malformed integer argument")?;
-                    }
-                    ArgumentError::MalformedLabel {} => {
-                        write!(f, "Malformed label argument")?;
-                    }
-                    ArgumentError::IntegerTooLarge {} => {
-                        write!(f, "Integer argument too large")?;
+
+                    ArgumentError::InvalidValue { argument, error } => {
+                        match error {
+                            ValueError::WrongArgumentType {} => {
+                                write!(f, "Invalid type")?;
+                            }
+                            ValueError::MalformedArgument {} => {
+                                write!(f, "Malformed argument")?;
+                            }
+                            ValueError::MalformedInteger {} => {
+                                write!(f, "Malformed integer argument")?;
+                            }
+                            ValueError::MalformedLabel {} => {
+                                write!(f, "Malformed label argument")?;
+                            }
+                            ValueError::IntegerTooLarge {} => {
+                                write!(f, "Integer argument too large")?;
+                            }
+                        }
+
+                        write!(f, " for argument `{}`", argument)?;
                     }
                 }
 
