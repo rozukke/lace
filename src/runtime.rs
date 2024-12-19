@@ -5,7 +5,12 @@ use std::{
     u16, u32, u8, usize,
 };
 
-use crate::{env, Air};
+use crate::{
+    debugger::{Action, Debugger, DebuggerOptions, RelevantInstr},
+    dprintln, env,
+    output::{Condition, Output},
+    Air,
+};
 use colored::Colorize;
 use console::Term;
 use miette::Result;
@@ -21,10 +26,16 @@ macro_rules! exception {
 }
 
 /// LC3 can address 128KB of memory.
-const MEMORY_MAX: usize = 0x10000;
+pub(crate) const MEMORY_MAX: usize = 0x10000;
+
+pub struct RunEnvironment {
+    state: RunState,
+    debugger: Option<Debugger>,
+}
 
 /// Represents complete program state during runtime.
-pub struct RunState {
+#[derive(Clone)]
+pub(super) struct RunState {
     /// System memory - 128KB in size.
     /// Need to figure out if this would cause problems with the stack.
     mem: Box<[u16; MEMORY_MAX]>,
@@ -39,16 +50,16 @@ pub struct RunState {
 }
 
 #[derive(Clone, Copy)]
-enum RunFlag {
+pub(super) enum RunFlag {
     N = 0b100,
     Z = 0b010,
     P = 0b001,
     Uninit = 0b000,
 }
 
-impl RunState {
+impl RunEnvironment {
     // Not generic because of miette error
-    pub fn try_from(air: Air) -> Result<RunState> {
+    pub fn try_from(air: &Air) -> Result<RunEnvironment> {
         let orig = air.orig().unwrap_or(0x3000);
         let mut air_array: Vec<u16> = Vec::with_capacity(air.len() + 1);
 
@@ -56,10 +67,31 @@ impl RunState {
         for stmt in air {
             air_array.push(stmt.emit()?);
         }
-        RunState::from_raw(air_array.as_slice())
+
+        RunEnvironment::from_raw(air_array.as_slice())
     }
 
-    pub fn from_raw(raw: &[u16]) -> Result<RunState> {
+    pub fn try_from_with_debugger(
+        air: Air, // Takes ownership of breakpoints
+        debugger_opts: DebuggerOptions,
+    ) -> Result<RunEnvironment> {
+        let mut env = Self::try_from(&air)?;
+
+        // Add orig to each breakpoint
+        let breakpoints = air.breakpoints.with_orig(env.state.pc);
+
+        env.debugger = Some(Debugger::new(
+            debugger_opts,
+            env.state.clone(),
+            breakpoints,
+            air.ast,
+            air.src,
+        ));
+
+        Ok(env)
+    }
+
+    pub fn from_raw(raw: &[u16]) -> Result<RunEnvironment> {
         if raw.len() == 0 {
             exception!("provided file is empty");
         }
@@ -77,16 +109,83 @@ impl RunState {
         // Prevents PC running through no-ops to the end of memory
         mem[orig + raw.len()] = 0xF025;
 
-        Ok(RunState {
-            mem: Box::new(mem),
-            pc: orig as u16,
-            reg: [0, 0, 0, 0, 0, 0, 0, 0xFDFF],
-            flag: RunFlag::Uninit,
-            _psr: 0,
+        Ok(RunEnvironment {
+            state: RunState {
+                mem: Box::new(mem),
+                pc: orig as u16,
+                reg: [0, 0, 0, 0, 0, 0, 0, 0xFDFF],
+                flag: RunFlag::Uninit,
+                _psr: 0,
+            },
+            debugger: None,
         })
     }
 
-    const OP_TABLE: [fn(&mut RunState, u16); 16] = [
+    pub fn set_minimal(&mut self, minimal: bool) {
+        Output::set_minimal(minimal);
+    }
+
+    /// Run with preset memory
+    pub fn run(&mut self) {
+        loop {
+            if let Some(debugger) = &mut self.debugger {
+                Output::Debugger(Condition::Always, Default::default()).start_new_line();
+
+                match debugger.wait_for_action(&mut self.state) {
+                    Action::Proceed => (),
+                    Action::StopDebugger => {
+                        dprintln!(Always, Warning, "Stopping debugger.");
+                        // Go to start of next loop iteration, without debugger
+                        self.debugger = None;
+                        continue;
+                    }
+                    Action::ExitProgram => {
+                        dprintln!(Always, Warning, "Exiting program.");
+                        return;
+                    }
+                }
+
+                // If still stuck on HALT
+                // Never *execute* HALT while debugger is active
+                // Wait for pc to change, such as `reset`, `exit`, or `quit`
+                if RelevantInstr::try_from(self.state.mem[self.state.pc as usize])
+                    == Ok(RelevantInstr::TrapHalt)
+                {
+                    continue;
+                }
+                // Debugger should catch this on next loop, and warn
+                if self.state.pc >= 0xFE00 {
+                    continue;
+                }
+                // From this point, next instruction will always be executed
+                // (Unless debugger is `quit`, making this counter irrelevant anyway)
+                debugger.increment_instruction_count();
+            }
+
+            if self.state.pc == u16::MAX {
+                debug_assert!(
+                    self.debugger.is_none(),
+                    "halt should be caught if debugger is active",
+                );
+                break; // Halt was triggered
+            }
+            if self.state.pc >= 0xFE00 {
+                exception!("entered protected memory area >= 0xFE00");
+            }
+
+            let instr = self.state.mem[self.state.pc as usize];
+            let opcode = (instr >> 12) as usize;
+            // PC incremented before instruction is performed
+            self.state.pc += 1;
+            RunState::OP_TABLE[opcode](&mut self.state, instr);
+        }
+
+        Output::Normal.start_new_line();
+    }
+}
+
+impl RunState {
+    pub const OP_TABLE: [fn(&mut RunState, u16); 16] = [
         Self::br,    // 0x0
         Self::add,   // 0x1
         Self::ld,    // 0x2
@@ -105,45 +204,42 @@ impl RunState {
         Self::trap,  // 0xF
     ];
 
-    /// Run with preset memory
-    pub fn run(&mut self) {
-        loop {
-            if self.pc == u16::MAX {
-                break; // Halt was triggered
-            }
-            if self.pc >= 0xFE00 {
-                exception!("entered protected memory area >= 0xFE00");
-            }
-            let instr = self.mem[self.pc as usize];
-            let opcode = (instr >> 12) as usize;
-            // PC incremented before instruction is performed
-            self.pc += 1;
-            Self::OP_TABLE[opcode](self, instr);
-        }
-    }
-
     #[inline]
-    fn reg(&self, reg: u16) -> u16 {
+    pub(super) fn reg(&self, reg: u16) -> u16 {
         debug_assert!(reg < 8, "tried to access invalid register 'r{}'", reg);
         // SAFETY: Should only be indexed with values that are & 0b111
         unsafe { *self.reg.get_unchecked(reg as usize) }
     }
     #[inline]
-    fn reg_mut(&mut self, reg: u16) -> &mut u16 {
+    pub(super) fn reg_mut(&mut self, reg: u16) -> &mut u16 {
         debug_assert!(reg < 8, "tried to access invalid register 'r{}'", reg);
         // SAFETY: Should only be indexed with values that are & 0b111
         unsafe { self.reg.get_unchecked_mut(reg as usize) }
     }
 
     #[inline]
-    fn mem(&self, addr: u16) -> u16 {
+    pub(super) fn mem(&self, addr: u16) -> u16 {
         // SAFETY: memory fits any u16 index
         unsafe { *self.mem.get_unchecked(addr as usize) }
     }
     #[inline]
-    fn mem_mut(&mut self, addr: u16) -> &mut u16 {
+    pub(super) fn mem_mut(&mut self, addr: u16) -> &mut u16 {
         // SAFETY: memory fits any u16 index
         unsafe { self.mem.get_unchecked_mut(addr as usize) }
+    }
+
+    #[inline]
+    pub(super) fn pc(&self) -> u16 {
+        self.pc
+    }
+    #[inline]
+    pub(super) fn pc_mut(&mut self) -> &mut u16 {
+        &mut self.pc
+    }
+
+    #[inline]
+    pub(super) fn flag(&self) -> RunFlag {
+        self.flag
     }
 
     #[inline]
@@ -363,7 +459,7 @@ impl RunState {
             // out
             0x21 => {
                 let chr = (self.reg(0) & 0xFF) as u8 as char;
-                print!("{chr}");
+                Output::Normal.print(chr);
                 stdout().flush().unwrap();
             }
             // puts
@@ -375,7 +471,7 @@ impl RunState {
                     if chr_ascii == '\0' {
                         break;
                     }
-                    print!("{}", chr_ascii);
+                    Output::Normal.print(chr_ascii);
                 }
                 stdout().flush().unwrap();
             }
@@ -383,7 +479,7 @@ impl RunState {
             0x23 => {
                 let ch = read_input();
                 *self.reg_mut(0) = ch as u16;
-                print!("{}", ch);
+                Output::Normal.print(ch as char);
                 stdout().flush().unwrap();
             }
             // putsp
@@ -395,7 +491,7 @@ impl RunState {
                         if chr_ascii == '\0' {
                             break 'string;
                         }
-                        print!("{}", chr_ascii);
+                        Output::Normal.print(chr_ascii);
                     }
                 }
                 stdout().flush().unwrap();
@@ -408,16 +504,12 @@ impl RunState {
             // putn
             0x26 => {
                 let val = self.reg(0);
-                println!("{val}");
+                Output::Normal.print_decimal(val);
             }
             // reg
             0x27 => {
-                println!("\n------ Registers ------");
-                for (i, reg) in self.reg.iter().enumerate() {
-                    println!("r{i}: {reg:.>#19}");
-                    // println!("r{i}: {reg:.>#19b}");
-                }
-                println!("-----------------------");
+                Output::Normal.start_new_line();
+                Output::Normal.print_registers(self);
             }
             // unknown
             _ => exception!(
