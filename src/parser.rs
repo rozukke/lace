@@ -213,7 +213,7 @@ impl AsmParser {
                         let addr = self.air.len() as u16;
                         self.air.breakpoints.push(Breakpoint {
                             address: addr,
-                            predefined: true,
+                            is_predefined: true,
                         });
                         continue;
                     }

@@ -1,8 +1,10 @@
+mod breakpoint;
 mod command;
 mod eval;
 mod parse;
 mod source;
 
+pub use self::breakpoint::{Breakpoint, Breakpoints};
 use self::command::{Command, Label, Location, MemoryLocation};
 use self::source::{Source, SourceRead};
 use crate::air::AsmLine;
@@ -34,16 +36,6 @@ pub struct Debugger {
     src: &'static str,
 }
 
-// TODO(feat): Keep sorted!
-#[derive(Debug)]
-pub struct Breakpoints(Vec<Breakpoint>);
-
-#[derive(Clone, Copy, Debug)]
-pub struct Breakpoint {
-    pub address: u16,
-    pub predefined: bool,
-}
-
 #[allow(dead_code)]
 #[derive(Debug, Default)]
 pub enum Status {
@@ -65,66 +57,6 @@ pub enum Action {
     StopDebugger,
     ExitProgram,
 }
-
-impl Breakpoints {
-    fn get(&self, address: u16) -> Option<Breakpoint> {
-        for breakpoint in &self.0 {
-            if breakpoint.address == address {
-                return Some(*breakpoint);
-            }
-        }
-        None
-    }
-
-    fn contains(&self, address: u16) -> bool {
-        for breakpoint in &self.0 {
-            if breakpoint.address == address {
-                return true;
-            }
-        }
-        false
-    }
-
-    fn insert(&mut self, breakpoint: Breakpoint) {
-        self.0.push(breakpoint);
-    }
-
-    /// Removes every breakpoint with given address
-    ///
-    /// Returns whether any breakpoint was found with given address
-    fn remove(&mut self, address: u16) -> bool {
-        let initial_len = self.0.len();
-        self.0.retain(|breakpoint| breakpoint.address != address);
-        initial_len != self.0.len()
-    }
-
-    fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    fn iter(&self) -> impl Iterator<Item = &Breakpoint> {
-        self.0.iter()
-    }
-}
-
-impl From<Vec<Breakpoint>> for Breakpoints {
-    fn from(vec: Vec<Breakpoint>) -> Self {
-        Self(vec)
-    }
-}
-
-impl<'a> IntoIterator for &'a Breakpoints {
-    type Item = &'a Breakpoint;
-    type IntoIter = std::slice::Iter<'a, Breakpoint>;
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.iter()
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum RelevantInstr {
     /// Return from a subroutine
@@ -197,7 +129,7 @@ impl Debugger {
             .get(pc)
             .filter(|_| self.current_breakpoint != Some(pc))
         {
-            if breakpoint.predefined {
+            if breakpoint.is_predefined {
                 dprintln!(
                     Always,
                     Warning,
@@ -408,7 +340,7 @@ impl Debugger {
                 } else {
                     self.breakpoints.insert(Breakpoint {
                         address,
-                        predefined: false,
+                        is_predefined: false,
                     });
                     dprintln!(Always, Warning, "Added breakpoint at 0x{:04x}.", address);
                 }
