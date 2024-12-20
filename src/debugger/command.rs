@@ -108,7 +108,7 @@ impl TryFrom<&str> for Command {
 
         let name = iter.get_command_name()?;
         Command::parse_arguments(name, iter)
-            .map_err(|error| CommandError::InvalidArgument { name, error })
+            .map_err(|error| CommandError::InvalidArgument { command_name: name, error })
     }
 }
 
@@ -177,7 +177,7 @@ impl Command {
                 let instruction = iter.collect_rest();
                 if instruction.is_empty() {
                     return Err(ArgumentError::MissingArgumentList {
-                        argument: "instruction",
+                        argument_name: "instruction",
                     });
                 }
                 // Don't return `Err` for invalid argument count, as this shouldn't happen

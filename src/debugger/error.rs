@@ -7,17 +7,17 @@ use super::command::CommandName;
 #[derive(Debug, PartialEq)]
 pub enum CommandError {
     InvalidCommand {
-        name: String,
+        command_name: String,
     },
     MissingSubcommand {
-        name: &'static str,
+        command_name: &'static str,
     },
     InvalidSubcommand {
-        name: &'static str,
-        subname: String,
+        command_name: &'static str,
+        subcommand_name: String,
     },
     InvalidArgument {
-        name: CommandName,
+        command_name: CommandName,
         error: ArgumentError,
     },
 }
@@ -25,20 +25,19 @@ pub enum CommandError {
 // TODO(rename): Type names and variants
 #[derive(Debug, PartialEq)]
 pub enum ArgumentError {
-    MissingArgument {
-        argument: &'static str,
-        expected: u8,
-    },
     /// For `eval`.
-    MissingArgumentList {
-        argument: &'static str,
+    MissingArgumentList { argument_name: &'static str },
+    MissingArgument {
+        argument_name: &'static str,
+        expected_count: u8,
+        // actual_count: u8,
     },
     TooManyArguments {
-        expected: u8,
-        actual: u8,
+        expected_count: u8,
+        actual_count: u8,
     },
     InvalidValue {
-        argument: &'static str,
+        argument_name: &'static str,
         error: ValueError,
     },
 }
@@ -46,8 +45,8 @@ pub enum ArgumentError {
 #[derive(Debug, PartialEq)]
 pub enum ValueError {
     WrongArgumentType {
-        expected: &'static str,
-        actual: &'static str,
+        expected_type: &'static str,
+        actual_type: &'static str,
     },
     MalformedArgument {},
     MalformedInteger {},
@@ -60,43 +59,67 @@ impl std::error::Error for CommandError {}
 impl fmt::Display for CommandError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidCommand { name } => write!(f, "Not a command: `{}`.", name),
-            Self::InvalidSubcommand { name, subname } => write!(
+            Self::InvalidCommand { command_name } => {
+                write!(f, "Not a command: `{}`.", command_name)
+            }
+            Self::InvalidSubcommand {
+                command_name,
+                subcommand_name,
+            } => write!(
                 f,
                 "Invalid subcommand `{}` for command `{}`.",
-                subname, name
+                subcommand_name, command_name
             ),
-            Self::MissingSubcommand { name } => {
-                write!(f, "Missing subcommand for `{}`.", name)
+            Self::MissingSubcommand { command_name } => {
+                write!(f, "Missing subcommand for `{}`.", command_name)
             }
 
-            Self::InvalidArgument { name, error } => {
-                write!(f, "In command `{}`: ", name)?;
+            Self::InvalidArgument {
+                command_name,
+                error,
+            } => {
+                write!(f, "In command `{}`: ", command_name)?;
 
                 match error {
-                    ArgumentError::MissingArgument { argument, expected } => {
-                        write!(f, "Missing argument `{}` (expected {})", argument, expected)?;
+                    ArgumentError::MissingArgumentList { argument_name } => {
+                        write!(f, "Missing argument list `{}`", argument_name)?;
                     }
-                    ArgumentError::MissingArgumentList { argument } => {
-                        write!(f, "Missing argument list `{}`", argument)?;
+                    ArgumentError::MissingArgument {
+                        argument_name,
+                        expected_count,
+                    } => {
+                        write!(
+                            f,
+                            "Missing argument `{}` (expected {})",
+                            argument_name, expected_count
+                        )?;
                     }
-                    ArgumentError::TooManyArguments { expected, actual } => {
+                    ArgumentError::TooManyArguments {
+                        expected_count,
+                        actual_count,
+                    } => {
                         write!(
                             f,
                             "Too many arguments (expected {}, found {})",
-                            expected, actual
+                            expected_count, actual_count
                         )?;
                     }
 
-                    ArgumentError::InvalidValue { argument, error } => {
-                        write!(f, "For argument `{}`: ", argument)?;
+                    ArgumentError::InvalidValue {
+                        argument_name,
+                        error,
+                    } => {
+                        write!(f, "For argument `{}`: ", argument_name)?;
 
                         match error {
-                            ValueError::WrongArgumentType { expected, actual } => {
+                            ValueError::WrongArgumentType {
+                                expected_type,
+                                actual_type,
+                            } => {
                                 write!(
                                     f,
                                     "Incorrect value type (expected {}, found {})",
-                                    expected, actual
+                                    expected_type, actual_type
                                 )?;
                             }
                             ValueError::MalformedArgument {} => {
