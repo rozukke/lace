@@ -62,12 +62,14 @@ struct TerminalHistory {
     file: Option<File>,
 }
 
+const PROMPT: &str = "DEBUGGER> ";
+
 /// Print prompt and command.
 fn echo_command(command: Option<&str>) {
     // Echo prompt and command for non-terminal source
     // Equivalent code found in terminal source
     if !Output::is_minimal() || command.is_some() {
-        dprint!(Always, Normal, "\x1b[1mCommand: ");
+        dprint!(Always, Normal, "\x1b[1m{}", PROMPT);
         dprintln!(
             Always,
             Normal,
@@ -258,14 +260,13 @@ impl Terminal {
 
         // Print prompt and current input
         // Equivalent code found in non-terminal source
-        let prompt = "Command: ";
         if Output::is_minimal() {
-            write!(&mut self.term, "{}", prompt).unwrap();
+            write!(&mut self.term, "{}", PROMPT).unwrap();
         } else {
             write!(
                 &mut self.term,
                 "\x1b[1;{}m{}\x1b[0m",
-                DEBUGGER_PRIMARY_COLOR, prompt,
+                DEBUGGER_PRIMARY_COLOR, PROMPT,
             )
             .unwrap();
         }
