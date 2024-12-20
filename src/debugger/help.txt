@@ -1,67 +1,67 @@
 -------{1} LACE DEBUGGER {0}-------
 Available Commands:
 
-    {1}help{0} (h)
+    {35;1}help{0;35;2}({0;35}h{2}){0}
         Show this message.
 
-    {1}step{0} (t) {3}COUNT?{0}
+    {35;1}step{0;35;2}({0;35}s{2}){0} {32;3}COUNT{2}?{0}
         Execute next instruction or jump into subroutine.
-          - {3}COUNT{0}: Integer (default: 1)
+          {2}-{0} {3}COUNT{0}: {36}Integer{0} {3}(default: 1){0}
 
-    {1}next{0} (n) {3}COUNT?{0}
+    {35;1}next{0;35;2}({0;35}n{2}){0} {32;3}COUNT{2}?{0}
         Execute next instruction or whole subroutine (including any nested
             subroutine calls).
-          - {3}COUNT{0}: Integer (default: 1)
+          {2}-{0} {3}COUNT{0}: {36}Integer{0} {3}(default: 1){0}
 
-    {1}continue{0} (c)
-        Continue execution until breakpoint or `HALT`.
+    {35;1}continue{0;35;2}({0;35}c{2}){0}
+        Continue execution until breakpoint or {1}HALT{0}.
 
-    {1}finish{0} (f)
-        Continue execution until end of subroutine, breakpoint, or `HALT`.
+    {35;1}finish{0;35;2}({0;35}f{2}){0}
+        Continue execution until end of subroutine, breakpoint, or {1}HALT{0}.
 
-    {1}get{0} (g) {3}LOCATION{0}
+    {35;1}get{0;35;2}({0;35}g{2}){0} {32;3}LOCATION{2}?{0}
         Print the value at a register, address, or label.
-          - {3}LOCATION{0}: Register | Address+ | Label+
+          {2}-{0} {3}LOCATION{0}: {36}Register{0} {2}|{0} {36}Address{2}+{0} {2}|{0} {36}Label{2}+{0}
 
-    {1}set{0} (s) {3}LOCATION VALUE{0}
+    {35;1}set{0;35;2}({0;35}s{2}){0} {32;3}LOCATION VALUE{0}
         Set the value at a register, address, or label.
-          - {3}LOCATION{0}: Register | Address+ | Label+
-          - {3}VALUE{0}: Integer
+          {2}-{0} {3}LOCATION{0}: {36}Register{0} {2}|{0} {36}Address{2}+{0} {2}|{0} {36}Label{2}+{0}
+          {2}-{0} {3}VALUE{0}: Integer
 
-    {1}jump{0} (j) {3}LOCATION{0}
+    {35;1}jump{0;35;2}({0;35}j{2}){0} {32;3}LOCATION{0}
         Unconditionally jump to an address/label.
-          - {3}LOCATION{0}: Address+ | Label+
+          {2}-{0} {3}LOCATION{0}: {36}Address{2}+{0} {2}|{0} {36}Label{2}+{0}
 
-    {1}registers{0} (r)
+    {35;1}registers{0;35;2}({0;35}r{2}){0}
         Print the value of all registers.
 
-    {1}break add{0} (ba) {3}LOCATION?{0}
+    {35;1}break add{0;35;2}({0;35}ba{2}){0} {32;3}LOCATION{2}?{0}
         Add breakpoint at an address/label/PC.
-          - {3}LOCATION{0}: Address+ | Label+ (default: PC)
+          {2}-{0} {3}LOCATION{0}: {36}Address{2}+{0} {2}|{0} {36}Label{2}+{0} {3}(default: PC){0}
 
-    {1}break remove{0} (br) {3}LOCATION?{0}
+    {35;1}break remove{0;35;2}({0;35}ba{2}){0} {32;3}LOCATION{2}?{0}
         Remove breakpoint at an address/label/PC.
-          - {3}LOCATION{0}: Address+ | Label+ (default: PC)
+          {2}-{0} {3}LOCATION{0}: {36}Address{2}+{0} {2}|{0} {36}Label{2}+{0} {3}(default: PC){0}
 
-    {1}break list{0} (bl)
+    {35;1}break list{0;35;2}({0;35}ba{2}){0}
         List all breakpoints.
 
-    {1}reset{0}
+    {35;1}source{0;35;2}({0;35}o{2}){0}
+        Print corresponding line of source code from address/label/PC.
+          {2}-{0} {3}LOCATION{0}: {36}Address{2}+{0} {2}|{0} {36}Label{2}+{0} {3}(default: PC){0}
+
+    {35;1}eval{0;35;2}({0;35}v{2}){0}
+        Simulate an instruction. Note that labels cannot be created or modified.
+          {2}-{0} Instruction: {36}OPCODE OPERANDS{2}...{0}
+
+    {35;1}reset{0}
         Reset all memory and registers to original state.
 
-    {1}source{0} (s) {3}LOCATION?{0}
-        Print corresponding line of source code from address/label/PC.
-          - {3}LOCATION{0}: Address+ | Label+ (default: PC)
-
-    {1}eval{0} (v)
-        Simulate an instruction. Note that labels cannot be created or modified.
-          - Instruction: OPCODE OPERANDS...
-
-    {1}quit{0} (q)
+    {35;1}quit{0;35;2}({0;35}q{2}){0}
         Stop debugger and continue execution as normal.
 
-    {1}exit{0} (e)
+    {35;1}exit{0;35;2}({0;35}e{2}){0}
         Exit debugger and simulator.
 
-{1}Note:{0} Address+ and Label+ arguments can include an offset,
-    eg. `HelloWorld+4`
+{3}Note:{0} {36}Address{2}+{0} and {36}Label{2}+{0} arguments can include an offset,
+    {3}Eg.{0} {36}jump HelloWorld+4{0}
