@@ -189,25 +189,21 @@ impl<'a> CommandIter<'a> {
         argument: &'static str,
         expected: u8,
     ) -> Result<u16, ArgumentError> {
-        Ok(
-            match self
-                .next_argument()
-                .map_err(|error| ArgumentError::InvalidValue { argument, error })?
-            {
-                Some(Argument::Integer(count)) => resize_int(count)
-                    .map_err(|error| ArgumentError::InvalidValue { argument, error })?,
-                None => return Err(ArgumentError::MissingArgument { argument, expected }),
-                Some(value) => {
-                    return Err(ArgumentError::InvalidValue {
-                        argument,
-                        error: ValueError::WrongArgumentType {
-                            expected: "integer",
-                            actual: value.kind(),
-                        },
-                    })
-                }
-            },
-        )
+        match self.next_argument(argument)? {
+            Some(Argument::Integer(count)) => {
+                resize_int(count).map_err(|error| ArgumentError::InvalidValue { argument, error })
+            }
+
+            None => Err(ArgumentError::MissingArgument { argument, expected }),
+
+            Some(value) => Err(ArgumentError::InvalidValue {
+                argument,
+                error: ValueError::WrongArgumentType {
+                    expected: "integer",
+                    actual: value.kind(),
+                },
+            }),
+        }
     }
 
     /// Parse and consume next positive integer argument, defaulting to `1`.
@@ -217,25 +213,20 @@ impl<'a> CommandIter<'a> {
         &mut self,
         argument: &'static str,
     ) -> Result<u16, ArgumentError> {
-        Ok(
-            match self
-                .next_argument()
-                .map_err(|error| ArgumentError::InvalidValue { argument, error })?
-            {
-                Some(Argument::Integer(count)) => resize_int(count.max(1))
-                    .map_err(|error| ArgumentError::InvalidValue { argument, error })?,
-                None => 1,
-                Some(value) => {
-                    return Err(ArgumentError::InvalidValue {
-                        argument,
-                        error: ValueError::WrongArgumentType {
-                            expected: "integer",
-                            actual: value.kind(),
-                        },
-                    })
-                }
-            },
-        )
+        match self.next_argument(argument)? {
+            Some(Argument::Integer(count)) => resize_int(count.max(1))
+                .map_err(|error| ArgumentError::InvalidValue { argument, error }),
+
+            None => Ok(1),
+
+            Some(value) => Err(ArgumentError::InvalidValue {
+                argument,
+                error: ValueError::WrongArgumentType {
+                    expected: "integer",
+                    actual: value.kind(),
+                },
+            }),
+        }
     }
 
     /// Parse and consume next [`Location`] argument: a register or [`MemoryLocation`].
@@ -244,20 +235,18 @@ impl<'a> CommandIter<'a> {
         argument: &'static str,
         expected: u8,
     ) -> Result<Location, ArgumentError> {
-        Ok(
-            match self
-                .next_argument()
-                .map_err(|error| ArgumentError::InvalidValue { argument, error })?
-            {
-                Some(Argument::Register(register)) => Location::Register(register),
-                Some(Argument::Integer(address)) => Location::Memory(MemoryLocation::Address(
-                    resize_int(address)
-                        .map_err(|error| ArgumentError::InvalidValue { argument, error })?,
-                )),
-                Some(Argument::Label(label)) => Location::Memory(MemoryLocation::Label(label)),
-                None => return Err(ArgumentError::MissingArgument { argument, expected }),
-            },
-        )
+        match self.next_argument(argument)? {
+            Some(Argument::Register(register)) => Ok(Location::Register(register)),
+
+            Some(Argument::Integer(address)) => Ok(Location::Memory(MemoryLocation::Address(
+                resize_int(address)
+                    .map_err(|error| ArgumentError::InvalidValue { argument, error })?,
+            ))),
+
+            Some(Argument::Label(label)) => Ok(Location::Memory(MemoryLocation::Label(label))),
+
+            None => Err(ArgumentError::MissingArgument { argument, expected }),
+        }
     }
 
     /// Parse and consume next [`MemoryLocation`] argument.
@@ -266,28 +255,24 @@ impl<'a> CommandIter<'a> {
         argument: &'static str,
         expected: u8,
     ) -> Result<MemoryLocation, ArgumentError> {
-        Ok(
-            match self
-                .next_argument()
-                .map_err(|error| ArgumentError::InvalidValue { argument, error })?
-            {
-                Some(Argument::Integer(address)) => MemoryLocation::Address(
-                    resize_int(address)
-                        .map_err(|error| ArgumentError::InvalidValue { argument, error })?,
-                ),
-                Some(Argument::Label(label)) => MemoryLocation::Label(label),
-                None => return Err(ArgumentError::MissingArgument { argument, expected }),
-                Some(value) => {
-                    return Err(ArgumentError::InvalidValue {
-                        argument,
-                        error: ValueError::WrongArgumentType {
-                            expected: "address or label",
-                            actual: value.kind(),
-                        },
-                    })
-                }
-            },
-        )
+        match self.next_argument(argument)? {
+            Some(Argument::Integer(address)) => Ok(MemoryLocation::Address(
+                resize_int(address)
+                    .map_err(|error| ArgumentError::InvalidValue { argument, error })?,
+            )),
+
+            Some(Argument::Label(label)) => Ok(MemoryLocation::Label(label)),
+
+            None => Err(ArgumentError::MissingArgument { argument, expected }),
+
+            Some(value) => Err(ArgumentError::InvalidValue {
+                argument,
+                error: ValueError::WrongArgumentType {
+                    expected: "address or label",
+                    actual: value.kind(),
+                },
+            }),
+        }
     }
 
     /// Parse and consume next [`MemoryLocation`] argument, defaulting to program counter
@@ -296,28 +281,24 @@ impl<'a> CommandIter<'a> {
         &mut self,
         argument: &'static str,
     ) -> Result<MemoryLocation, ArgumentError> {
-        Ok(
-            match self
-                .next_argument()
-                .map_err(|error| ArgumentError::InvalidValue { argument, error })?
-            {
-                Some(Argument::Integer(address)) => MemoryLocation::Address(
-                    resize_int(address)
-                        .map_err(|error| ArgumentError::InvalidValue { argument, error })?,
-                ),
-                Some(Argument::Label(label)) => MemoryLocation::Label(label),
-                None => MemoryLocation::PC,
-                Some(value) => {
-                    return Err(ArgumentError::InvalidValue {
-                        argument,
-                        error: ValueError::WrongArgumentType {
-                            expected: "address or label",
-                            actual: value.kind(),
-                        },
-                    })
-                }
-            },
-        )
+        match self.next_argument(argument)? {
+            Some(Argument::Integer(address)) => Ok(MemoryLocation::Address(
+                resize_int(address)
+                    .map_err(|error| ArgumentError::InvalidValue { argument, error })?,
+            )),
+
+            Some(Argument::Label(label)) => Ok(MemoryLocation::Label(label)),
+
+            None => Ok(MemoryLocation::PC),
+
+            Some(value) => Err(ArgumentError::InvalidValue {
+                argument,
+                error: ValueError::WrongArgumentType {
+                    expected: "address or label",
+                    actual: value.kind(),
+                },
+            }),
+        }
     }
 
     /// Returns an error if the command contains any arguments which haven't been consumed.
@@ -417,7 +398,21 @@ impl<'a> CommandIter<'a> {
     }
 
     /// Parse and consume the next [`Argument`].
-    fn next_argument(&mut self) -> Result<Option<Argument>, ValueError> {
+    fn next_argument(&mut self, argument: &'static str) -> Result<Option<Argument>, ArgumentError> {
+        debug_assert!(
+            self.head == self.base,
+            "should have been called with head==base"
+        );
+        self.reset_head();
+        self.skip_whitespace();
+
+        self.arg_count += 1;
+
+        self.next_argument_inner()
+            .map_err(|error| ArgumentError::InvalidValue { argument, error })
+    }
+
+    fn next_argument_inner(&mut self) -> Result<Option<Argument>, ValueError> {
         debug_assert!(
             self.head == self.base,
             "should have been called with head==base"
