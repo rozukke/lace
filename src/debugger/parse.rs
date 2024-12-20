@@ -256,6 +256,7 @@ impl<'a> CommandIter<'a> {
 
             Some(Argument::Label(label)) => Ok(Location::Memory(MemoryLocation::Label(label))),
 
+            // TODO(feat): Accept pc offset arguments ?
             Some(value) => Err(ArgumentError::InvalidValue {
                 argument_name,
                 error: ValueError::MismatchedType {
@@ -314,10 +315,12 @@ impl<'a> CommandIter<'a> {
 
             Some(Argument::Label(label)) => Ok(MemoryLocation::Label(label)),
 
+            Some(Argument::PCOffset(offset)) => Ok(MemoryLocation::PCOffset(offset)),
+
             Some(value) => Err(ArgumentError::InvalidValue {
                 argument_name,
                 error: ValueError::MismatchedType {
-                    expected_type: "address or label",
+                    expected_type: "address, label, or program counter offset",
                     actual_type: value.kind(),
                 },
             }),
@@ -492,6 +495,8 @@ impl<'a> CommandIter<'a> {
         self.set_base();
         Some(register)
     }
+
+    // TODO(fix): Should `x1h` be skipped as an integer, and be parsed as a label?
 
     /// Parse and consume the next integer argument.
     ///
@@ -710,12 +715,9 @@ impl<'a> CommandIter<'a> {
         self.set_base();
         let offset = resize_int(self.next_integer_token(false)?.unwrap_or(0))?;
 
-        println!("{}", offset);
-
-        if !self.is_end_of_argument() {
-            // TODO(feat): Custom error
-            return Err(ValueError::MalformedLabel {});
-        }
+        debug_assert!(
+            self.is_end_of_argument(),
+            "should have consumed characters until end of argument, whether integer succesfully parsed or not");
         self.set_base();
         Ok(Some(offset))
     }
