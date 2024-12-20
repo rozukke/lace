@@ -51,7 +51,6 @@ pub enum ValueError {
     MalformedValue {},
     MalformedInteger {},
     MalformedLabel {},
-    MalformedPCOffset {},
     IntegerTooLarge {},
 }
 
@@ -132,9 +131,6 @@ impl fmt::Display for CommandError {
                             }
                             ValueError::MalformedLabel {} => {
                                 write!(f, "Malformed label")?;
-                            }
-                            ValueError::MalformedPCOffset {} => {
-                                write!(f, "Malformed program counter offset")?;
                             }
                             ValueError::IntegerTooLarge {} => {
                                 write!(f, "Integer too large")?;
