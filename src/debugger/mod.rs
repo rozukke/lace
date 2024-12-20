@@ -437,9 +437,21 @@ impl Debugger {
     fn resolve_location_address(&self, state: &RunState, location: &MemoryLocation) -> Option<u16> {
         match location {
             MemoryLocation::Address(address) => Some(*address),
-            MemoryLocation::PC => Some(state.pc()),
+            MemoryLocation::PCOffset(offset) => self.resolve_pc_offset(state.pc(), *offset),
             MemoryLocation::Label(label) => self.resolve_label_address(label),
         }
+    }
+
+    fn resolve_pc_offset(&self, pc: u16, offset: i16) -> Option<u16> {
+        let Some(address) = self.add_address_offset(pc, offset) else {
+            dprintln!(
+                Always,
+                Error,
+                "Program counter + offset is out of bounds of memory."
+            );
+            return None;
+        };
+        Some(address)
     }
 
     fn resolve_label_address(&self, label: &Label) -> Option<u16> {
@@ -448,10 +460,7 @@ impl Debugger {
             return None;
         };
 
-        // Check address in user program area
-        let orig = self.orig() as i16;
-        let address = address as i16 + label.offset + orig;
-        if address < orig || (address as u16) >= 0xFE00 {
+        let Some(address) = self.add_address_offset(address + self.orig(), label.offset) else {
             dprintln!(
                 Always,
                 Error,
@@ -467,7 +476,17 @@ impl Debugger {
             label.name,
             address
         );
-        Some(address as u16)
+        Some(address)
+    }
+
+    fn add_address_offset(&self, address: u16, offset: i16) -> Option<u16> {
+        let address = address as i16 + offset;
+        // Check address in user program area
+        if address >= self.orig() as i16 && (address as u16) < 0xFE00 {
+            Some(address as u16)
+        } else {
+            None
+        }
     }
 
     fn orig(&self) -> u16 {

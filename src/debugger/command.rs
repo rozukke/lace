@@ -89,7 +89,7 @@ pub enum Location {
 
 #[derive(Debug)]
 pub enum MemoryLocation {
-    PC,
+    PCOffset(i16),
     Address(u16),
     Label(Label),
 }

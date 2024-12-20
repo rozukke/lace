@@ -7,6 +7,7 @@ enum Argument {
     Register(Register),
     Integer(i32),
     Label(Label),
+    PCOffset(i16),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -85,6 +86,7 @@ impl Argument {
             Argument::Register(_) => "register",
             Argument::Integer(_) => "integer",
             Argument::Label(_) => "label",
+            Argument::PCOffset(_) => "program counter offset",
         }
     }
 }
@@ -129,18 +131,18 @@ impl<'a> CommandIter<'a> {
         #[rustfmt::skip]
         let commands: &[(_, &[_])] = &[
             (CommandName::Help,        &["help", "--help", "h", "-h"]),
-            (CommandName::Continue,    &["continue", "cont", "c"]),
+            (CommandName::Continue,    &["continue", "cont", "c"]), // proceed
             (CommandName::Finish,      &["finish", "fin", "f"]),
             (CommandName::Exit,        &["exit"]),
             (CommandName::Quit,        &["quit", "q"]),
             (CommandName::Registers,   &["registers", "reg", "r"]),
             (CommandName::Reset,       &["reset"]),
-            (CommandName::Step,        &["progress", "p"]),
+            (CommandName::Step,        &["progress", "p"]), // advance
             (CommandName::Next,        &["next", "n"]),
             (CommandName::Get,         &["get", "g"]),
             (CommandName::Set,         &["set", "s"]),
             (CommandName::Jump,        &["jump", "j"]),
-            (CommandName::Source,      &["assembly", "asm", "a"]),
+            (CommandName::Source,      &["assembly", "asm", "a"]), // source
             (CommandName::Eval,        &["eval", "e"]),
             (CommandName::BreakList,   &["breaklist", "bl"]),
             (CommandName::BreakAdd,    &["breakadd", "ba"]),
@@ -223,8 +225,6 @@ impl<'a> CommandIter<'a> {
                 })
             }
 
-            None => default,
-
             Some(value) => Err(ArgumentError::InvalidValue {
                 argument_name,
                 error: ValueError::MismatchedType {
@@ -232,6 +232,8 @@ impl<'a> CommandIter<'a> {
                     actual_type: value.kind(),
                 },
             }),
+
+            None => default,
         }
     }
 
@@ -253,6 +255,14 @@ impl<'a> CommandIter<'a> {
             ))),
 
             Some(Argument::Label(label)) => Ok(Location::Memory(MemoryLocation::Label(label))),
+
+            Some(value) => Err(ArgumentError::InvalidValue {
+                argument_name,
+                error: ValueError::MismatchedType {
+                    expected_type: "register, address, or label",
+                    actual_type: value.kind(),
+                },
+            }),
 
             None => Err(ArgumentError::MissingArgument {
                 argument_name,
@@ -280,12 +290,12 @@ impl<'a> CommandIter<'a> {
     }
 
     /// Parse and consume next [`MemoryLocation`] argument, defaulting to program counter
-    /// ([`MemoryLocation::PC`]).
+    /// ([`MemoryLocation::PCOffset`]).
     pub fn next_memory_location_or_default(
         &mut self,
         argument_name: &'static str,
     ) -> Result<MemoryLocation, ArgumentError> {
-        self.next_memory_location_inner(argument_name, Ok(MemoryLocation::PC))
+        self.next_memory_location_inner(argument_name, Ok(MemoryLocation::PCOffset(0)))
     }
 
     /// Parse and consume next [`MemoryLocation`] argument. Use default result value if argument is `None`.
@@ -304,8 +314,6 @@ impl<'a> CommandIter<'a> {
 
             Some(Argument::Label(label)) => Ok(MemoryLocation::Label(label)),
 
-            None => default,
-
             Some(value) => Err(ArgumentError::InvalidValue {
                 argument_name,
                 error: ValueError::MismatchedType {
@@ -313,6 +321,8 @@ impl<'a> CommandIter<'a> {
                     actual_type: value.kind(),
                 },
             }),
+
+            None => default,
         }
     }
 
@@ -439,6 +449,9 @@ impl<'a> CommandIter<'a> {
 
         if self.is_end_of_argument() {
             return Ok(None);
+        }
+        if let Some(offset) = self.next_pc_offset()? {
+            return Ok(Some(Argument::PCOffset(offset)));
         }
         if let Some(register) = self.next_register() {
             return Ok(Some(Argument::Register(register)));
@@ -683,6 +696,28 @@ impl<'a> CommandIter<'a> {
             name: label,
             offset,
         }))
+    }
+
+    /// Parse and consume the next PC offset argument.
+    fn next_pc_offset(&mut self) -> Result<Option<i16>, ValueError> {
+        self.reset_head();
+        // Don't skip whitespace
+
+        if !self.next().is_some_and(|ch| ch == '^') {
+            return Ok(None);
+        }
+
+        self.set_base();
+        let offset = resize_int(self.next_integer_token(false)?.unwrap_or(0))?;
+
+        println!("{}", offset);
+
+        if !self.is_end_of_argument() {
+            // TODO(feat): Custom error
+            return Err(ValueError::MalformedLabel {});
+        }
+        self.set_base();
+        Ok(Some(offset))
     }
 }
 
