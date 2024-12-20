@@ -119,64 +119,65 @@ impl<'a> CommandIter<'a> {
     ///
     /// Considers multi-word command names (i.e. subcommands) as one name. Eg. `break add`.
     pub fn get_command_name(&mut self) -> Result<CommandName, CommandError> {
-        let name = self.next_command_name_part();
+        let command_name = self.next_command_name_part();
         // Command source should always return a string containing non-whitespace
         // characters, so initial command name should always exist.
-        debug_assert!(name.is_some(), "missing command name");
-        let name = name.unwrap_or("");
+        debug_assert!(command_name.is_some(), "missing command name");
+        let command_name = command_name.unwrap_or("");
 
         // TODO(feat): Add more aliases (such as undocumented typo aliases)
+        #[rustfmt::skip]
         let commands: &[(_, &[_])] = &[
-            (CommandName::Help, &["help", "--help", "h", "-h"]),
-            (CommandName::Continue, &["continue", "cont", "c"]),
-            (CommandName::Finish, &["finish", "fin", "f"]),
-            (CommandName::Exit, &["exit", "e"]),
-            (CommandName::Quit, &["quit", "q"]),
-            (CommandName::Registers, &["registers", "reg", "r"]),
-            (CommandName::Reset, &["reset"]),
-            (CommandName::Step, &["step", "t"]),
-            (CommandName::Next, &["next", "n"]),
-            (CommandName::Get, &["get", "g"]),
-            (CommandName::Set, &["set", "s"]),
-            (CommandName::Jump, &["jump", "j"]),
-            (CommandName::Source, &["source", "o"]),
-            (CommandName::Eval, &["eval", "v"]),
-            (CommandName::BreakList, &["breaklist", "bl"]),
-            (CommandName::BreakAdd, &["breakadd", "ba"]),
+            (CommandName::Help,        &["help", "--help", "h", "-h"]),
+            (CommandName::Continue,    &["continue", "cont", "c"]),
+            (CommandName::Finish,      &["finish", "fin", "f"]),
+            (CommandName::Exit,        &["exit"]),
+            (CommandName::Quit,        &["quit", "q"]),
+            (CommandName::Registers,   &["registers", "reg", "r"]),
+            (CommandName::Reset,       &["reset"]),
+            (CommandName::Step,        &["step", "t"]), // advance
+            (CommandName::Next,        &["next", "n"]),
+            (CommandName::Get,         &["get", "g"]),
+            (CommandName::Set,         &["set", "s"]),
+            (CommandName::Jump,        &["jump", "j"]),
+            (CommandName::Source,      &["source", "o"]), // assembly
+            (CommandName::Eval,        &["eval", "v"]),
+            (CommandName::BreakList,   &["breaklist", "bl"]),
+            (CommandName::BreakAdd,    &["breakadd", "ba"]),
             (CommandName::BreakRemove, &["breakremove", "br"]),
         ];
+        let break_command = &["break", "b"];
+        #[rustfmt::skip]
+        let break_subcommands: &[(_, &[_])] = &[
+            (CommandName::BreakList,   &["list", "l"]),
+            (CommandName::BreakAdd,    &["add", "a"]),
+            (CommandName::BreakRemove,  &["remove", "r"]),
+        ];
 
-        if let Some(command) = find_match(name, commands) {
+        if let Some(command) = find_match(command_name, commands) {
             return Ok(command);
         };
 
         // This could be written a bit nicer. But it doesn't seem necessary.
-        if matches(name, &["break", "b"]) {
-            let name = "break";
+        if matches(command_name, break_command) {
+            let command_name = break_command[0]; // Normalize name and get as `'static`
 
             let Some(subname) = self.next_command_name_part() else {
-                return Err(CommandError::MissingSubcommand { command_name: name });
+                return Err(CommandError::MissingSubcommand { command_name });
             };
 
-            if let Some(command) = find_match(
-                subname,
-                &[
-                    (CommandName::BreakList, &["list", "l"]),
-                    (CommandName::BreakAdd, &["add", "a"]),
-                    (CommandName::BreakRemove, &["remove", "r"]),
-                ],
-            ) {
+            if let Some(command) = find_match(subname, break_subcommands) {
                 return Ok(command);
             }
 
             return Err(CommandError::InvalidSubcommand {
-                command_name: name,
+                command_name,
                 subcommand_name: subname.to_string(),
             });
         }
 
         Err(CommandError::InvalidCommand {
-            command_name: name.to_string(),
+            command_name: command_name.to_string(),
         })
     }
 

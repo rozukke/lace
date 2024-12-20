@@ -32,7 +32,6 @@ pub enum Command {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum CommandName {
-    // TODO(feat): Optional subcommand, to show help info for a specific command
     Help,
     Step,
     Next,
