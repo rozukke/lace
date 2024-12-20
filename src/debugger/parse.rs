@@ -186,11 +186,13 @@ impl<'a> CommandIter<'a> {
         argument_name: &'static str,
         expected_count: u8,
     ) -> Result<u16, ArgumentError> {
+        let actual_count = self.arg_count;
         self.next_integer_inner(
             argument_name,
             Err(ArgumentError::MissingArgument {
                 argument_name,
                 expected_count,
+                actual_count,
             }),
         )
     }
@@ -238,6 +240,7 @@ impl<'a> CommandIter<'a> {
         argument_name: &'static str,
         expected_count: u8,
     ) -> Result<Location, ArgumentError> {
+        let actual_count = self.arg_count;
         match self.next_argument(argument_name)? {
             Some(Argument::Register(register)) => Ok(Location::Register(register)),
 
@@ -253,6 +256,7 @@ impl<'a> CommandIter<'a> {
             None => Err(ArgumentError::MissingArgument {
                 argument_name,
                 expected_count,
+                actual_count,
             }),
         }
     }
@@ -263,11 +267,13 @@ impl<'a> CommandIter<'a> {
         argument_name: &'static str,
         expected_count: u8,
     ) -> Result<MemoryLocation, ArgumentError> {
+        let actual_count = self.arg_count;
         self.next_memory_location_inner(
             argument_name,
             Err(ArgumentError::MissingArgument {
                 argument_name,
                 expected_count,
+                actual_count,
             }),
         )
     }
@@ -413,15 +419,6 @@ impl<'a> CommandIter<'a> {
         &mut self,
         argument_name: &'static str,
     ) -> Result<Option<Argument>, ArgumentError> {
-        debug_assert!(
-            self.head == self.base,
-            "should have been called with head==base"
-        );
-        self.reset_head();
-        self.skip_whitespace();
-
-        self.arg_count += 1;
-
         self.next_argument_inner()
             .map_err(|error| ArgumentError::InvalidValue {
                 argument_name,

@@ -106,9 +106,13 @@ impl TryFrom<&str> for Command {
     fn try_from(line: &str) -> std::result::Result<Self, Self::Error> {
         let mut iter = CommandIter::from(line);
 
-        let name = iter.get_command_name()?;
-        Command::parse_arguments(name, iter)
-            .map_err(|error| CommandError::InvalidArgument { command_name: name, error })
+        let command_name = iter.get_command_name()?;
+        Command::parse_arguments(command_name, iter).map_err(|error| {
+            CommandError::InvalidArgument {
+                command_name,
+                error,
+            }
+        })
     }
 }
 

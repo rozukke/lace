@@ -30,7 +30,7 @@ pub enum ArgumentError {
     MissingArgument {
         argument_name: &'static str,
         expected_count: u8,
-        // actual_count: u8,
+        actual_count: u8,
     },
     TooManyArguments {
         expected_count: u8,
@@ -87,11 +87,12 @@ impl fmt::Display for CommandError {
                     ArgumentError::MissingArgument {
                         argument_name,
                         expected_count,
+                        actual_count,
                     } => {
                         write!(
                             f,
-                            "Missing argument `{}` (expected {})",
-                            argument_name, expected_count
+                            "Missing argument `{}` (expected {}, found {})",
+                            argument_name, expected_count, actual_count
                         )?;
                     }
                     ArgumentError::TooManyArguments {
