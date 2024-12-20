@@ -224,7 +224,7 @@ impl<'a> CommandIter<'a> {
 
             Some(value) => Err(ArgumentError::InvalidValue {
                 argument_name,
-                error: ValueError::WrongArgumentType {
+                error: ValueError::MismatchedType {
                     expected_type: "integer",
                     actual_type: value.kind(),
                 },
@@ -301,7 +301,7 @@ impl<'a> CommandIter<'a> {
 
             Some(value) => Err(ArgumentError::InvalidValue {
                 argument_name,
-                error: ValueError::WrongArgumentType {
+                error: ValueError::MismatchedType {
                     expected_type: "address or label",
                     actual_type: value.kind(),
                 },
@@ -451,7 +451,7 @@ impl<'a> CommandIter<'a> {
         if let Some(label) = self.next_label_token()? {
             return Ok(Some(Argument::Label(label)));
         }
-        Err(ValueError::MalformedArgument {})
+        Err(ValueError::MalformedValue {})
     }
 
     /// Parse and consume the next [`Register`] argument.
