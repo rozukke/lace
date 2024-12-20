@@ -4,7 +4,7 @@ Available Commands:
     {35;1}help{0;35;2}({0;35}h{2}){0}
         Show this message.
 
-    {35;1}step{0;35;2}({0;35}s{2}){0} {32;3}COUNT{2}?{0}
+    {35;1}progress{0;35;2}({0;35}p{2}){0} {32;3}COUNT{2}?{0}
         Execute next instruction or jump into subroutine.
           {2}-{0} {3}COUNT{0}: {36}Integer{0} {3}(default: 1){0}
 
@@ -28,12 +28,12 @@ Available Commands:
           {2}-{0} {3}LOCATION{0}: {36}Register{0} {2}|{0} {36}Address{2}+{0} {2}|{0} {36}Label{2}+{0}
           {2}-{0} {3}VALUE{0}: Integer
 
+    {35;1}registers{0;35;2}({0;35}r{2}){0}
+        Print the value of all registers.
+
     {35;1}jump{0;35;2}({0;35}j{2}){0} {32;3}LOCATION{0}
         Unconditionally jump to an address/label.
           {2}-{0} {3}LOCATION{0}: {36}Address{2}+{0} {2}|{0} {36}Label{2}+{0}
-
-    {35;1}registers{0;35;2}({0;35}r{2}){0}
-        Print the value of all registers.
 
     {35;1}break add{0;35;2}({0;35}ba{2}){0} {32;3}LOCATION{2}?{0}
         Add breakpoint at an address/label/PC.
@@ -46,11 +46,11 @@ Available Commands:
     {35;1}break list{0;35;2}({0;35}ba{2}){0}
         List all breakpoints.
 
-    {35;1}source{0;35;2}({0;35}o{2}){0}
-        Print corresponding line of source code from address/label/PC.
+    {35;1}assembly{0;35;2}({0;35}a{2}){0}
+        Print corresponding line of assembly source code from address/label/PC.
           {2}-{0} {3}LOCATION{0}: {36}Address{2}+{0} {2}|{0} {36}Label{2}+{0} {3}(default: PC){0}
 
-    {35;1}eval{0;35;2}({0;35}v{2}){0}
+    {35;1}eval{0;35;2}({0;35}e{2}){0}
         Simulate an instruction. Note that labels cannot be created or modified.
           {2}-{0} Instruction: {36}OPCODE OPERANDS{2}...{0}
 
@@ -60,7 +60,7 @@ Available Commands:
     {35;1}quit{0;35;2}({0;35}q{2}){0}
         Stop debugger and continue execution as normal.
 
-    {35;1}exit{0;35;2}({0;35}e{2}){0}
+    {35;1}exit{0}
         Exit debugger and simulator.
 
 {3}Note:{0} {36}Address{2}+{0} and {36}Label{2}+{0} arguments can include an offset,

@@ -135,13 +135,13 @@ impl<'a> CommandIter<'a> {
             (CommandName::Quit,        &["quit", "q"]),
             (CommandName::Registers,   &["registers", "reg", "r"]),
             (CommandName::Reset,       &["reset"]),
-            (CommandName::Step,        &["step", "t"]), // advance
+            (CommandName::Step,        &["progress", "p"]),
             (CommandName::Next,        &["next", "n"]),
             (CommandName::Get,         &["get", "g"]),
             (CommandName::Set,         &["set", "s"]),
             (CommandName::Jump,        &["jump", "j"]),
-            (CommandName::Source,      &["source", "o"]), // assembly
-            (CommandName::Eval,        &["eval", "v"]),
+            (CommandName::Source,      &["assembly", "asm", "a"]),
+            (CommandName::Eval,        &["eval", "e"]),
             (CommandName::BreakList,   &["breaklist", "bl"]),
             (CommandName::BreakAdd,    &["breakadd", "ba"]),
             (CommandName::BreakRemove, &["breakremove", "br"]),
@@ -151,7 +151,7 @@ impl<'a> CommandIter<'a> {
         let break_subcommands: &[(_, &[_])] = &[
             (CommandName::BreakList,   &["list", "l"]),
             (CommandName::BreakAdd,    &["add", "a"]),
-            (CommandName::BreakRemove,  &["remove", "r"]),
+            (CommandName::BreakRemove, &["remove", "r"]),
         ];
 
         if let Some(command) = find_match(command_name, commands) {

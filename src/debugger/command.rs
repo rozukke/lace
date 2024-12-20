@@ -85,6 +85,8 @@ pub enum Location {
     Memory(MemoryLocation),
 }
 
+// TODO(feat): Offset from PC. Eg. `~3`, `~-x3`. Useful for `jump`
+
 #[derive(Debug)]
 pub enum MemoryLocation {
     PC,
