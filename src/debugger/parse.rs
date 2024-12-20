@@ -256,14 +256,9 @@ impl<'a> CommandIter<'a> {
 
             Some(Argument::Label(label)) => Ok(Location::Memory(MemoryLocation::Label(label))),
 
-            // TODO(feat): Accept pc offset arguments ?
-            Some(value) => Err(ArgumentError::InvalidValue {
-                argument_name,
-                error: ValueError::MismatchedType {
-                    expected_type: "register, address, or label",
-                    actual_type: value.kind(),
-                },
-            }),
+            Some(Argument::PCOffset(offset)) => {
+                Ok(Location::Memory(MemoryLocation::PCOffset(offset)))
+            }
 
             None => Err(ArgumentError::MissingArgument {
                 argument_name,

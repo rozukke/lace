@@ -76,16 +76,11 @@ impl fmt::Display for CommandName {
 }
 
 /// Register or memory location.
-/// `Location::Memory(MemoryLocation::PC)` is valid, but should not be
-/// constructed, as it would imply using `get`/`set` with the PC, which is not
-/// possible.
 #[derive(Debug)]
 pub enum Location {
     Register(Register),
     Memory(MemoryLocation),
 }
-
-// TODO(feat): Offset from PC. Eg. `~3`, `~-x3`. Useful for `jump`
 
 #[derive(Debug)]
 pub enum MemoryLocation {
