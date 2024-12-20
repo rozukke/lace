@@ -7,6 +7,8 @@ use console::Key;
 use crate::output::DEBUGGER_PRIMARY_COLOR;
 use crate::{dprint, dprintln, output::Output};
 
+// TODO(fix): Terminal source breaks with unicode characters
+
 /// Read from argument first, if `Some`. Then read from stream.
 #[allow(private_interfaces)] // Perhaps a bad practice
 #[derive(Debug)]

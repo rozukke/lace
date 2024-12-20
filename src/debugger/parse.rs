@@ -694,15 +694,23 @@ mod tests {
         let line = "  name  -54  r3 0x5812 Foo name2  Bar+0x04 4209";
         let mut iter = CommandIter::from(line);
 
+        let argument_name = "dummy";
+
         assert_eq!(iter.next_command_name_part(), Some("name"));
-        assert_eq!(iter.next_argument(), Ok(Some(Argument::Integer(-54))));
         assert_eq!(
-            iter.next_argument(),
+            iter.next_argument(argument_name),
+            Ok(Some(Argument::Integer(-54)))
+        );
+        assert_eq!(
+            iter.next_argument(argument_name),
             Ok(Some(Argument::Register(Register::R3)))
         );
-        assert_eq!(iter.next_argument(), Ok(Some(Argument::Integer(0x5812))));
         assert_eq!(
-            iter.next_argument(),
+            iter.next_argument(argument_name),
+            Ok(Some(Argument::Integer(0x5812)))
+        );
+        assert_eq!(
+            iter.next_argument(argument_name),
             Ok(Some(Argument::Label(Label {
                 name: "Foo".into(),
                 offset: 0,
@@ -710,15 +718,18 @@ mod tests {
         );
         assert_eq!(iter.next_command_name_part(), Some("name2"));
         assert_eq!(
-            iter.next_argument(),
+            iter.next_argument(argument_name),
             Ok(Some(Argument::Label(Label {
                 name: "Bar".into(),
                 offset: 0x04,
             })))
         );
-        assert_eq!(iter.next_argument(), Ok(Some(Argument::Integer(4209))));
-        assert_eq!(iter.next_argument(), Ok(None));
-        assert_eq!(iter.next_argument(), Ok(None));
+        assert_eq!(
+            iter.next_argument(argument_name),
+            Ok(Some(Argument::Integer(4209)))
+        );
+        assert_eq!(iter.next_argument(argument_name), Ok(None));
+        assert_eq!(iter.next_argument(argument_name), Ok(None));
     }
 
     macro_rules! expect_tokens {
@@ -749,8 +760,9 @@ mod tests {
 
     #[test]
     fn next_argument_works() {
+        let argument_name = "dummy";
         macro_rules! expect_argument { ( $($x:tt)* ) => {
-            expect_tokens!(next_argument(), $($x)*);
+            expect_tokens!(next_argument(argument_name), $($x)*);
         }}
         expect_argument!("", Ok(None));
         expect_argument!("   ", Ok(None));
@@ -768,7 +780,8 @@ mod tests {
     #[test]
     #[should_panic]
     fn semicolon_panics() {
-        expect_tokens!(next_argument(), "  ;  ", Err(_));
+        let argument_name = "dummy";
+        expect_tokens!(next_argument(argument_name), "  ;  ", Err(_));
     }
 
     #[test]
