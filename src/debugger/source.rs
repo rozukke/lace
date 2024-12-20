@@ -7,8 +7,6 @@ use console::Key;
 use crate::output::DEBUGGER_PRIMARY_COLOR;
 use crate::{dprint, dprintln, output::Output};
 
-// TODO(fix): Terminal source breaks with unicode characters
-
 /// Read from argument first, if `Some`. Then read from stream.
 #[allow(private_interfaces)] // Perhaps a bad practice
 #[derive(Debug)]
@@ -48,7 +46,7 @@ struct Terminal {
     buffer: String,
     /// Byte index.
     cursor: usize,
-    /// Visible line cursor in terminal.
+    /// Visible line cursor in terminal (char index, not byte index).
     visible_cursor: usize,
     /// History list and file.
     history: TerminalHistory,
@@ -284,7 +282,12 @@ impl Terminal {
         write!(self.term, "{}", current).unwrap();
 
         self.term
-            .move_cursor_left(self.get_current().len().saturating_sub(self.visible_cursor))
+            .move_cursor_left(
+                self.get_current()
+                    .chars()
+                    .count()
+                    .saturating_sub(self.visible_cursor),
+            )
             .unwrap();
 
         self.term.flush().unwrap();
@@ -313,22 +316,24 @@ impl Terminal {
                 // character
                 _ => {
                     self.update_next();
-                    self.buffer.insert(self.visible_cursor, ch);
+                    self.buffer.insert_char_index(self.visible_cursor, ch);
                     self.visible_cursor += 1;
                 }
             },
 
             Key::Backspace => {
                 self.update_next();
-                if self.visible_cursor > 0 && self.visible_cursor <= self.get_current().len() {
-                    self.buffer.remove(self.visible_cursor - 1);
+                if self.visible_cursor > 0
+                    && self.visible_cursor <= self.get_current().chars().count()
+                {
                     self.visible_cursor -= 1;
+                    self.buffer.remove_char_index(self.visible_cursor);
                 }
             }
             Key::Del => {
                 self.update_next();
-                if self.visible_cursor < self.get_current().len() {
-                    self.buffer.remove(self.visible_cursor);
+                if self.visible_cursor < self.get_current().chars().count() {
+                    self.buffer.remove_char_index(self.visible_cursor);
                 }
             }
 
@@ -339,7 +344,7 @@ impl Terminal {
                 }
             }
             Key::ArrowRight => {
-                if self.visible_cursor < self.get_current().len() {
+                if self.visible_cursor < self.get_current().chars().count() {
                     self.visible_cursor += 1;
                 }
             }
@@ -348,13 +353,13 @@ impl Terminal {
             Key::ArrowUp => {
                 if self.history.index > 0 {
                     self.history.index -= 1;
-                    self.visible_cursor = self.get_current().len();
+                    self.visible_cursor = self.get_current().chars().count();
                 }
             }
             Key::ArrowDown => {
                 if self.history.index < self.history.list.len() {
                     self.history.index += 1;
-                    self.visible_cursor = self.get_current().len();
+                    self.visible_cursor = self.get_current().chars().count();
                 }
             }
 
@@ -422,6 +427,40 @@ impl SourceRead for Terminal {
             self.read_line();
         }
         Some(self.get_next_command())
+    }
+}
+
+/// Extension trait for character-indexed string operations.
+trait CharIndexed {
+    /// Insert a character at a character index.
+    fn insert_char_index(&mut self, char_index: usize, ch: char);
+    /// Remove a character at a character index.
+    fn remove_char_index(&mut self, char_index: usize) -> char;
+
+    /// Returns the byte index from a character index, and the total character count.
+    fn count_chars_bytes(string: &str, char_index: usize) -> (usize, usize) {
+        let mut byte_index = string.len();
+        let mut char_count = 0;
+        for (i, (j, _)) in string.char_indices().enumerate() {
+            if i == char_index {
+                byte_index = j;
+            }
+            char_count += 1;
+        }
+        (byte_index, char_count)
+    }
+}
+
+impl CharIndexed for String {
+    fn insert_char_index(&mut self, char_index: usize, ch: char) {
+        let (byte_index, char_count) = Self::count_chars_bytes(self, char_index);
+        assert!(char_index <= char_count, "out-of-bounds char index");
+        self.insert(byte_index, ch)
+    }
+    fn remove_char_index(&mut self, char_index: usize) -> char {
+        let (byte_index, char_count) = Self::count_chars_bytes(self, char_index);
+        assert!(char_index < char_count, "out-of-bounds char index");
+        self.remove(byte_index)
     }
 }
 
