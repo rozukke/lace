@@ -262,19 +262,16 @@ impl Debugger {
             }
 
             Command::Get { location } => match location {
-                // TODO(feat): Draw box around value, mirroring `registers`
                 Location::Register(register) => {
-                    dprintln!(Always, Info, "Register R{}:", register as u16);
+                    dprintln!(Sometimes, Info, "Register R{}:", register as u16);
                     Output::Debugger(Condition::Always, Default::default())
                         .print_integer(state.reg(register as u16));
-                    dprintln!(Always);
                 }
                 Location::Memory(location) => {
                     let address = self.resolve_location_address(state, &location)?;
-                    dprintln!(Always, Info, "Memory at address 0x{:04x}:", address);
+                    dprintln!(Sometimes, Info, "Memory at address 0x{:04x}:", address);
                     Output::Debugger(Condition::Always, Default::default())
                         .print_integer(state.mem(address));
-                    dprintln!(Always);
                 }
             },
 
@@ -311,6 +308,7 @@ impl Debugger {
             }
 
             Command::Registers => {
+                dprintln!(Sometimes, Info, "Registers:");
                 Output::Debugger(Condition::Always, Default::default()).print_registers(state);
             }
 

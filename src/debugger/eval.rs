@@ -22,7 +22,7 @@ fn eval_inner(state: &mut RunState, line: &'static str) -> Result<()> {
     // Parse
     let stmt = AsmParser::new_simple(line)?.parse_simple()?;
 
-    // Don't allow *condition* branch instructions
+    // Don't allow any branch instructions
     // Since CC is set to 0b000 at start, this could lead to confusion when `BR` instructions are
     // not executed
     if let AirStmt::Branch { .. } = stmt {
@@ -43,6 +43,7 @@ fn eval_inner(state: &mut RunState, line: &'static str) -> Result<()> {
     let instr = asm.emit()?;
     // Execute
     RunState::OP_TABLE[(instr >> 12) as usize](state, instr);
+
     Ok(())
 }
 

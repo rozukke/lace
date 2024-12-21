@@ -176,7 +176,7 @@ impl Output {
         for i in 0..8 {
             self.print("\x1b[2m│\x1b[0m");
             self.print(format_args!(" \x1b[1mR\x1b[1m{}\x1b[0m  ", i));
-            self.print_integer(state.reg(i));
+            self.print_integer_inner(state.reg(i));
             self.print(" \x1b[2m│\x1b[0m\n");
         }
 
@@ -192,8 +192,24 @@ impl Output {
         self.print("\x1b[2m└────────────────────────────────────┘\x1b[0m\n");
     }
 
-    /// Prints a register as hex, signed decimal, unsigned decimal, and character.
+    /// Prints a register as hex, signed decimal, unsigned decimal, and character, in a fancy
+    /// table.
     pub fn print_integer(&self, value: u16) {
+        if Self::is_minimal() {
+            self.print_decimal(value);
+            self.print('\n');
+            return;
+        }
+        self.print("\x1b[2m┌────────────────────────────────┐\x1b[0m\n");
+        self.print("\x1b[2m│    \x1b[3mhex     int    uint    char\x1b[0m\x1b[2m │\x1b[0m\n");
+        self.print("\x1b[2m│\x1b[0m ");
+        self.print_integer_inner(value);
+        self.print(" \x1b[2m│\x1b[0m\n");
+        self.print("\x1b[2m└────────────────────────────────┘\x1b[0m\n");
+    }
+
+    /// Prints a register as hex, signed decimal, unsigned decimal, and character.
+    fn print_integer_inner(&self, value: u16) {
         if Self::is_minimal() {
             self.print_decimal(value);
             return;
