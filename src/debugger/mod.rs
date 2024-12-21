@@ -319,7 +319,9 @@ impl Debugger {
             }
 
             Command::Source { location } => {
-                self.show_source(state, location);
+                if let Some(address) = self.resolve_location_address(state, &location) {
+                    self.show_source(address);
+                }
             }
 
             Command::Eval { instruction } => {
@@ -400,11 +402,7 @@ impl Debugger {
         }
     }
 
-    fn show_source(&self, state: &RunState, location: MemoryLocation) {
-        let Some(address) = self.resolve_location_address(state, &location) else {
-            return;
-        };
-
+    fn show_source(&self, address: u16) {
         let orig = self.orig();
         if address < orig || (address - orig) as usize >= self.ast.len() {
             dprintln!(
