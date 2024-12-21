@@ -1,7 +1,7 @@
 use std::{
     cmp::Ordering,
     i16,
-    io::{stdin, stdout, IsTerminal, Read, Write},
+    io::{self, stdin, stdout, IsTerminal, Read, Write},
     u16, u32, u8, usize,
 };
 
@@ -432,11 +432,21 @@ impl RunState {
 fn read_input() -> u8 {
     if stdin().is_terminal() {
         let cons = Term::stdout();
-        let ch = cons.read_char().unwrap();
+        let ch = cons
+            .read_char()
+            .expect("read from interactive terminal should not fail");
         ch as u8
     } else {
         let mut buf = [0; 1];
-        stdin().read_exact(&mut buf).unwrap();
+        if let Err(err) = stdin().read_exact(&mut buf) {
+            match err.kind() {
+                io::ErrorKind::UnexpectedEof => {
+                    eprintln!("unexpected end of input file stream.");
+                    std::process::exit(1);
+                }
+                _ => panic!("failed to read character from stdin: {:?}", err),
+            }
+        }
         buf[0]
     }
 }
