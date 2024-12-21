@@ -28,6 +28,8 @@ macro_rules! dprint {
     ( $fmt:literal $($tt:tt)* ) => {{
         $crate::output::Output::Debugger($fmt);
     }};
+
+    // TODO(refactor): Match more patterns for helpful compile errors
 }
 
 /// Print to [`Output::Debugger`], with a newline.
@@ -48,6 +50,10 @@ macro_rules! dprintln {
             concat!($fmt, "\n")
             $(, $($tt)* )?
         );
+    }};
+
+    ( $condition:expr, $category:expr ) => {{
+        compile_error!("Either remove the category or include a format string");
     }};
 
     // Let `dprint` issue any other compiler errors

@@ -9,10 +9,10 @@ pub use self::breakpoint::{Breakpoint, Breakpoints};
 use self::command::{Command, Label, Location, MemoryLocation};
 use self::source::{Source, SourceRead};
 use crate::air::AsmLine;
-use crate::dprintln;
 use crate::output::{Condition, Output};
 use crate::runtime::RunState;
 use crate::symbol::with_symbol_table;
+use crate::{dprint, dprintln};
 
 #[derive(Debug)]
 pub struct DebuggerOptions {
@@ -359,10 +359,14 @@ impl Debugger {
                 } else {
                     dprintln!(Always, Info, "Breakpoints:");
                     for (i, breakpoint) in self.breakpoints.iter().enumerate() {
-                        dprintln!(
+                        if Output::is_minimal() {
+                            dprintln!(Always, Info, "0x{:04x}", breakpoint.address);
+                            continue;
+                        }
+                        dprint!(
                             Always,
                             Info,
-                            "{} 0x{:04x}",
+                            "{} 0x{:04x}  ──  ",
                             if i + 1 == self.breakpoints.len() {
                                 "╰─"
                             } else {
@@ -370,8 +374,8 @@ impl Debugger {
                             },
                             breakpoint.address
                         );
-                        // TODO(feat): This could print the instruction at the
-                        // address, similar to `source` command
+                        self.show_source_line(breakpoint.address);
+                        dprintln!(Always);
                     }
                 }
             }
@@ -403,21 +407,9 @@ impl Debugger {
     }
 
     fn show_source(&self, address: u16) {
-        let orig = self.orig();
-        if address < orig || (address - orig) as usize >= self.ast.len() {
-            dprintln!(
-                Always,
-                Info,
-                "Address 0x{:04x} does not correspond to an instruction",
-                address
-            );
+        let Some(stmt) = self.get_source_statement(address) else {
             return;
         };
-        let stmt = self
-            .ast
-            .get((address - orig) as usize)
-            .expect("index was checked to be within bounds above");
-
         let report = miette::miette!(
             severity = miette::Severity::Advice,
             labels = vec![miette::LabeledSpan::at(
@@ -428,6 +420,34 @@ impl Debugger {
         )
         .with_source_code(self.src);
         eprintln!("{:?}", report);
+    }
+
+    fn show_source_line(&self, address: u16) {
+        let Some(stmt) = self.get_source_statement(address) else {
+            return;
+        };
+        let start = stmt.span.offs();
+        let end = start + stmt.span.len();
+        let line = &self.src[start..end];
+        dprint!(Always, Normal, "{}", line);
+    }
+
+    fn get_source_statement(&self, address: u16) -> Option<&AsmLine> {
+        let orig = self.orig();
+        if address < orig || (address - orig) as usize >= self.ast.len() {
+            dprintln!(
+                Always,
+                Info,
+                "Address 0x{:04x} does not correspond to an instruction",
+                address
+            );
+            return None;
+        };
+        let stmt = self
+            .ast
+            .get((address - orig) as usize)
+            .expect("index was checked to be within bounds above");
+        Some(stmt)
     }
 
     fn resolve_location_address(&self, state: &RunState, location: &MemoryLocation) -> Option<u16> {
