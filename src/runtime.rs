@@ -439,12 +439,11 @@ fn read_input() -> u8 {
     } else {
         let mut buf = [0; 1];
         if let Err(err) = stdin().read_exact(&mut buf) {
-            match err.kind() {
-                io::ErrorKind::UnexpectedEof => {
-                    eprintln!("unexpected end of input file stream.");
-                    std::process::exit(1);
-                }
-                _ => panic!("failed to read character from stdin: {:?}", err),
+            if let io::ErrorKind::UnexpectedEof = err.kind() {
+                eprintln!("unexpected end of input file stream.");
+                std::process::exit(1);
+            } else {
+                panic!("failed to read character from stdin: {:?}", err)
             }
         }
         buf[0]
