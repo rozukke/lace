@@ -15,6 +15,8 @@ use colored::Colorize;
 use console::Term;
 use miette::Result;
 
+pub const USER_MEMORY_END: u16 = 0xFE00;
+
 macro_rules! exception {
     ( $fmt:literal $($tt:tt)* ) => {{
         eprintln!(
@@ -154,7 +156,7 @@ impl RunEnvironment {
                     continue;
                 }
                 // Debugger should catch this on next loop, and warn
-                if self.state.pc >= 0xFE00 {
+                if self.state.pc >= USER_MEMORY_END {
                     continue;
                 }
                 // From this point, next instruction will always be executed
@@ -169,8 +171,8 @@ impl RunEnvironment {
                 );
                 break; // Halt was triggered
             }
-            if self.state.pc >= 0xFE00 {
-                exception!("entered protected memory area >= 0xFE00");
+            if self.state.pc >= USER_MEMORY_END {
+                exception!("entered protected memory area >= {}", USER_MEMORY_END);
             }
 
             let instr = self.state.mem[self.state.pc as usize];

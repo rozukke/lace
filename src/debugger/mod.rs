@@ -10,7 +10,7 @@ use self::command::{Command, Label, Location, MemoryLocation};
 use self::source::{Source, SourceRead};
 use crate::air::AsmLine;
 use crate::output::{Condition, Output};
-use crate::runtime::RunState;
+use crate::runtime::{RunState, USER_MEMORY_END};
 use crate::symbol::with_symbol_table;
 use crate::{dprint, dprintln};
 
@@ -143,7 +143,7 @@ impl Debugger {
     /// Read and execute user commands, until an [`Action`] is raised.
     pub(super) fn next_action(&mut self, state: &mut RunState) -> Action {
         // 0xFFFF signifies a HALT so don't warn for that
-        if (0xFE00..0xFFFF).contains(&state.pc()) {
+        if (USER_MEMORY_END..0xFFFF).contains(&state.pc()) {
             dprintln!(
                 Always,
                 Error,
@@ -361,13 +361,13 @@ impl Debugger {
 
             Command::Jump { location } => {
                 let address = self.resolve_location_address(state, &location)?;
-                // TODO(refactor): Use constant for `0xFE00`
-                if !(self.orig()..0xFE00).contains(&address) {
+                if !(self.orig()..USER_MEMORY_END).contains(&address) {
                     dprintln!(
                         Always,
                         Error,
-                        "Address is not in user address space. Must be in range [0x{:04x}, 0xFE00).",
+                        "Address is not in user address space. Must be in range [0x{:04x}, 0x{:04x}).",
                         self.orig(),
+                        USER_MEMORY_END,
                     );
                     return None;
                 }
@@ -526,7 +526,7 @@ impl Debugger {
     fn add_address_offset(&self, address: u16, offset: i16) -> Option<u16> {
         let address = address as i16 + offset;
         // Check address in user program area
-        if address >= self.orig() as i16 && (address as u16) < 0xFE00 {
+        if address >= self.orig() as i16 && (address as u16) < USER_MEMORY_END {
             Some(address as u16)
         } else {
             None
