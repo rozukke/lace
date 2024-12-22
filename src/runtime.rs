@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    debugger::{Action, Debugger, DebuggerOptions, RelevantInstr},
+    debugger::{Action, Debugger, DebuggerOptions, SignificantInstr},
     dprintln, env,
     output::{Condition, Output},
     Air,
@@ -131,7 +131,7 @@ impl RunEnvironment {
             if let Some(debugger) = &mut self.debugger {
                 Output::Debugger(Condition::Always, Default::default()).start_new_line();
 
-                match debugger.wait_for_action(&mut self.state) {
+                match debugger.next_action(&mut self.state) {
                     Action::Proceed => (),
                     Action::StopDebugger => {
                         dprintln!(Always, Warning, "Stopping debugger.");
@@ -148,8 +148,8 @@ impl RunEnvironment {
                 // If still stuck on HALT
                 // Never *execute* HALT while debugger is active
                 // Wait for pc to change, such as `reset`, `exit`, or `quit`
-                if RelevantInstr::try_from(self.state.mem[self.state.pc as usize])
-                    == Ok(RelevantInstr::TrapHalt)
+                if SignificantInstr::try_from(self.state.mem[self.state.pc as usize])
+                    == Ok(SignificantInstr::TrapHalt)
                 {
                     continue;
                 }
