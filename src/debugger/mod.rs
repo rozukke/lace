@@ -206,13 +206,11 @@ impl Debugger {
 
     /// An 'interrupt' here is a breakpoint or `HALT` trap.
     fn check_interrupts(&mut self, pc: u16, instr: Option<RelevantInstr>) {
-        // TODO(fix): Breakpoint at a `HALT` will alternate between their warnings when stepping
+        // Always break from `continue|finish|step|next` on a breakpoint or `HALT`
+        // Breaking on `RET` (for `finish`), and end of `step` and `next` is handled later
 
-        // Always break from `continue|finish|step|next` on a breakpoint or HALT
-        // Breaking on `RET` (for `finish`) is handled later
-        // Likewise for completing `step` or `next`
-        //
-        // Remember if previous cycle paused on the same breakpoint. If so, don't break now.
+        // Remember if previous cycle paused on the same breakpoint
+        // If so, don't break now
         if let Some(breakpoint) = self
             .breakpoints
             .get(pc)
@@ -229,13 +227,18 @@ impl Debugger {
             }
             self.current_breakpoint = Some(pc);
             self.status = Status::WaitForAction;
-        } else {
-            self.current_breakpoint = None;
-            if instr == Some(RelevantInstr::TrapHalt) {
-                dprintln!(Always, Warning, "Reached HALT. Pausing execution.");
-                self.status = Status::WaitForAction;
-            }
+            return;
         }
+
+        // Always break on `HALT` (unlike breakpoints)
+        if instr == Some(RelevantInstr::TrapHalt) {
+            dprintln!(Always, Warning, "Reached HALT. Pausing execution.");
+            self.status = Status::WaitForAction;
+            return;
+        }
+
+        // Only reset current breakpoint if not interrupted.
+        self.current_breakpoint = None;
     }
 
     fn next_action(&mut self, state: &mut RunState) -> Option<Action> {
