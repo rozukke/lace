@@ -8,10 +8,9 @@ Available Commands:
         Execute next instruction or jump into subroutine.
           {2}-{0} {3}COUNT{0}: {36}Integer{0} {3}(default: 1){0}
 
-    {35;1}next{0;35;2}({0;35}n{2}){0} {32;3}COUNT{2}?{0}
+    {35;1}next{0;35;2}({0;35}n{2}){0}
         Execute next instruction or whole subroutine (including any nested
             subroutine calls).
-          {2}-{0} {3}COUNT{0}: {36}Integer{0} {3}(default: 1){0}
 
     {35;1}continue{0;35;2}({0;35}c{2}){0}
         Continue execution until breakpoint or {1}HALT{0}.
@@ -20,11 +19,11 @@ Available Commands:
         Continue execution until end of subroutine, breakpoint, or {1}HALT{0}.
 
     {35;1}get{0;35;2}({0;35}g{2}){0} {32;3}LOCATION{2}?{0}
-        Print the value at a register, address, or label.
+        Print the value at a register or address.
           {2}-{0} {3}LOCATION{0}: {36}Register{0} {2}|{0} {36}Address{2}+{0}
 
     {35;1}set{0;35;2}({0;35}s{2}){0} {32;3}LOCATION VALUE{0}
-        Set the value at a register, address, or label.
+        Set the value at a register or address.
           {2}-{0} {3}LOCATION{0}: {36}Register{0} {2}|{0} {36}Address{2}+{0}
           {2}-{0} {3}VALUE{0}: Integer
 
@@ -32,22 +31,22 @@ Available Commands:
         Print the value of all registers.
 
     {35;1}jump{0;35;2}({0;35}j{2}){0} {32;3}LOCATION{0}
-        Unconditionally jump to an address/label.
+        Unconditionally jump to an address.
           {2}-{0} {3}LOCATION{0}: {36}Address{2}+{0} {2}|{0}
 
     {35;1}break add{0;35;2}({0;35}ba{2}){0} {32;3}LOCATION{2}?{0}
-        Add breakpoint at an address/label/PC.
+        Add breakpoint at an address.
           {2}-{0} {3}LOCATION{0}: {36}Address{2}+{0} {2}|{0} {3}(default: PC){0}
 
     {35;1}break remove{0;35;2}({0;35}ba{2}){0} {32;3}LOCATION{2}?{0}
-        Remove breakpoint at an address/label/PC.
+        Remove breakpoint at an address.
           {2}-{0} {3}LOCATION{0}: {36}Address{2}+{0} {2}|{0} {3}(default: PC){0}
 
     {35;1}break list{0;35;2}({0;35}ba{2}){0}
         List all breakpoints.
 
     {35;1}assembly{0;35;2}({0;35}a{2}){0}
-        Print corresponding line of assembly source code from address/label/PC.
+        Print corresponding line of assembly source code from address.
           {2}-{0} {3}LOCATION{0}: {36}Address{2}+{0} {2}|{0} {3}(default: PC){0}
 
     {35;1}eval{0;35;2}({0;35}e{2}){0}
