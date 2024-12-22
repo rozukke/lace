@@ -142,8 +142,18 @@ impl Debugger {
 
     /// Read and execute user commands, until an [`Action`] is raised.
     pub(super) fn next_action(&mut self, state: &mut RunState) -> Action {
+        if state.pc() < self.orig() {
+            // This shouldn't occur anyway
+            dprintln!(
+                Always,
+                Error,
+                // TODO(feat): Better message
+                "Out of bounds of user program memory. Pausing execution."
+            );
+            self.status = Status::WaitForAction;
+        }
         // 0xFFFF signifies a HALT so don't warn for that
-        if (USER_MEMORY_END..0xFFFF).contains(&state.pc()) {
+        if state.pc() >= USER_MEMORY_END && state.pc() != 0xFFFF {
             dprintln!(
                 Always,
                 Error,
@@ -533,7 +543,7 @@ impl Debugger {
         }
     }
 
-    fn orig(&self) -> u16 {
+    pub(super) fn orig(&self) -> u16 {
         self.initial_state.pc()
     }
 

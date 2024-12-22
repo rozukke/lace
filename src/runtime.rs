@@ -156,7 +156,7 @@ impl RunEnvironment {
                     continue;
                 }
                 // Debugger should catch this on next loop, and warn
-                if self.state.pc >= USER_MEMORY_END {
+                if self.state.pc < debugger.orig() || self.state.pc >= USER_MEMORY_END {
                     continue;
                 }
                 // From this point, next instruction will always be executed
@@ -171,6 +171,7 @@ impl RunEnvironment {
                 );
                 break; // Halt was triggered
             }
+            // TODO(feat): Throw exception for pc < orig
             if self.state.pc >= USER_MEMORY_END {
                 exception!("entered protected memory area >= {}", USER_MEMORY_END);
             }
