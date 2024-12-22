@@ -382,7 +382,14 @@ impl Debugger {
             }
 
             Command::Source { location } => {
-                // TODO(feat): Show warning if memory has been changed
+                // TODO(feat): Only check memory in context range
+                if !state.memory_equals(&self.initial_state) {
+                    dprintln!(
+                        Always,
+                        Warning,
+                        "Note: Program memory may have been modified."
+                    );
+                }
                 if let Some(address) = self.resolve_location_address(state, &location) {
                     self.asm_source.show_line_context(address);
                 }

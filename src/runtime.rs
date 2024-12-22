@@ -242,6 +242,10 @@ impl RunState {
         self.flag
     }
 
+    pub(super) fn memory_equals(&self, other: &RunState) -> bool {
+        self.mem == other.mem
+    }
+
     #[inline]
     fn s_ext(mut val: u16, bits: u32) -> u16 {
         debug_assert!(bits > 0 && bits < 16);
