@@ -15,7 +15,10 @@ use colored::Colorize;
 use console::Term;
 use miette::Result;
 
+/// First address which is out of bounds of user memory.
 pub const USER_MEMORY_END: u16 = 0xFE00;
+/// Sentinel value, which the PC is set to when a `HALT` is encountered.
+pub const HALT_ADDRESS: u16 = 0xFFFF;
 
 macro_rules! exception {
     ( $fmt:literal $($tt:tt)* ) => {{
@@ -505,7 +508,7 @@ impl RunState {
             }
             // halt
             0x25 => {
-                self.pc = u16::MAX;
+                self.pc = HALT_ADDRESS;
                 println!("\n{:>12}", "Halted".cyan());
             }
             // putn

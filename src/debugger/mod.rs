@@ -10,7 +10,7 @@ use self::command::{Command, Label, Location, MemoryLocation};
 use self::source::{Source, SourceRead};
 use crate::air::AsmLine;
 use crate::output::{Condition, Output};
-use crate::runtime::{RunState, USER_MEMORY_END};
+use crate::runtime::{RunState, HALT_ADDRESS, USER_MEMORY_END};
 use crate::symbol::with_symbol_table;
 use crate::{dprint, dprintln};
 
@@ -152,8 +152,7 @@ impl Debugger {
             );
             self.status = Status::WaitForAction;
         }
-        // 0xFFFF signifies a HALT so don't warn for that
-        if state.pc() >= USER_MEMORY_END && state.pc() != 0xFFFF {
+        if state.pc() >= USER_MEMORY_END && state.pc() != HALT_ADDRESS {
             dprintln!(
                 Always,
                 Error,
