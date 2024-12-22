@@ -8,6 +8,7 @@ use crate::output::DEBUGGER_PRIMARY_COLOR;
 use crate::{dprint, dprintln, output::Output};
 
 /// Read from argument first, if `Some`. Then read from stream.
+// TODO(rename): to `CommandSource`
 #[allow(private_interfaces)] // Perhaps a bad practice
 #[derive(Debug)]
 pub struct Source {

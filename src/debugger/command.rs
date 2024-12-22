@@ -90,6 +90,8 @@ pub enum MemoryLocation {
 }
 
 /// Label with word offset.
+// TODO(opt): could use `&'static str` which refers to a key of the static symbol table...
+// ...this means it would need to be resolved inside some parsing function
 #[derive(Debug, PartialEq)]
 pub struct Label {
     pub name: String,
@@ -99,6 +101,7 @@ pub struct Label {
 impl TryFrom<&str> for Command {
     type Error = CommandError;
 
+    /// Assumes line is non-empty.
     fn try_from(line: &str) -> std::result::Result<Self, Self::Error> {
         let mut iter = CommandIter::from(line);
 

@@ -120,6 +120,8 @@ impl<'a> CommandIter<'a> {
     /// Parse and consume command name.
     ///
     /// Considers multi-word command names (i.e. subcommands) as one name. Eg. `break add`.
+    ///
+    /// Assumes line is non-empty.
     pub fn get_command_name(&mut self) -> Result<CommandName, CommandError> {
         let command_name = self.next_command_name_part();
         // Command source should always return a string containing non-whitespace
