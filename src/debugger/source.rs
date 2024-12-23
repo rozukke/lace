@@ -69,10 +69,10 @@ const PROMPT: &str = "DEBUGGER> ";
 fn echo_command(command: Option<&str>) {
     // Echo prompt and command for non-terminal source
     // Equivalent code found in terminal source
-    if !Output::is_minimal() || command.is_some() {
-        dprint!(Always, Normal, "\x1b[1m{}", PROMPT);
+    if command.is_some() {
+        dprint!(Sometimes, Normal, "\x1b[1m{}", PROMPT);
         dprintln!(
-            Always,
+            Sometimes,
             Normal,
             "{}",
             command.unwrap_or("\x1b[3m(end of input)").trim()

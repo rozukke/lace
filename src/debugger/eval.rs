@@ -31,7 +31,7 @@ fn eval_inner(state: &mut RunState, line: &'static str) -> Result<()> {
             Error,
             "Evaluation of `BR*` instructions is not supported."
         );
-        dprintln!(Always, Error, "Consider using `jump` command instead.");
+        dprintln!(Sometimes, Error, "Consider using `jump` command instead.");
         return Ok(());
     }
 

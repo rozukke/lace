@@ -14,8 +14,6 @@ use crate::runtime::{RunState, HALT_ADDRESS, USER_MEMORY_END};
 use crate::symbol::with_symbol_table;
 use crate::{dprint, dprintln};
 
-// TODO(fix): Decide which messages should be `Sometimes`
-
 /// Leave this as a struct, in case more options are added in the future. Plus it is more explicit.
 #[derive(Debug)]
 pub struct DebuggerOptions {
@@ -272,7 +270,7 @@ impl Debugger {
         }
         if self.instruction_count > 0 {
             dprintln!(
-                Always,
+                Sometimes,
                 Info,
                 "Executed {} instruction{}.",
                 self.instruction_count,
@@ -294,23 +292,24 @@ impl Debugger {
                 // Other fields either:
                 //  - Shouldn't be mutated/reset: `initial_state`, `asm_source`, `command_source`, `breakpoints`
                 //  - Or would be redundant to do so: `status`, `current_breakpoint`, `instruction_count`
-                dprintln!(Always, Warning, "Reset program to initial state.");
+                dprintln!(Sometimes, Warning, "Reset program to initial state.");
             }
 
             Command::Help => {
+                // TODO(fix): Remove attributes if `--minimal`
                 dprintln!(Always, Special, "\n{}", include_str!("./help.txt"));
             }
 
             Command::Continue => {
                 self.status = Status::Continue;
                 self.should_echo_pc = true;
-                dprintln!(Always, Info, "Continuing...");
+                dprintln!(Sometimes, Info, "Continuing...");
             }
 
             Command::Finish => {
                 self.status = Status::Finish;
                 self.should_echo_pc = true;
-                dprintln!(Always, Info, "Finishing subroutine...");
+                dprintln!(Sometimes, Info, "Finishing subroutine...");
             }
 
             Command::Step { count } => {
@@ -343,7 +342,7 @@ impl Debugger {
                 Location::Register(register) => {
                     *state.reg_mut(register as u16) = value;
                     dprintln!(
-                        Always,
+                        Sometimes,
                         Warning,
                         "Updated register R{} to 0x{:04x}.",
                         register as u16,
@@ -354,7 +353,7 @@ impl Debugger {
                     let address = self.resolve_location_address(state, &location)?;
                     *state.mem_mut(address) = value;
                     dprintln!(
-                        Always,
+                        Sometimes,
                         Warning,
                         "Updated memory at address 0x{:04x} to 0x{:04x}.",
                         address,
@@ -382,7 +381,12 @@ impl Debugger {
                 }
                 *state.pc_mut() = address;
                 self.should_echo_pc = true;
-                dprintln!(Always, Warning, "Set program counter to 0x{:04x}", address);
+                dprintln!(
+                    Sometimes,
+                    Warning,
+                    "Set program counter to 0x{:04x}",
+                    address
+                );
             }
 
             Command::Eval { instruction } => {
@@ -394,12 +398,13 @@ impl Debugger {
                 // TODO(feat): Only check memory in context range
                 if !state.memory_equals(&self.initial_state) {
                     dprintln!(
-                        Always,
+                        Sometimes,
                         Warning,
                         "Note: Program memory may have been modified."
                     );
                 }
                 if let Some(address) = self.resolve_location_address(state, &location) {
+                    // TODO(feat): Show single line if `--minimal`
                     self.asm_source.show_line_context(address);
                 }
             }
@@ -417,14 +422,19 @@ impl Debugger {
                         address
                     );
                 } else {
-                    dprintln!(Always, Warning, "Added breakpoint at 0x{:04x}.", address);
+                    dprintln!(Sometimes, Warning, "Added breakpoint at 0x{:04x}.", address);
                 }
             }
 
             Command::BreakRemove { location } => {
                 let address = self.resolve_location_address(state, &location)?;
                 if self.breakpoints.remove(address) {
-                    dprintln!(Always, Warning, "Removed breakpoint at 0x{:04x}.", address);
+                    dprintln!(
+                        Sometimes,
+                        Warning,
+                        "Removed breakpoint at 0x{:04x}.",
+                        address
+                    );
                 } else {
                     dprintln!(Always, Error, "No breakpoint exists at 0x{:04x}.", address);
                 }
@@ -432,9 +442,9 @@ impl Debugger {
 
             Command::BreakList => {
                 if self.breakpoints.is_empty() {
-                    dprintln!(Always, Info, "No breakpoints exist.");
+                    dprintln!(Sometimes, Info, "No breakpoints exist.");
                 } else {
-                    dprintln!(Always, Info, "Breakpoints:");
+                    dprintln!(Sometimes, Info, "Breakpoints:");
                     for (i, breakpoint) in self.breakpoints.iter().enumerate() {
                         if Output::is_minimal() {
                             dprintln!(Always, Info, "0x{:04x}", breakpoint.address);
@@ -474,7 +484,7 @@ impl Debugger {
                 Ok(command) => command,
                 Err(error) => {
                     dprintln!(Always, Error, "{}", error);
-                    dprintln!(Always, Error, "Type `help` for a list of commands.");
+                    dprintln!(Sometimes, Error, "Type `help` for a list of commands.");
                     continue;
                 }
             };
@@ -522,7 +532,7 @@ impl Debugger {
         };
 
         dprintln!(
-            Always,
+            Sometimes,
             Info,
             "Label `{}` is at address 0x{:04x}.",
             label.name,
@@ -593,7 +603,7 @@ impl AsmSource {
         if address < self.orig || (address - self.orig) as usize >= self.ast.len() {
             dprintln!(
                 Always,
-                Info,
+                Error,
                 "Address 0x{:04x} does not correspond to an instruction",
                 address
             );
