@@ -318,46 +318,63 @@ struct DebuggerWriter {
 }
 impl fmt::Write for DebuggerWriter {
     fn write_str(&mut self, string: &str) -> fmt::Result {
-        if self.minimal {
-            eprint!("{}", Decolored::new(string));
-            return Ok(());
-        }
-
         let color = match self.category {
             Category::Normal => DEBUGGER_PRIMARY_COLOR,
             Category::Info => DEBUGGER_PRIMARY_COLOR,
             Category::Warning => "33",
             Category::Error => "31",
 
+            // Special behaviour. Note the return at the end of this branch
             Category::Special => {
-                // Acts similar to `Colored::fmt`
-                eprint!("\x1b[{}m", DEBUGGER_PRIMARY_COLOR);
-
                 let mut chars = string.chars();
-                while let Some(ch) = chars.next() {
-                    if ch != '{' {
-                        eprint!("{}", ch);
-                        continue;
-                    }
 
-                    eprint!("\x1b[");
-                    for ch in chars.by_ref() {
-                        if ch == '}' {
-                            break;
+                if self.minimal {
+                    // Remove all `{...}`
+                    while let Some(ch) = chars.next() {
+                        if ch != '{' {
+                            eprint!("{}", ch);
+                            continue;
                         }
-                        eprint!("{}", ch);
-                        // Re-apply color when reset
-                        if ch == '0' {
-                            eprint!(";{}", DEBUGGER_PRIMARY_COLOR);
+                        for ch in chars.by_ref() {
+                            if ch == '}' {
+                                break;
+                            }
                         }
                     }
-                    eprint!("m");
+                } else {
+                    // Replace `{...}` with `\x1b[...m`
+                    // Acts similar to `Colored::fmt`
+                    eprint!("\x1b[{}m", DEBUGGER_PRIMARY_COLOR);
+                    while let Some(ch) = chars.next() {
+                        if ch != '{' {
+                            eprint!("{}", ch);
+                            continue;
+                        }
+
+                        eprint!("\x1b[");
+                        for ch in chars.by_ref() {
+                            if ch == '}' {
+                                break;
+                            }
+                            eprint!("{}", ch);
+                            // Re-apply color when reset
+                            if ch == '0' {
+                                eprint!(";{}", DEBUGGER_PRIMARY_COLOR);
+                            }
+                        }
+                        eprint!("m");
+                    }
                 }
 
                 LineTracker.write_str(string).unwrap();
                 return Ok(());
             }
         };
+
+        if self.minimal {
+            eprint!("{}", Decolored::new(string));
+            return Ok(());
+        }
 
         eprint!("{}", Colored::new(color, string));
         LineTracker.write_str(string).unwrap();

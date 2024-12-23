@@ -296,7 +296,6 @@ impl Debugger {
             }
 
             Command::Help => {
-                // TODO(fix): Remove attributes if `--minimal`
                 dprintln!(Always, Special, "\n{}", include_str!("./help.txt"));
             }
 
