@@ -85,7 +85,7 @@ fn main() -> miette::Result<()> {
     miette::set_hook(Box::new(|_| {
         Box::new(
             miette::MietteHandlerOpts::new() //
-                .context_lines(6)
+                .context_lines(lace::DIAGNOSTIC_CONTEXT_LINES)
                 .build(),
         )
     }))?;

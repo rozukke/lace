@@ -12,7 +12,7 @@ use crate::air::AsmLine;
 use crate::output::{Condition, Output};
 use crate::runtime::{RunState, HALT_ADDRESS, USER_MEMORY_END};
 use crate::symbol::with_symbol_table;
-use crate::{dprint, dprintln};
+use crate::{dprint, dprintln, DIAGNOSTIC_CONTEXT_LINES};
 
 /// Leave this as a struct, in case more options are added in the future. Plus it is more explicit.
 #[derive(Debug)]
@@ -394,20 +394,8 @@ impl Debugger {
             }
 
             Command::Source { location } => {
-                // TODO(feat): Only check memory in context range (difficult!)
-                // if !state.memory_equals(&self.initial_state) {
-                //     dprintln!(
-                //         Sometimes,
-                //         Warning,
-                //         "Note: Program memory may have been modified."
-                //     );
-                // }
                 if let Some(address) = self.resolve_location_address(state, &location) {
-                    if Output::is_minimal() {
-                        self.asm_source.show_single_line(address);
-                    } else {
-                        self.foo(state, address);
-                    }
+                    self.show_assembly_source(state, address);
                 }
             }
 
@@ -495,6 +483,31 @@ impl Debugger {
         }
     }
 
+    /// Wrapper for [`AsmSource::get_source_statement`].
+    ///
+    /// Show warning if the memory corresponding to the lines displayed may have been changed.
+    fn show_assembly_source(&self, state: &RunState, address: u16) {
+        if Output::is_minimal() {
+            self.asm_source.show_single_line(address);
+            return;
+        }
+
+        let Some(stmt) = self.asm_source.get_source_statement(address) else {
+            return;
+        };
+
+        let (start, end) = self.asm_source.get_context_range(self.orig(), stmt);
+        if !state.memory_equals(&self.initial_state, start, end) {
+            dprintln!(
+                Sometimes,
+                Warning,
+                "Note: Program memory may have been modified."
+            );
+        }
+
+        self.asm_source.show_line_context(address);
+    }
+
     /// Returns `None` if `location` is out of bounds or an invalid label.
     fn resolve_location_address(&self, state: &RunState, location: &MemoryLocation) -> Option<u16> {
         match location {
@@ -579,77 +592,6 @@ impl Debugger {
     pub(super) fn increment_instruction_count(&mut self) {
         self.instruction_count += 1;
     }
-
-    fn foo(&self, state: &RunState, address: u16) {
-        let Some(stmt) = self.asm_source.get_source_statement(address) else {
-            return;
-        };
-
-        const CONTEXT: usize = 6;
-
-        let start_start = stmt.span.offs();
-        let end_start = stmt.span.offs() + stmt.span.len();
-
-        let mut start = start_start;
-        let mut end = end_start;
-
-        let string = &self.asm_source.src[..start];
-        let mut line = 0;
-        for ch in string.chars().rev() {
-            if ch == '\n' {
-                line += 1;
-                if line > CONTEXT {
-                    break;
-                }
-            }
-            start -= 1;
-        }
-
-        let string = &self.asm_source.src[end..];
-        let mut line = 0;
-        for ch in string.chars() {
-            if ch == '\n' {
-                line += 1;
-                if line > CONTEXT {
-                    break;
-                }
-            }
-            end += 1;
-        }
-
-        let mut start_line = stmt.line;
-        for stmt in self.asm_source.ast.iter().rev() {
-            if stmt.span.offs() + stmt.span.len() < start {
-                break;
-            }
-            start_line = stmt.line - 1;
-        }
-
-        let mut end_line = stmt.line;
-        for stmt in &self.asm_source.ast {
-            if stmt.span.offs() >= end {
-                break;
-            }
-            end_line = stmt.line - 1;
-        }
-
-        let end_addr = end_line + self.orig();
-        let start_addr = start_line + self.orig();
-
-        // println!("0x{:04x} -- 0x{:04x}", start_addr, end_addr);
-
-        if !state.memory_equals_in(&self.initial_state, start_addr, end_addr) {
-            dprintln!(
-                Sometimes,
-                Warning,
-                "Note: Program memory may have been modified."
-            );
-        }
-
-        // self.asm_source.show_single_line(end_addr);
-
-        self.asm_source.show_line_context(address);
-    }
 }
 
 impl AsmSource {
@@ -699,5 +641,70 @@ impl AsmSource {
             .get((address - self.orig) as usize)
             .expect("index was checked to be within bounds above");
         Some(stmt)
+    }
+
+    /// Get memory addresses of first and last line shown in source context.
+    fn get_context_range(&self, orig: u16, stmt: &AsmLine) -> (u16, u16) {
+        let stmt_start = stmt.span.offs();
+        let stmt_end = stmt.span.end();
+
+        // Split source into characters before and after span
+        // Neither string contains characters in the span, but may contain characters in the same
+        // line as the instruction
+        let source_above = &self.src[..stmt_start];
+        let source_below = &self.src[stmt_end..];
+
+        /// Count characters in an iterator, within a maximum amount of lines.
+        fn count_chars_in_lines<I>(iter: I) -> usize
+        where
+            I: Iterator<Item = char>,
+        {
+            let mut count = 0;
+            // Counts 0..=DIAGNOSTIC_CONTEXT_LINES
+            // Note inclusive range, to account for characters in current line, outside of
+            // instruction span
+            let mut line = 0;
+            // Restructuring/inverting this loop seems unproductive
+            for ch in iter {
+                if ch == '\n' {
+                    line += 1;
+                    if line > DIAGNOSTIC_CONTEXT_LINES {
+                        break;
+                    }
+                }
+                count += 1;
+            }
+            count
+        }
+
+        let start = stmt_start - count_chars_in_lines(source_above.chars().rev());
+        let end = stmt_end + count_chars_in_lines(source_below.chars());
+
+        // Ugly -- but what else can be done...
+        // Get address of earliest statement, whose span is (at least partially) within `start..`
+        let start_addr = {
+            let mut line = stmt.line;
+            for stmt in self.ast.iter().rev() {
+                if stmt.span.end() < start {
+                    break;
+                }
+                line = stmt.line;
+            }
+            // -1 applied to addresses, to account for the `line` field counting from 1, not 0
+            line + orig - 1
+        };
+        // Get address of latest statement, whose span is (at least partially) within `..end`
+        let end_addr = {
+            let mut line = stmt.line;
+            for stmt in self.ast.iter() {
+                if stmt.span.offs() >= end {
+                    break;
+                }
+                line = stmt.line;
+            }
+            line + orig - 1
+        };
+
+        (start_addr, end_addr)
     }
 }

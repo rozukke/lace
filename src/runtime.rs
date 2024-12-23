@@ -248,11 +248,7 @@ impl RunState {
         self.flag
     }
 
-    pub(super) fn memory_equals(&self, other: &RunState) -> bool {
-        self.mem == other.mem
-    }
-
-    pub(super) fn memory_equals_in(&self, other: &RunState, start: u16, end: u16) -> bool {
+    pub(super) fn memory_equals(&self, other: &RunState, start: u16, end: u16) -> bool {
         for value in start..=end {
             if self.mem(value) != other.mem(value) {
                 return false;
