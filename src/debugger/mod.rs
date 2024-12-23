@@ -517,10 +517,7 @@ impl Debugger {
 
     /// Returns `None` if `label` is out of bounds or an invalid label.
     fn resolve_label_address(&self, label: &Label) -> Option<u16> {
-        let Some(address) = get_label_address(&label.name) else {
-            dprintln!(Always, Error, "Label not found named `{}`.", label.name);
-            return None;
-        };
+        let address = Self::resolve_label_name_address(&label.name)?;
 
         let Some(address) = self.add_address_offset(address + self.orig(), label.offset) else {
             dprintln!(
@@ -541,6 +538,27 @@ impl Debugger {
         Some(address)
     }
 
+    /// Returns `None` if `label` is an invalid label.
+    ///
+    /// Label names are case-sensitive.
+    fn resolve_label_name_address(label: &str) -> Option<u16> {
+        with_symbol_table(|sym| {
+            if let Some(addr) = sym.get(label) {
+                // Account for PC being incremented before instruction is executed
+                return Some(addr + 1);
+            }
+            dprintln!(Always, Error, "Label not found named `{}`.", label);
+            // Check for case-*insensitive* match
+            for key in sym.keys() {
+                if key.eq_ignore_ascii_case(label) {
+                    dprintln!(Sometimes, Warning, "Hint: Similar label named `{}`", key);
+                    break;
+                }
+            }
+            None
+        })
+    }
+
     /// Returns `None` if `pc + offset` is out of bounds.
     fn add_address_offset(&self, address: u16, offset: i16) -> Option<u16> {
         let address = address as i16 + offset;
@@ -559,12 +577,6 @@ impl Debugger {
     pub(super) fn increment_instruction_count(&mut self) {
         self.instruction_count += 1;
     }
-}
-
-fn get_label_address(name: &str) -> Option<u16> {
-    with_symbol_table(|sym| sym.get(name).copied())
-        // Account for PC being incremented before instruction is executed
-        .map(|addr| addr - 1)
 }
 
 impl AsmSource {
