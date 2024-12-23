@@ -394,19 +394,19 @@ impl Debugger {
             }
 
             Command::Source { location } => {
-                // TODO(feat): Only check memory in context range
-                if !state.memory_equals(&self.initial_state) {
-                    dprintln!(
-                        Sometimes,
-                        Warning,
-                        "Note: Program memory may have been modified."
-                    );
-                }
+                // TODO(feat): Only check memory in context range (difficult!)
+                // if !state.memory_equals(&self.initial_state) {
+                //     dprintln!(
+                //         Sometimes,
+                //         Warning,
+                //         "Note: Program memory may have been modified."
+                //     );
+                // }
                 if let Some(address) = self.resolve_location_address(state, &location) {
                     if Output::is_minimal() {
                         self.asm_source.show_single_line(address);
                     } else {
-                        self.asm_source.show_line_context(address);
+                        self.foo(state, address);
                     }
                 }
             }
@@ -578,6 +578,77 @@ impl Debugger {
 
     pub(super) fn increment_instruction_count(&mut self) {
         self.instruction_count += 1;
+    }
+
+    fn foo(&self, state: &RunState, address: u16) {
+        let Some(stmt) = self.asm_source.get_source_statement(address) else {
+            return;
+        };
+
+        const CONTEXT: usize = 6;
+
+        let start_start = stmt.span.offs();
+        let end_start = stmt.span.offs() + stmt.span.len();
+
+        let mut start = start_start;
+        let mut end = end_start;
+
+        let string = &self.asm_source.src[..start];
+        let mut line = 0;
+        for ch in string.chars().rev() {
+            if ch == '\n' {
+                line += 1;
+                if line > CONTEXT {
+                    break;
+                }
+            }
+            start -= 1;
+        }
+
+        let string = &self.asm_source.src[end..];
+        let mut line = 0;
+        for ch in string.chars() {
+            if ch == '\n' {
+                line += 1;
+                if line > CONTEXT {
+                    break;
+                }
+            }
+            end += 1;
+        }
+
+        let mut start_line = stmt.line;
+        for stmt in self.asm_source.ast.iter().rev() {
+            if stmt.span.offs() + stmt.span.len() < start {
+                break;
+            }
+            start_line = stmt.line - 1;
+        }
+
+        let mut end_line = stmt.line;
+        for stmt in &self.asm_source.ast {
+            if stmt.span.offs() >= end {
+                break;
+            }
+            end_line = stmt.line - 1;
+        }
+
+        let end_addr = end_line + self.orig();
+        let start_addr = start_line + self.orig();
+
+        // println!("0x{:04x} -- 0x{:04x}", start_addr, end_addr);
+
+        if !state.memory_equals_in(&self.initial_state, start_addr, end_addr) {
+            dprintln!(
+                Sometimes,
+                Warning,
+                "Note: Program memory may have been modified."
+            );
+        }
+
+        // self.asm_source.show_single_line(end_addr);
+
+        self.asm_source.show_line_context(address);
     }
 }
 

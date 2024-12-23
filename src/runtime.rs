@@ -252,6 +252,15 @@ impl RunState {
         self.mem == other.mem
     }
 
+    pub(super) fn memory_equals_in(&self, other: &RunState, start: u16, end: u16) -> bool {
+        for value in start..=end {
+            if self.mem(value) != other.mem(value) {
+                return false;
+            }
+        }
+        true
+    }
+
     #[inline]
     fn s_ext(mut val: u16, bits: u32) -> u16 {
         debug_assert!(bits > 0 && bits < 16);
