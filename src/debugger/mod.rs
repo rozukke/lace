@@ -403,8 +403,11 @@ impl Debugger {
                     );
                 }
                 if let Some(address) = self.resolve_location_address(state, &location) {
-                    // TODO(feat): Show single line if `--minimal`
-                    self.asm_source.show_line_context(address);
+                    if Output::is_minimal() {
+                        self.asm_source.show_single_line(address);
+                    } else {
+                        self.asm_source.show_line_context(address);
+                    }
                 }
             }
 
