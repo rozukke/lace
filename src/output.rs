@@ -121,6 +121,7 @@ impl Output {
     /// Set whether output will be printed 'minimally'.
     ///
     /// Use this method to handle `--minimal` argument.
+    // TODO(refactor): Return `()`
     pub fn set_minimal(new_value: bool) -> bool {
         Self::IS_MINIMAL.with(|value| value.replace(new_value))
     }
@@ -398,6 +399,13 @@ impl fmt::Write for DebuggerWriter {
 /// set to `true`.
 /// Otherwise it will be set to false.
 /// If the string does not contain any printable characters, then the state will not change.
+///
+/// # Limitations
+///
+/// - Any non-ASCII characters will be treated as printable.
+/// - The only ANSI escape sequences this supports are that of Select Graphic Rendition (color/style) of
+/// the form `\x1b[`...`m`.
+/// - This may not work if ANSI escape code is split across multiple format arguments or write calls.
 struct LineTracker;
 impl LineTracker {
     thread_local! {
@@ -406,23 +414,29 @@ impl LineTracker {
     pub fn is_line_start() -> bool {
         Self::IS_LINE_START.with(|value| *value.borrow())
     }
+    // TODO(refactor): Return `()`
     fn set_line_start(new_value: bool) -> bool {
         Self::IS_LINE_START.with(|value| value.replace(new_value))
     }
 }
 impl fmt::Write for LineTracker {
     fn write_str(&mut self, string: &str) -> fmt::Result {
-        // TODO(fix): This will break with "\x1b[0m" for example. String should be scanned forwards
-        for ch in string.chars().rev() {
-            let is_line_start = match ch {
-                '\n' | '\r' => true,
+        let mut chars = string.chars();
+        while let Some(ch) = chars.next() {
+            match ch {
+                // Skip everything between '\x1b' and 'm' (inclusive)
+                '\x1b' => {
+                    while chars.next().is_some_and(|ch| ch != 'm') {}
+                    continue;
+                }
+                // Line breaks start new line
+                '\n' | '\r' => Self::set_line_start(true),
+                // Skip other control characters
                 '\x00'..='\x1f' | '\x7f' => continue,
-                _ => false,
+                // Any other characters are printable
+                _ => Self::set_line_start(false),
             };
-            Self::set_line_start(is_line_start);
-            break;
         }
-
         Ok(())
     }
 }
