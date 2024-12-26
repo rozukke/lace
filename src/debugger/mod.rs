@@ -473,7 +473,7 @@ impl Debugger {
             let command = match Command::try_from(line) {
                 Ok(command) => command,
                 Err(error) => {
-                    dprintln!(Always, Error, "{}", error);
+                    dprintln!(Always, Error, "{}.", error);
                     dprintln!(Sometimes, Error, "Type `help` for a list of commands.");
                     continue;
                 }

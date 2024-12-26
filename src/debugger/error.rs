@@ -1,9 +1,8 @@
-use std::fmt;
+use std::{error::Error, fmt};
 
 use super::command::CommandName;
 
 /// Error parsing a command.
-// TODO(opt): Most `String` fields could be `&str` (with difficulty, no doubt)
 #[derive(Debug, PartialEq)]
 pub enum CommandError {
     InvalidCommand {
@@ -22,7 +21,7 @@ pub enum CommandError {
     },
 }
 
-// TODO(rename): Type names and variants
+/// Error parsing command arguments.
 #[derive(Debug, PartialEq)]
 pub enum ArgumentError {
     /// For `eval`.
@@ -42,6 +41,7 @@ pub enum ArgumentError {
     },
 }
 
+/// Error parsing an argument value.
 #[derive(Debug, PartialEq)]
 pub enum ValueError {
     MismatchedType {
@@ -51,95 +51,102 @@ pub enum ValueError {
     MalformedValue {},
     MalformedInteger {},
     MalformedLabel {},
+    // TODO(feat): Add field for largest possible size
     IntegerTooLarge {},
 }
 
-impl std::error::Error for CommandError {}
+impl Error for CommandError {}
+impl Error for ArgumentError {}
+impl Error for ValueError {}
 
 impl fmt::Display for CommandError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidCommand { command_name } => {
-                write!(f, "Not a command: `{}`.", command_name)
+                write!(f, "Not a command: `{}`", command_name)
             }
             Self::InvalidSubcommand {
                 command_name,
                 subcommand_name,
             } => write!(
                 f,
-                "Invalid subcommand `{}` for command `{}`.",
+                "Invalid subcommand `{}` for command `{}`",
                 subcommand_name, command_name
             ),
             Self::MissingSubcommand { command_name } => {
-                write!(f, "Missing subcommand for `{}`.", command_name)
+                write!(f, "Missing subcommand for `{}`", command_name)
             }
-
             Self::InvalidArgument {
                 command_name,
                 error,
             } => {
-                write!(f, "In command `{}`: ", command_name)?;
+                write!(f, "In command `{}`: {}", command_name, error)
+            }
+        }
+    }
+}
 
-                match error {
-                    ArgumentError::MissingArgumentList { argument_name } => {
-                        write!(f, "Missing argument list `{}`", argument_name)?;
-                    }
-                    ArgumentError::MissingArgument {
-                        argument_name,
-                        expected_count,
-                        actual_count,
-                    } => {
-                        write!(
-                            f,
-                            "Missing argument `{}` (expected {}, found {})",
-                            argument_name, expected_count, actual_count
-                        )?;
-                    }
-                    ArgumentError::TooManyArguments {
-                        expected_count,
-                        actual_count,
-                    } => {
-                        write!(
-                            f,
-                            "Too many arguments (expected {}, found {})",
-                            expected_count, actual_count
-                        )?;
-                    }
+impl fmt::Display for ArgumentError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ArgumentError::MissingArgumentList { argument_name } => {
+                write!(f, "Missing argument list `{}`", argument_name)
+            }
+            ArgumentError::MissingArgument {
+                argument_name,
+                expected_count,
+                actual_count,
+            } => {
+                write!(
+                    f,
+                    "Missing argument `{}` (expected {}, found {})",
+                    argument_name, expected_count, actual_count
+                )
+            }
+            ArgumentError::TooManyArguments {
+                expected_count,
+                actual_count,
+            } => {
+                write!(
+                    f,
+                    "Too many arguments (expected {}, found {})",
+                    expected_count, actual_count
+                )
+            }
+            ArgumentError::InvalidValue {
+                argument_name,
+                error,
+            } => {
+                write!(f, "For argument `{}`: {}", argument_name, error)
+            }
+        }
+    }
+}
 
-                    ArgumentError::InvalidValue {
-                        argument_name,
-                        error,
-                    } => {
-                        write!(f, "For argument `{}`: ", argument_name)?;
-
-                        match error {
-                            ValueError::MismatchedType {
-                                expected_type,
-                                actual_type,
-                            } => {
-                                write!(
-                                    f,
-                                    "Incorrect value type (expected {}, found {})",
-                                    expected_type, actual_type
-                                )?;
-                            }
-                            ValueError::MalformedValue {} => {
-                                write!(f, "Invalid value")?;
-                            }
-                            ValueError::MalformedInteger {} => {
-                                write!(f, "Malformed integer")?;
-                            }
-                            ValueError::MalformedLabel {} => {
-                                write!(f, "Malformed label")?;
-                            }
-                            ValueError::IntegerTooLarge {} => {
-                                write!(f, "Integer too large")?;
-                            }
-                        }
-                    }
-                }
-
-                write!(f, ".")
+impl fmt::Display for ValueError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ValueError::MismatchedType {
+                expected_type,
+                actual_type,
+            } => {
+                write!(
+                    f,
+                    "Incorrect value type (expected {}, found {})",
+                    expected_type, actual_type
+                )
+            }
+            ValueError::MalformedValue {} => {
+                write!(f, "Invalid value")
+            }
+            ValueError::MalformedInteger {} => {
+                write!(f, "Malformed integer")
+            }
+            ValueError::MalformedLabel {} => {
+                write!(f, "Malformed label")
+            }
+            ValueError::IntegerTooLarge {} => {
+                write!(f, "Integer too large")
             }
         }
     }

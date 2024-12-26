@@ -90,8 +90,6 @@ pub enum MemoryLocation {
 }
 
 /// Label with word offset.
-// TODO(opt): could use `&'static str` which refers to a key of the static symbol table...
-// ...this means it would need to be resolved inside some parsing function
 #[derive(Debug, PartialEq)]
 pub struct Label {
     pub name: String,
