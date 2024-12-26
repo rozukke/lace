@@ -576,8 +576,7 @@ impl Debugger {
 
     /// Returns `None` if `pc + offset` is out of bounds.
     fn add_address_offset(&self, address: u16, offset: i16) -> Option<u16> {
-        // TODO(fix): Check for overflow
-        let address = address as i16 + offset;
+        let address = (address as i16).checked_add(offset)?;
         // Check address in user program area
         if address >= self.orig() as i16 && (address as u16) < USER_MEMORY_END {
             Some(address as u16)
