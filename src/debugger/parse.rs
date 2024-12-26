@@ -107,7 +107,7 @@ pub struct CommandIter<'a> {
     head: usize,
     /// Amount of arguments requested (successfully or not).
     ///
-    /// Must only be incremented by [`Self::next_argument`]
+    /// Must only be incremented by [`Self::next_argument`].
     arg_count: u8,
 }
 
@@ -305,7 +305,7 @@ impl<'a> CommandIter<'a> {
         )
     }
 
-    /// Parse and consume next [`MemoryLocation`] argument, defaulting to program counter
+    /// Parse and consume next [`MemoryLocation`] argument, defaulting to program counter.
     /// ([`MemoryLocation::PCOffset`]).
     pub fn next_memory_location_or_default(
         &mut self,
@@ -520,23 +520,23 @@ impl<'a> CommandIter<'a> {
     /// Extremely liberal in accepted syntax.
     ///
     /// Accepts:
-    ///  - Decimal (optional `#`), hex (`x`/`X`), octal (`o`/`O`), and binary (`b`/`B`)
-    ///  - Optional single zero before non-decimal radix prefix. Eg. `0x4`
-    ///  - Leading zeros after prefix and sign. Eg. `0x0004`, `#-03`
-    ///  - Sign character before xor after radix prefix. Eg. `-#2`, `x+4`
+    ///  - Decimal (optional `#`), hex (`x`/`X`), octal (`o`/`O`), and binary (`b`/`B`).
+    ///  - Optional single zero before non-decimal radix prefix. Eg. `0x4`.
+    ///  - Leading zeros after prefix and sign. Eg. `0x0004`, `#-03`.
+    ///  - Sign character before xor after radix prefix. Eg. `-#2`, `x+4`.
     ///
     /// Returns `Ok(None)` (not an integer) for:
-    ///  - Empty token
-    ///  - Non-decimal radix prefix, with no zero before it, and non-digits after it. Eg. `xLabel`, `o`
+    ///  - Empty token.
+    ///  - Non-decimal radix prefix, with no zero before it, and non-digits after it. Eg. `xLabel`, `o`.
     ///
     /// Returns `Err` (invalid integer and invalid token) for:
-    ///  - Invalid digits for the given radix
-    ///  - Decimal radix prefix `#` with zeros before it. Eg. `0#2`
-    ///  - Decimal radix prefix `#` with no digits after it. Eg. `#`
-    ///  - Multiple sign characters (before or after prefix)
-    ///  - Missing sign character '-' or '+', if `require_sign == true`
-    ///  - Multiple zeros before radix prefix. Eg. `00x4`
-    ///  - Absolute value out of bounds for `i32`. (Does *NOT* check if integer fits in specific bit size)
+    ///  - Invalid digits for the given radix.
+    ///  - Decimal radix prefix `#` with zeros before it. Eg. `0#2`.
+    ///  - Decimal radix prefix `#` with no digits after it. Eg. `#`.
+    ///  - Multiple sign characters (before or after prefix).
+    ///  - Missing sign character '-' or '+', if `require_sign == true`.
+    ///  - Multiple zeros before radix prefix. Eg. `00x4`.
+    ///  - Absolute value out of bounds for `i32`. (Does *NOT* check if integer fits in specific bit size).
     fn next_integer_token(&mut self, require_sign: bool) -> Result<Option<i32>, error::Value> {
         self.reset_head();
         // Don't skip whitespace

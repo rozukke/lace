@@ -476,7 +476,7 @@ impl TerminalHistory {
         Self { list, index, file }
     }
 
-    /// Push command into list and write to file
+    /// Push command into list and write to file.
     pub fn push(&mut self, command: String) {
         if let Some(file) = &mut self.file {
             if writeln!(file, "{}", command).is_err() {

@@ -47,7 +47,7 @@ fn eval_inner(state: &mut RunState, line: &'static str) -> Result<()> {
     Ok(())
 }
 
-/// Get an unsafe `&'static str` from a `Box<str>`, for temporary use
+/// Get an unsafe `&'static str` from a `Box<str>`, for temporary use.
 struct StaticStr {
     ptr: *mut str,
 }
