@@ -121,9 +121,8 @@ impl Output {
     /// Set whether output will be printed 'minimally'.
     ///
     /// Use this method to handle `--minimal` argument.
-    // TODO(refactor): Return `()`
-    pub fn set_minimal(new_value: bool) -> bool {
-        Self::IS_MINIMAL.with(|value| value.replace(new_value))
+    pub fn set_minimal(new_value: bool) {
+        Self::IS_MINIMAL.with(|value| value.replace(new_value));
     }
 
     /// If cursor is NOT at the start of a line, then start a new line (ie. print '\n').
@@ -414,9 +413,8 @@ impl LineTracker {
     pub fn is_line_start() -> bool {
         Self::IS_LINE_START.with(|value| *value.borrow())
     }
-    // TODO(refactor): Return `()`
-    fn set_line_start(new_value: bool) -> bool {
-        Self::IS_LINE_START.with(|value| value.replace(new_value))
+    fn set_line_start(new_value: bool) {
+        Self::IS_LINE_START.with(|value| value.replace(new_value));
     }
 }
 impl fmt::Write for LineTracker {
@@ -435,7 +433,7 @@ impl fmt::Write for LineTracker {
                 '\x00'..='\x1f' | '\x7f' => continue,
                 // Any other characters are printable
                 _ => Self::set_line_start(false),
-            };
+            }
         }
         Ok(())
     }
