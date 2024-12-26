@@ -111,6 +111,16 @@ pub struct CommandIter<'a> {
     arg_count: u8,
 }
 
+/// Helper struct for retaining syntax information when parsing integer prefix.
+struct IntegerPrefix {
+    /// Radix corresponding to prefix character.
+    radix: Radix,
+    /// Whether prefix character is preceeded by zeros.
+    leading_zeros: bool,
+    /// Whether prefix character is a symbol (i.e. `#`).
+    non_alpha: bool,
+}
+
 impl<'a> CommandIter<'a> {
     pub fn from(buffer: &'a str) -> Self {
         Self {
@@ -505,8 +515,6 @@ impl<'a> CommandIter<'a> {
         Some(register)
     }
 
-    // TODO(fix): Should `x1h` be skipped as an integer, and be parsed as a label?
-
     /// Parse and consume the next integer argument.
     ///
     /// Extremely liberal in accepted syntax.
@@ -537,7 +545,7 @@ impl<'a> CommandIter<'a> {
         let first_sign: Option<Sign> = self.next_integer_sign();
 
         // Take optional prefix
-        let Some((radix, has_leading_zeros, prefix_is_symbol)) = self.next_integer_prefix()? else {
+        let Some(prefix) = self.next_integer_prefix()? else {
             // Sign was already given, so it must be an invalid token
             if first_sign.is_some() {
                 return Err(error::Value::MalformedInteger {});
@@ -561,9 +569,12 @@ impl<'a> CommandIter<'a> {
         };
 
         // Check next character is digit
-        if self.peek().is_none_or(|ch| radix.parse_digit(ch).is_none()) {
+        if self
+            .peek()
+            .is_none_or(|ch| prefix.radix.parse_digit(ch).is_none())
+        {
             // Sign, '#', or pre-prefix zeros were given, so it must be an invalid integer token
-            if sign.is_some() || has_leading_zeros || prefix_is_symbol {
+            if sign.is_some() || prefix.leading_zeros || prefix.non_alpha {
                 return Err(error::Value::MalformedInteger {});
             }
             return Ok(None);
@@ -576,19 +587,19 @@ impl<'a> CommandIter<'a> {
             if self.is_end_of_argument() {
                 break;
             }
-            let Some(digit) = radix.parse_digit(ch) else {
+            let Some(digit) = prefix.radix.parse_digit(ch) else {
                 return Err(error::Value::MalformedInteger {});
             };
             self.next();
 
             // Re-checked later on convert to smaller int types
-            if integer > i32::MAX / radix as i32 {
+            if integer > i32::MAX / prefix.radix as i32 {
                 return Err(error::Value::IntegerTooLarge {
                     max: i16::MAX as u16,
                 });
             }
 
-            integer *= radix as i32;
+            integer *= prefix.radix as i32;
             integer += digit as i32;
         }
         if let Some(sign) = sign {
@@ -621,32 +632,32 @@ impl<'a> CommandIter<'a> {
 
     /// Get radix from integer prefix.
     /// Must only be called by `next_token_integer`.
-    ///
-    /// Returns radix, whether leading zeros are included, and whether radix prefix is a
-    /// non-alphabetic symbol (i.e. `#`).
-    // TODO(refactor): Possibly return a named struct type
-    fn next_integer_prefix(&mut self) -> Result<Option<(Radix, bool, bool)>, error::Value> {
+    fn next_integer_prefix(&mut self) -> Result<Option<IntegerPrefix>, error::Value> {
         // Don't reset head
         // Don't skip whitespace
 
         // Take single leading zero before prefix
-        let has_leading_zeros = self.peek().is_some_and(|ch| ch == '0');
-        if has_leading_zeros {
+        let leading_zeros = self.peek().is_some_and(|ch| ch == '0');
+        if leading_zeros {
             self.next();
         }
 
         // Number is all zeroes (no radix prefix)
         // Zeroes were taken as leading zeros
-        if has_leading_zeros && self.is_end_of_argument() {
+        if leading_zeros && self.is_end_of_argument() {
             self.reset_head();
-            return Ok(Some((Radix::Decimal, true, false)));
+            return Ok(Some(IntegerPrefix {
+                radix: Radix::Decimal,
+                leading_zeros: true,
+                non_alpha: false,
+            }));
         }
 
         let mut next_char = true; // Whether to increment head for prefix character
-        let (radix, prefix_is_symbol) = match self.peek() {
+        let (radix, non_alpha) = match self.peek() {
             Some('#') => {
                 // Disallow '0#...'
-                if has_leading_zeros {
+                if leading_zeros {
                     return Err(error::Value::MalformedInteger {});
                 }
                 (Radix::Decimal, true)
@@ -675,7 +686,11 @@ impl<'a> CommandIter<'a> {
         }
 
         // Don't set base; might not be an integer yet
-        Ok(Some((radix, has_leading_zeros, prefix_is_symbol)))
+        Ok(Some(IntegerPrefix {
+            radix,
+            leading_zeros,
+            non_alpha,
+        }))
     }
 
     /// Returns `true` if the given character can appear at the start of a label.
