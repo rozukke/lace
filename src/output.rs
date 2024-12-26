@@ -11,6 +11,7 @@ pub const DEBUGGER_PRIMARY_COLOR: &str = "34";
 /// Print to [`Output::Debugger`].
 #[macro_export]
 macro_rules! dprint {
+    // `$fmt:expr` is required to allow `concat!` macro to be accepted
     ( $condition:expr, $category:expr, $fmt:expr $(, $($tt:tt)* )? ) => {{
         // This is not very hygenic. But makes macro more ergonomic to use.
         #[allow(unused_imports)]
@@ -24,18 +25,21 @@ macro_rules! dprint {
         eprint!("\x1b[0m"); // This is not ideal here
     }};
 
-    // Trigger type error if missing condition/kind
     ( $fmt:literal $($tt:tt)* ) => {{
-        $crate::output::Output::Debugger($fmt);
+        compile_error!("requires condition and category arguments");
     }};
-
-    // TODO(refactor): Match more patterns for helpful compile errors
+    ( $condition:expr $(, $fmt:literal $($tt:tt)* )? ) => {{
+        compile_error!("requires category arguments");
+    }};
+    ( $( $condition:expr )? $(, $category:expr )? $(,)? ) => {{
+        format!()
+    }};
 }
 
 /// Print to [`Output::Debugger`], with a newline.
 #[macro_export]
 macro_rules! dprintln {
-    ( $condition:expr ) => {{
+    ( $condition:expr $(,)? ) => {{
         $crate::dprint!(
             $condition,
             $crate::output::Category::Normal,
@@ -52,10 +56,13 @@ macro_rules! dprintln {
         );
     }};
 
-    ( $condition:expr, $category:expr ) => {{
-        compile_error!("Either remove the category or include a format string");
+    ( $(,)? ) => {{
+        compile_error!("requires condition argument");
     }};
-
+    ( $condition:expr, $category:literal $(,)? ) => {{
+        compile_error!("requires format string if category argument is present\
+            \neither remove category argument or include format string");
+    }};
     // Let `dprint` issue any other compiler errors
     ( $($tt:tt)* ) => {{
         $crate::dprint!($($tt)*);
