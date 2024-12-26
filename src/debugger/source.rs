@@ -537,7 +537,7 @@ impl TerminalHistory {
         {
             Ok(file) => Some(file),
             Err(_error) => {
-                Self::report_error(format_args!("Failed to open file: {}", file_path.display(),));
+                Self::report_error(format_args!("Failed to open file: {}", file_path.display()));
                 None
             }
         }

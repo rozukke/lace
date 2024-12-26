@@ -5,6 +5,7 @@ use super::command::CommandName;
 /// Error parsing a command.
 #[derive(Debug, PartialEq)]
 pub enum Command {
+    #[allow(clippy::enum_variant_names)]
     InvalidCommand {
         command_name: String,
     },
@@ -26,6 +27,7 @@ pub enum Command {
 pub enum Argument {
     /// For `eval`.
     MissingArgumentList { argument_name: &'static str },
+    #[allow(clippy::enum_variant_names)]
     MissingArgument {
         argument_name: &'static str,
         expected_count: u8,
@@ -48,6 +50,7 @@ pub enum Value {
         expected_type: &'static str,
         actual_type: &'static str,
     },
+    #[allow(clippy::enum_variant_names)]
     MalformedValue {},
     MalformedInteger {},
     MalformedLabel {},

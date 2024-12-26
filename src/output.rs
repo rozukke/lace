@@ -251,6 +251,7 @@ impl Output {
         }
 
         // Print 3 characters
+        #[allow(clippy::match_overlapping_arm)]
         match value {
             // ASCII control characters which are arbitrarily considered significant
             0x00 => self.print("NUL"),
@@ -403,7 +404,7 @@ impl fmt::Write for DebuggerWriter {
 ///
 /// - Any non-ASCII characters will be treated as printable.
 /// - The only ANSI escape sequences this supports are that of Select Graphic Rendition (color/style) of
-/// the form `\x1b[`...`m`.
+///   the form `\x1b[`...`m`.
 /// - This may not work if ANSI escape code is split across multiple format arguments or write calls.
 struct LineTracker;
 impl LineTracker {

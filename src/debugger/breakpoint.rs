@@ -16,6 +16,12 @@ pub struct Breakpoint {
     pub is_predefined: bool,
 }
 
+impl Default for Breakpoints {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Breakpoints {
     pub fn new() -> Self {
         Self(Vec::new())
@@ -49,7 +55,7 @@ impl Breakpoints {
             }
         }
         self.0.insert(index, breakpoint);
-        return false;
+        false
     }
 
     /// Removes every breakpoint with given address, keeping list sorted.

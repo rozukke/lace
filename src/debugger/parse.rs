@@ -734,7 +734,7 @@ impl<'a> CommandIter<'a> {
         self.reset_head();
         // Don't skip whitespace
 
-        if !self.next().is_some_and(|ch| ch == '^') {
+        if self.next().is_none_or(|ch| ch != '^') {
             return Ok(None);
         }
 
