@@ -1,9 +1,6 @@
 use std::fmt;
 
-use super::{
-    error::{ArgumentError, CommandError},
-    parse::CommandIter,
-};
+use super::{error, parse::CommandIter};
 use crate::symbol::Register;
 
 #[allow(dead_code)]
@@ -97,7 +94,7 @@ pub struct Label {
 }
 
 impl TryFrom<&str> for Command {
-    type Error = CommandError;
+    type Error = error::Command;
 
     /// Assumes line is non-empty.
     fn try_from(line: &str) -> std::result::Result<Self, Self::Error> {
@@ -105,7 +102,7 @@ impl TryFrom<&str> for Command {
 
         let command_name = iter.get_command_name()?;
         Command::parse_arguments(command_name, iter).map_err(|error| {
-            CommandError::InvalidArgument {
+            error::Command::InvalidArgument {
                 command_name,
                 error,
             }
@@ -117,7 +114,7 @@ impl Command {
     fn parse_arguments(
         name: CommandName,
         mut iter: CommandIter<'_>,
-    ) -> Result<Command, ArgumentError> {
+    ) -> Result<Command, error::Argument> {
         let mut expected_args = 0;
 
         let command = match name {
@@ -177,7 +174,7 @@ impl Command {
             CommandName::Eval => {
                 let instruction = iter.collect_rest();
                 if instruction.is_empty() {
-                    return Err(ArgumentError::MissingArgumentList {
+                    return Err(error::Argument::MissingArgumentList {
                         argument_name: "instruction",
                     });
                 }

@@ -4,7 +4,7 @@ use super::command::CommandName;
 
 /// Error parsing a command.
 #[derive(Debug, PartialEq)]
-pub enum CommandError {
+pub enum Command {
     InvalidCommand {
         command_name: String,
     },
@@ -17,13 +17,13 @@ pub enum CommandError {
     },
     InvalidArgument {
         command_name: CommandName,
-        error: ArgumentError,
+        error: Argument,
     },
 }
 
 /// Error parsing command arguments.
 #[derive(Debug, PartialEq)]
-pub enum ArgumentError {
+pub enum Argument {
     /// For `eval`.
     MissingArgumentList { argument_name: &'static str },
     MissingArgument {
@@ -37,13 +37,13 @@ pub enum ArgumentError {
     },
     InvalidValue {
         argument_name: &'static str,
-        error: ValueError,
+        error: Value,
     },
 }
 
 /// Error parsing an argument value.
 #[derive(Debug, PartialEq)]
-pub enum ValueError {
+pub enum Value {
     MismatchedType {
         expected_type: &'static str,
         actual_type: &'static str,
@@ -55,11 +55,11 @@ pub enum ValueError {
     IntegerTooLarge {},
 }
 
-impl Error for CommandError {}
-impl Error for ArgumentError {}
-impl Error for ValueError {}
+impl Error for Command {}
+impl Error for Argument {}
+impl Error for Value {}
 
-impl fmt::Display for CommandError {
+impl fmt::Display for Command {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidCommand { command_name } => {
@@ -86,13 +86,13 @@ impl fmt::Display for CommandError {
     }
 }
 
-impl fmt::Display for ArgumentError {
+impl fmt::Display for Argument {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ArgumentError::MissingArgumentList { argument_name } => {
+            Argument::MissingArgumentList { argument_name } => {
                 write!(f, "Missing argument list `{}`", argument_name)
             }
-            ArgumentError::MissingArgument {
+            Argument::MissingArgument {
                 argument_name,
                 expected_count,
                 actual_count,
@@ -103,7 +103,7 @@ impl fmt::Display for ArgumentError {
                     argument_name, expected_count, actual_count
                 )
             }
-            ArgumentError::TooManyArguments {
+            Argument::TooManyArguments {
                 expected_count,
                 actual_count,
             } => {
@@ -113,7 +113,7 @@ impl fmt::Display for ArgumentError {
                     expected_count, actual_count
                 )
             }
-            ArgumentError::InvalidValue {
+            Argument::InvalidValue {
                 argument_name,
                 error,
             } => {
@@ -123,10 +123,10 @@ impl fmt::Display for ArgumentError {
     }
 }
 
-impl fmt::Display for ValueError {
+impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ValueError::MismatchedType {
+            Value::MismatchedType {
                 expected_type,
                 actual_type,
             } => {
@@ -136,16 +136,16 @@ impl fmt::Display for ValueError {
                     expected_type, actual_type
                 )
             }
-            ValueError::MalformedValue {} => {
+            Value::MalformedValue {} => {
                 write!(f, "Invalid value")
             }
-            ValueError::MalformedInteger {} => {
+            Value::MalformedInteger {} => {
                 write!(f, "Malformed integer")
             }
-            ValueError::MalformedLabel {} => {
+            Value::MalformedLabel {} => {
                 write!(f, "Malformed label")
             }
-            ValueError::IntegerTooLarge {} => {
+            Value::IntegerTooLarge {} => {
                 write!(f, "Integer too large")
             }
         }
