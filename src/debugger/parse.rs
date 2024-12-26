@@ -51,11 +51,19 @@ impl Radix {
     }
 }
 
-/// Try to convert an `i32` into another integer type.
-fn resize_int<T: TryFrom<i32>>(integer: i32) -> Result<T, error::Value> {
+/// Try to convert an `i32` into `u32`.
+fn int_as_i16(integer: i32) -> Result<i16, error::Value> {
     integer
         .try_into()
-        .map_err(|_| error::Value::IntegerTooLarge {})
+        .map_err(|_| error::Value::IntegerTooLarge {
+            max: i16::MAX as u16,
+        })
+}
+/// Try to convert an `i32` into `u32`.
+fn int_as_u16(integer: i32) -> Result<u16, error::Value> {
+    integer
+        .try_into()
+        .map_err(|_| error::Value::IntegerTooLarge { max: u16::MAX })
 }
 
 /// Returns `true` if `name` matchs any item of `candidates` (case insensitive).
@@ -221,7 +229,7 @@ impl<'a> CommandIter<'a> {
     ) -> Result<u16, error::Argument> {
         match self.next_argument(argument_name)? {
             Some(Argument::Integer(count)) => {
-                resize_int(count).map_err(|error| error::Argument::InvalidValue {
+                int_as_u16(count).map_err(|error| error::Argument::InvalidValue {
                     argument_name,
                     error,
                 })
@@ -250,7 +258,7 @@ impl<'a> CommandIter<'a> {
             Some(Argument::Register(register)) => Ok(Location::Register(register)),
 
             Some(Argument::Integer(address)) => Ok(Location::Memory(MemoryLocation::Address(
-                resize_int(address).map_err(|error| error::Argument::InvalidValue {
+                int_as_u16(address).map_err(|error| error::Argument::InvalidValue {
                     argument_name,
                     error,
                 })?,
@@ -304,7 +312,7 @@ impl<'a> CommandIter<'a> {
     ) -> Result<MemoryLocation, error::Argument> {
         match self.next_argument(argument_name)? {
             Some(Argument::Integer(address)) => Ok(MemoryLocation::Address(
-                resize_int(address).map_err(|error| error::Argument::InvalidValue {
+                int_as_u16(address).map_err(|error| error::Argument::InvalidValue {
                     argument_name,
                     error,
                 })?,
@@ -575,7 +583,9 @@ impl<'a> CommandIter<'a> {
 
             // Re-checked later on convert to smaller int types
             if integer > i32::MAX / radix as i32 {
-                return Err(error::Value::IntegerTooLarge {});
+                return Err(error::Value::IntegerTooLarge {
+                    max: i16::MAX as u16,
+                });
             }
 
             integer *= radix as i32;
@@ -692,7 +702,7 @@ impl<'a> CommandIter<'a> {
         }
 
         let label = self.take().to_string();
-        let offset = resize_int(self.next_integer_token(true)?.unwrap_or(0))?;
+        let offset = int_as_i16(self.next_integer_token(true)?.unwrap_or(0))?;
 
         if !self.is_end_of_argument() {
             return Err(error::Value::MalformedLabel {});
@@ -714,7 +724,7 @@ impl<'a> CommandIter<'a> {
         }
 
         self.set_base();
-        let offset = resize_int(self.next_integer_token(false)?.unwrap_or(0))?;
+        let offset = int_as_i16(self.next_integer_token(false)?.unwrap_or(0))?;
 
         debug_assert!(
             self.is_end_of_argument(),

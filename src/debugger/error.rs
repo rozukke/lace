@@ -51,8 +51,9 @@ pub enum Value {
     MalformedValue {},
     MalformedInteger {},
     MalformedLabel {},
-    // TODO(feat): Add field for largest possible size
-    IntegerTooLarge {},
+    IntegerTooLarge {
+        max: u16,
+    },
 }
 
 impl Error for Command {}
@@ -145,8 +146,8 @@ impl fmt::Display for Value {
             Value::MalformedLabel {} => {
                 write!(f, "Malformed label")
             }
-            Value::IntegerTooLarge {} => {
-                write!(f, "Integer too large")
+            Value::IntegerTooLarge { max } => {
+                write!(f, "Integer too large (maximum value: 0x{:04x})", max)
             }
         }
     }
