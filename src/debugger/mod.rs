@@ -141,7 +141,7 @@ impl Debugger {
     /// Read and execute user commands, until an [`Action`] is raised.
     pub(super) fn next_action(&mut self, state: &mut RunState) -> Action {
         if state.pc() < self.orig() {
-            // This shouldn't occur anyway
+            // This can probably only happen with a bad `BR*` instruction
             dprintln!(
                 Always,
                 Error,
@@ -605,9 +605,9 @@ impl AsmSource {
             severity = miette::Severity::Advice,
             labels = vec![miette::LabeledSpan::at(
                 stmt.span,
-                format!("At address 0x{:04x}", address),
+                format!("Next instruction, at address 0x{:04x}", address),
             )],
-            "", // TODO(feat): Maybe add a message here?
+            "",
         )
         .with_source_code(self.src);
         eprintln!("{:?}", report);
