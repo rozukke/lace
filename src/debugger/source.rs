@@ -318,7 +318,7 @@ impl Terminal {
                 // character
                 _ => {
                     self.update_next();
-                    self.buffer.insert_char_index(self.visible_cursor, ch);
+                    insert_char_index(&mut self.buffer, self.visible_cursor, ch);
                     self.visible_cursor += 1;
                 }
             },
@@ -329,13 +329,13 @@ impl Terminal {
                     && self.visible_cursor <= self.get_current().chars().count()
                 {
                     self.visible_cursor -= 1;
-                    self.buffer.remove_char_index(self.visible_cursor);
+                    remove_char_index(&mut self.buffer, self.visible_cursor);
                 }
             }
             Key::Del => {
                 self.update_next();
                 if self.visible_cursor < self.get_current().chars().count() {
-                    self.buffer.remove_char_index(self.visible_cursor);
+                    remove_char_index(&mut self.buffer, self.visible_cursor);
                 }
             }
 
@@ -432,38 +432,29 @@ impl SourceRead for Terminal {
     }
 }
 
-/// Extension trait for character-indexed string operations.
-trait CharIndexed {
-    /// Insert a character at a character index.
-    fn insert_char_index(&mut self, char_index: usize, ch: char);
-    /// Remove a character at a character index.
-    fn remove_char_index(&mut self, char_index: usize) -> char;
-
-    /// Returns the byte index from a character index, and the total character count.
-    fn count_chars_bytes(string: &str, char_index: usize) -> (usize, usize) {
-        let mut byte_index = string.len();
-        let mut char_count = 0;
-        for (i, (j, _)) in string.char_indices().enumerate() {
-            if i == char_index {
-                byte_index = j;
-            }
-            char_count += 1;
-        }
-        (byte_index, char_count)
-    }
+/// Insert a character at a character index.
+fn insert_char_index(string: &mut String, char_index: usize, ch: char) {
+    let (byte_index, char_count) = count_chars_bytes(string, char_index);
+    assert!(char_index <= char_count, "out-of-bounds char index");
+    string.insert(byte_index, ch)
 }
-
-impl CharIndexed for String {
-    fn insert_char_index(&mut self, char_index: usize, ch: char) {
-        let (byte_index, char_count) = Self::count_chars_bytes(self, char_index);
-        assert!(char_index <= char_count, "out-of-bounds char index");
-        self.insert(byte_index, ch)
+/// Remove a character at a character index.
+fn remove_char_index(string: &mut String, char_index: usize) -> char {
+    let (byte_index, char_count) = count_chars_bytes(string, char_index);
+    assert!(char_index < char_count, "out-of-bounds char index");
+    string.remove(byte_index)
+}
+/// Returns the byte index from a character index, and the total character count.
+fn count_chars_bytes(string: &str, char_index: usize) -> (usize, usize) {
+    let mut byte_index = string.len();
+    let mut char_count = 0;
+    for (i, (j, _)) in string.char_indices().enumerate() {
+        if i == char_index {
+            byte_index = j;
+        }
+        char_count += 1;
     }
-    fn remove_char_index(&mut self, char_index: usize) -> char {
-        let (byte_index, char_count) = Self::count_chars_bytes(self, char_index);
-        assert!(char_index < char_count, "out-of-bounds char index");
-        self.remove(byte_index)
-    }
+    (byte_index, char_count)
 }
 
 impl TerminalHistory {
