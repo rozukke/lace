@@ -145,8 +145,8 @@ impl Debugger {
             dprintln!(
                 Always,
                 Error,
-                // TODO(feat): Better message
-                "Out of bounds of user program memory. Pausing execution."
+                "Out of bounds of user program memory (PC < 0x{:04x}). Pausing execution.",
+                self.orig(),
             );
             self.status = Status::WaitForAction;
         }
@@ -154,7 +154,8 @@ impl Debugger {
             dprintln!(
                 Always,
                 Error,
-                "Reached end of user program memory. Pausing execution."
+                "Out of bounds of user program memory (PC >= 0x{:04X}). Pausing execution.",
+                USER_MEMORY_END,
             );
             self.status = Status::WaitForAction;
         }
