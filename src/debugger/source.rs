@@ -8,10 +8,9 @@ use crate::output::DEBUGGER_PRIMARY_COLOR;
 use crate::{dprint, dprintln, output::Output};
 
 /// Read from argument first, if `Some`. Then read from stream.
-// TODO(rename): to `CommandSource`
 #[allow(private_interfaces)] // Perhaps a bad practice
 #[derive(Debug)]
-pub struct Source {
+pub struct CommandSource {
     argument: Option<Argument>,
     stream: Stream,
 }
@@ -87,7 +86,7 @@ pub trait SourceRead {
     fn read(&mut self) -> Option<&str>;
 }
 
-impl Source {
+impl CommandSource {
     pub fn from(argument: Option<String>) -> Self {
         Self {
             argument: argument.map(Argument::from),
@@ -96,7 +95,7 @@ impl Source {
     }
 }
 
-impl SourceRead for Source {
+impl SourceRead for CommandSource {
     fn read(&mut self) -> Option<&str> {
         // Always try to read from argument first
         // If argument is `None`, or if read from argument returns `None`, then read from stream

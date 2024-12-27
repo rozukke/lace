@@ -7,7 +7,7 @@ mod source;
 
 pub use self::breakpoint::{Breakpoint, Breakpoints};
 use self::command::{Command, Label, Location, MemoryLocation};
-use self::source::{Source, SourceRead};
+use self::source::{CommandSource, SourceRead};
 use crate::air::AsmLine;
 use crate::output::{Condition, Output};
 use crate::runtime::{RunState, HALT_ADDRESS, USER_MEMORY_END};
@@ -26,7 +26,7 @@ pub struct Debugger {
     asm_source: AsmSource,
 
     status: Status,
-    command_source: Source,
+    command_source: CommandSource,
 
     breakpoints: Breakpoints,
     /// Used to allow breakpoint to be passed on second attempt.
@@ -128,7 +128,7 @@ impl Debugger {
             asm_source: AsmSource { orig, ast, src },
 
             status: Status::default(),
-            command_source: Source::from(opts.command),
+            command_source: CommandSource::from(opts.command),
 
             breakpoints: breakpoints.into(),
             current_breakpoint: None,
