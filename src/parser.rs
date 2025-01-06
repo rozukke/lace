@@ -250,9 +250,9 @@ impl AsmParser {
             return Err(error::parse_eof(self.src));
         };
 
-        match tok.kind {
-            TokenKind::Instr(instr_kind) => self.parse_instr(instr_kind),
-            TokenKind::Trap(trap_kind) => self.parse_trap(trap_kind),
+        let stmt = match tok.kind {
+            TokenKind::Instr(instr_kind) => self.parse_instr(instr_kind)?,
+            TokenKind::Trap(trap_kind) => self.parse_trap(trap_kind)?,
 
             TokenKind::Dir(_) | TokenKind::Label | TokenKind::Lit(_) | TokenKind::Reg(_) => {
                 return Err(error::parse_generic_unexpected(
@@ -270,9 +270,11 @@ impl AsmParser {
             | TokenKind::Breakpoint => {
                 unreachable!("Found invalid token kind in preprocessed stream");
             }
-        }
+        };
 
-        // TODO(fix): Check for end of line here
+        debug_assert!(self.toks.next().is_none(), "expected end of line");
+
+        Ok(stmt)
     }
 
     /// Return label or leave iter untouched and return None
