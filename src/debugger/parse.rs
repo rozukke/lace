@@ -151,18 +151,18 @@ impl<'a> CommandIter<'a> {
         #[rustfmt::skip]
         let commands: &[(_, &[_])] = &[
             (CommandName::Help,        &["help", "--help", "h", "-h"]),
-            (CommandName::Continue,    &["continue", "cont", "c"]), // proceed
+            (CommandName::Continue,    &["continue", "cont", "c"]), // or 'proceed'
             (CommandName::Finish,      &["finish", "fin", "f"]),
             (CommandName::Exit,        &["exit"]),
             (CommandName::Quit,        &["quit", "q"]),
             (CommandName::Registers,   &["registers", "reg", "r"]),
             (CommandName::Reset,       &["reset"]),
-            (CommandName::Step,        &["progress", "p"]), // advance
+            (CommandName::Step,        &["progress", "p"]), // or 'advance'
             (CommandName::Next,        &["next", "n"]),
             (CommandName::Get,         &["get", "g"]),
             (CommandName::Set,         &["set", "s"]),
             (CommandName::Jump,        &["jump", "j"]),
-            (CommandName::Source,      &["assembly", "asm", "a"]), // source
+            (CommandName::Source,      &["assembly", "asm", "a"]), // or 'source'
             (CommandName::Eval,        &["eval", "e"]),
             (CommandName::BreakList,   &["breaklist", "bl"]),
             (CommandName::BreakAdd,    &["breakadd", "ba"]),
@@ -187,11 +187,9 @@ impl<'a> CommandIter<'a> {
             let Some(subname) = self.next_command_name_part() else {
                 return Err(error::Command::MissingSubcommand { command_name });
             };
-
             if let Some(command) = find_match(subname, break_subcommands) {
                 return Ok(command);
             }
-
             return Err(error::Command::InvalidSubcommand {
                 command_name,
                 subcommand_name: subname.to_string(),
