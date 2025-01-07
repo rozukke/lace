@@ -3,7 +3,6 @@ use std::fmt;
 use super::{error, parse::CommandIter};
 use crate::symbol::Register;
 
-#[allow(dead_code)]
 #[derive(Debug)]
 pub enum Command {
     Help,
