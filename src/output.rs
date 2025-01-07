@@ -300,8 +300,6 @@ impl Output {
     }
 }
 
-// TODO(fix): Gracefully exit on broken pipe
-
 /// Writer for [`Output::Normal`]
 struct NormalWriter {
     minimal: bool,
