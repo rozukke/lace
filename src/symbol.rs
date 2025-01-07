@@ -141,18 +141,16 @@ impl Span {
         self.offs.0 + self.len
     }
 
+    /// Create new [`Span`] which minimally covers both input spans.
+    ///
+    /// - Argument order does not matter.
+    /// - One span may completely contain the other span.
+    /// - There may be a space between the end of one span and the offset the other.
     pub fn join(&self, other: Span) -> Span {
-        let (left, right) = if self.offs() > other.offs() {
-            (other, *self) // Prevent underflow
-        } else {
-            (*self, other)
-        };
-
-        let len = right.offs() - left.offs() + right.len();
-        // TODO(fix): What does this mean ?
-        debug_assert!(len >= left.len(), "Span length was calculated incorrectly");
-
-        Span::new(SrcOffset(left.offs()), len)
+        let offs = self.offs().min(other.offs());
+        let end = self.end().max(other.end());
+        let len = end - offs; // Underflow should be impossible
+        Span::new(SrcOffset(offs), len)
     }
 }
 
