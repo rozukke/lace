@@ -182,8 +182,8 @@ impl Output {
             return;
         }
 
-        self.print("\x1b[2m┌────────────────────────────────────┐\x1b[0m\n");
-        self.print("\x1b[2m│        \x1b[3mhex     int    uint    char\x1b[0m\x1b[2m │\x1b[0m\n");
+        self.print("\x1b[2m┌───────────────────────────────────┐\x1b[0m\n");
+        self.print("\x1b[2m│        \x1b[3mhex     int    uint    chr\x1b[0m\x1b[2m │\x1b[0m\n");
 
         // R0-7
         for i in 0..8 {
@@ -199,10 +199,10 @@ impl Output {
         self.print(format_args!("  0x{:04x}", state.pc()));
         self.print("                ");
         self.print(" \x1b[1mCC\x1b[0m");
-        self.print(format_args!("  {:03b}", state.flag() as u8));
+        self.print(format_args!(" {:03b}", state.flag() as u8));
         self.print(" \x1b[2m│\x1b[0m\n");
 
-        self.print("\x1b[2m└────────────────────────────────────┘\x1b[0m\n");
+        self.print("\x1b[2m└───────────────────────────────────┘\x1b[0m\n");
     }
 
     /// Prints a register as hex, signed decimal, unsigned decimal, and character, in a fancy
@@ -213,12 +213,12 @@ impl Output {
             self.print('\n');
             return;
         }
-        self.print("\x1b[2m┌────────────────────────────────┐\x1b[0m\n");
-        self.print("\x1b[2m│    \x1b[3mhex     int    uint    char\x1b[0m\x1b[2m │\x1b[0m\n");
+        self.print("\x1b[2m┌───────────────────────────────┐\x1b[0m\n");
+        self.print("\x1b[2m│    \x1b[3mhex     int    uint    chr\x1b[0m\x1b[2m │\x1b[0m\n");
         self.print("\x1b[2m│\x1b[0m ");
         self.print_integer_inner(value);
         self.print(" \x1b[2m│\x1b[0m\n");
-        self.print("\x1b[2m└────────────────────────────────┘\x1b[0m\n");
+        self.print("\x1b[2m└───────────────────────────────┘\x1b[0m\n");
     }
 
     /// Prints a register as hex, signed decimal, unsigned decimal, and character.
@@ -230,7 +230,7 @@ impl Output {
         self.print(format_args!("0x{:04x}", value));
         self.print(format_args!("  {:-6}", value));
         self.print(format_args!("  {:-6}", value as i16));
-        self.print("     ");
+        self.print("    ");
         self.print_char_display(value);
     }
 
@@ -254,26 +254,25 @@ impl Output {
         #[allow(clippy::match_overlapping_arm)]
         match value {
             // ASCII control characters which are arbitrarily considered significant
-            0x00 => self.print("NUL"),
-            0x08 => self.print("BS "),
-            0x09 => self.print("HT "),
-            0x0a => self.print("LF "),
-            0x0b => self.print("VT "),
-            0x0c => self.print("FF "),
-            0x0d => self.print("CR "),
-            0x1b => self.print("ESC"),
-            0x7f => self.print("DEL"),
+            // ᴀʙᴄᴅᴇꜰɢʜɪᴊᴋʟᴍɴᴏᴘꞯʀꜱᴛᴜᴠᴡxʏᴢ
+            0x00 => self.print("ɴᴜʟ"),
+            0x08 => self.print(" ʙꜱ"),
+            0x09 => self.print(" ʜᴛ"),
+            0x0a => self.print(" ʟꜰ"),
+            0x0b => self.print(" ᴠᴛ"),
+            0x0c => self.print(" ꜰꜰ"),
+            0x0d => self.print(" ᴄʀ"),
+            0x1b => self.print("ᴇꜱᴄ"),
+            0x7f => self.print("ᴅᴇʟ"),
 
             // Space
             0x20 => self.print("[_]"),
 
             // Printable ASCII characters
-            0x21..=0x7e => self.print(format_args!("{:-6}", value as u8 as char)),
+            0x21..=0x7e => self.print(format_args!("{:^3}", value as u8 as char)),
 
-            // Any ASCII character not already matched (unimportant control characters)
-            0x00..=0x7f => self.print("\x1b[2m───\x1b[0m"),
-            // Any non-ASCII character
-            0x0080.. => self.print("\x1b[2m┄┄┄\x1b[0m"),
+            // Unimportant control characters and non-ASCII characters
+            _ => self.print("\x1b[2m───\x1b[0m"),
         }
     }
 
@@ -300,6 +299,8 @@ impl Output {
         }
     }
 }
+
+// TODO(fix): Gracefully exit on broken pipe
 
 /// Writer for [`Output::Normal`]
 struct NormalWriter {
