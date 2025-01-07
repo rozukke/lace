@@ -20,6 +20,8 @@ pub const USER_MEMORY_END: u16 = 0xFE00;
 /// Sentinel value, which the PC is set to when a `HALT` is encountered.
 pub const HALT_ADDRESS: u16 = 0xFFFF;
 
+/// CPU exception.
+/// A fatal error has occurred in the program, such as an invalid instruction.
 macro_rules! exception {
     ( $fmt:literal $($tt:tt)* ) => {{
         eprintln!(
@@ -52,6 +54,8 @@ pub(super) struct RunState {
     flag: RunFlag,
     /// Processor status register
     _psr: u16,
+    /// Origin address (usually 0x3000)
+    orig: u16,
 }
 
 #[derive(Clone, Copy)]
@@ -121,6 +125,7 @@ impl RunEnvironment {
                 reg: [0, 0, 0, 0, 0, 0, 0, 0xFDFF],
                 flag: RunFlag::Uninit,
                 _psr: 0,
+                orig: orig as u16,
             },
             debugger: None,
         })
@@ -159,7 +164,7 @@ impl RunEnvironment {
                     continue;
                 }
                 // Debugger should catch this on next loop, and warn
-                if self.state.pc < debugger.orig() || self.state.pc >= USER_MEMORY_END {
+                if self.state.pc < self.state.orig || self.state.pc >= USER_MEMORY_END {
                     continue;
                 }
                 // From this point, next instruction will always be executed
@@ -174,9 +179,13 @@ impl RunEnvironment {
                 );
                 break; // Halt was triggered
             }
-            // TODO(feat): Throw exception for pc < orig
+
+            // Debugger should have already checked these (if currently active)
+            if self.state.pc < self.state.orig {
+                exception!("entered protected memory area < 0x{:04x}", self.state.orig);
+            }
             if self.state.pc >= USER_MEMORY_END {
-                exception!("entered protected memory area >= {}", USER_MEMORY_END);
+                exception!("entered protected memory area >= 0x{:04x}", USER_MEMORY_END);
             }
 
             let instr = self.state.mem[self.state.pc as usize];
