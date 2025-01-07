@@ -2,6 +2,16 @@ use super::command::{CommandName, Label, Location, MemoryLocation};
 use super::error;
 use crate::symbol::Register;
 
+// TODO: rename to 'ValueResult' ??
+#[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq))]
+struct ArgumentResult<'a> {
+    // TODO: Rename fields ?
+    pub string: &'a str,
+    pub argument: Argument,
+}
+
+// TODO: rename to 'Value' ??
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 enum Argument {
@@ -244,23 +254,26 @@ impl<'a> CommandIter<'a> {
         argument_name: &'static str,
         default: Result<u16, error::Argument>,
     ) -> Result<u16, error::Argument> {
-        match self.next_argument(argument_name)? {
-            Some(Argument::Integer(count)) => {
+        let Some(argument) = self.next_argument(argument_name)? else {
+            return default;
+        };
+        match argument.argument {
+            Argument::Integer(count) => {
                 int_as_u16(count).map_err(|error| error::Argument::InvalidValue {
                     argument_name,
+                    string: argument.string.to_string(),
                     error,
                 })
             }
 
-            Some(value) => Err(error::Argument::InvalidValue {
+            value => Err(error::Argument::InvalidValue {
                 argument_name,
+                string: argument.string.to_string(),
                 error: error::Value::MismatchedType {
                     expected_type: "integer",
                     actual_type: value.kind(),
                 },
             }),
-
-            None => default,
         }
     }
 
@@ -271,27 +284,27 @@ impl<'a> CommandIter<'a> {
         expected_count: u8,
     ) -> Result<Location, error::Argument> {
         let actual_count = self.arg_count;
-        match self.next_argument(argument_name)? {
-            Some(Argument::Register(register)) => Ok(Location::Register(register)),
+        let Some(argument) = self.next_argument(argument_name)? else {
+            return Err(error::Argument::MissingArgument {
+                argument_name,
+                expected_count,
+                actual_count,
+            });
+        };
+        match argument.argument {
+            Argument::Register(register) => Ok(Location::Register(register)),
 
-            Some(Argument::Integer(address)) => Ok(Location::Memory(MemoryLocation::Address(
+            Argument::Integer(address) => Ok(Location::Memory(MemoryLocation::Address(
                 int_as_u16(address).map_err(|error| error::Argument::InvalidValue {
                     argument_name,
+                    string: argument.string.to_string(),
                     error,
                 })?,
             ))),
 
-            Some(Argument::Label(label)) => Ok(Location::Memory(MemoryLocation::Label(label))),
+            Argument::Label(label) => Ok(Location::Memory(MemoryLocation::Label(label))),
 
-            Some(Argument::PCOffset(offset)) => {
-                Ok(Location::Memory(MemoryLocation::PCOffset(offset)))
-            }
-
-            None => Err(error::Argument::MissingArgument {
-                argument_name,
-                expected_count,
-                actual_count,
-            }),
+            Argument::PCOffset(offset) => Ok(Location::Memory(MemoryLocation::PCOffset(offset))),
         }
     }
 
@@ -327,27 +340,30 @@ impl<'a> CommandIter<'a> {
         argument_name: &'static str,
         default: Result<MemoryLocation, error::Argument>,
     ) -> Result<MemoryLocation, error::Argument> {
-        match self.next_argument(argument_name)? {
-            Some(Argument::Integer(address)) => Ok(MemoryLocation::Address(
+        let Some(argument) = self.next_argument(argument_name)? else {
+            return default;
+        };
+        match argument.argument {
+            Argument::Integer(address) => Ok(MemoryLocation::Address(
                 int_as_u16(address).map_err(|error| error::Argument::InvalidValue {
                     argument_name,
+                    string: argument.string.to_string(),
                     error,
                 })?,
             )),
 
-            Some(Argument::Label(label)) => Ok(MemoryLocation::Label(label)),
+            Argument::Label(label) => Ok(MemoryLocation::Label(label)),
 
-            Some(Argument::PCOffset(offset)) => Ok(MemoryLocation::PCOffset(offset)),
+            Argument::PCOffset(offset) => Ok(MemoryLocation::PCOffset(offset)),
 
-            Some(value) => Err(error::Argument::InvalidValue {
+            value => Err(error::Argument::InvalidValue {
                 argument_name,
+                string: argument.string.to_string(),
                 error: error::Value::MismatchedType {
                     expected_type: "address, label, or program counter offset",
                     actual_type: value.kind(),
                 },
             }),
-
-            None => default,
         }
     }
 
@@ -458,24 +474,33 @@ impl<'a> CommandIter<'a> {
     fn next_argument(
         &mut self,
         argument_name: &'static str,
-    ) -> Result<Option<Argument>, error::Argument> {
-        self.next_argument_inner()
-            .map_err(|error| error::Argument::InvalidValue {
-                argument_name,
-                error,
-            })
-    }
-
-    fn next_argument_inner(&mut self) -> Result<Option<Argument>, error::Value> {
+    ) -> Result<Option<ArgumentResult>, error::Argument> {
         debug_assert!(
             self.head == self.base,
             "should have been called with head==base"
         );
         self.reset_head();
         self.skip_whitespace();
+        let start = self.head;
 
         self.arg_count += 1;
 
+        match self.next_argument_inner() {
+            Ok(Some(a)) => Ok(Some(ArgumentResult {
+                string: &self.buffer[start..self.base],
+                argument: a,
+            })),
+            Ok(None) => Ok(None),
+            Err(error) => Err(error::Argument::InvalidValue {
+                argument_name,
+                // Base has not been updated
+                string: self.buffer[start..self.head].to_string(),
+                error,
+            }),
+        }
+    }
+
+    fn next_argument_inner(&mut self) -> Result<Option<Argument>, error::Value> {
         if self.is_end_of_argument() {
             return Ok(None);
         }
@@ -762,12 +787,12 @@ mod tests {
 
     #[test]
     fn many_arguments_works() {
-        let line = "  name  -54  r3 0x5812 Foo name2  Bar+0x04 4209";
+        let line = "  name  -54  r3 0x5812 Foo naself.headme2  Bar+0x04 4209";
         let mut iter = CommandIter::from(line);
 
         let argument_name = "dummy";
 
-        assert_eq!(iter.next_command_name_part(), Some("name"));
+        assert_eq!(iter.next_command_name_part(),self.head Some("name"));
         assert_eq!(
             iter.next_argument(argument_name),
             Ok(Some(Argument::Integer(-54)))

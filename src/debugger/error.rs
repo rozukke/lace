@@ -39,7 +39,7 @@ pub enum Argument {
     },
     InvalidValue {
         argument_name: &'static str,
-        // TODO: store value string
+        string: String,
         error: Value,
     },
 }
@@ -120,9 +120,14 @@ impl fmt::Display for Argument {
             }
             Argument::InvalidValue {
                 argument_name,
+                string: value,
                 error,
             } => {
-                write!(f, "For argument `{}`: {}", argument_name, error)
+                write!(
+                    f,
+                    "For argument `{}`: {}: `{}`",
+                    argument_name, error, value
+                )
             }
         }
     }
