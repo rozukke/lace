@@ -189,19 +189,20 @@ impl<'a> CommandIter<'a> {
 
         // This could be written a bit nicer. But it doesn't seem necessary.
         if name_matches(command_name, BREAK_COMMAND) {
-            debug_assert!(BREAK_COMMAND.len() > 0); // Must be true if this branch is being ran
-            let command_name = BREAK_COMMAND[0]; // Normalize name and get as `'static`
+            // Normalize name and get as `'static`
+            // Only used for errors
+            let command_name = BREAK_COMMAND[0]; // Array must be non-empty if this branch is being ran
 
-            let Some(subname) = self.next_command_name_part() else {
+            let Some(subcommand_name) = self.next_command_name_part() else {
                 return Err(error::Command::MissingSubcommand { command_name });
             };
-            if let Some(command) = find_name_match(subname, BREAK_SUBCOMMANDS) {
-                return Ok(command);
-            }
-            return Err(error::Command::InvalidSubcommand {
-                command_name,
-                subcommand_name: subname.to_string(),
-            });
+            let Some(command) = find_name_match(subcommand_name, BREAK_SUBCOMMANDS) else {
+                return Err(error::Command::InvalidSubcommand {
+                    command_name,
+                    subcommand_name: subcommand_name.to_string(),
+                });
+            };
+            return Ok(command);
         }
 
         Err(error::Command::InvalidCommand {

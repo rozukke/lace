@@ -39,6 +39,7 @@ pub enum Argument {
     },
     InvalidValue {
         argument_name: &'static str,
+        // TODO: store value string
         error: Value,
     },
 }
