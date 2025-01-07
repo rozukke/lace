@@ -164,7 +164,7 @@ impl RunEnvironment {
                     continue;
                 }
                 // Debugger should catch this on next loop, and warn
-                if self.state.pc < self.state.orig || self.state.pc >= USER_MEMORY_END {
+                if self.state.check_pc_bounds() != Ordering::Equal {
                     continue;
                 }
                 // From this point, next instruction will always be executed
@@ -181,11 +181,14 @@ impl RunEnvironment {
             }
 
             // Debugger should have already checked these (if currently active)
-            if self.state.pc < self.state.orig {
-                exception!("entered protected memory area < 0x{:04x}", self.state.orig);
-            }
-            if self.state.pc >= USER_MEMORY_END {
-                exception!("entered protected memory area >= 0x{:04x}", USER_MEMORY_END);
+            match self.state.check_pc_bounds() {
+                Ordering::Less => {
+                    exception!("entered protected memory area < 0x{:04x}", self.state.orig)
+                }
+                Ordering::Greater => {
+                    exception!("entered protected memory area >= 0x{:04x}", USER_MEMORY_END)
+                }
+                _ => (),
             }
 
             let instr = self.state.mem[self.state.pc as usize];
@@ -285,6 +288,18 @@ impl RunState {
             Ordering::Less => RunFlag::N,
             Ordering::Equal => RunFlag::Z,
             Ordering::Greater => RunFlag::P,
+        }
+    }
+
+    /// Returns `Ordering::Equal` if current program counter is within user memory.
+    /// Returns `Ordering::Less` or `Ordering::Greater` if PC `<` ORIG or PC `>=` [`USER_MEMORY_END`] respectively.
+    pub fn check_pc_bounds(&self) -> Ordering {
+        if self.pc < self.orig {
+            Ordering::Less
+        } else if self.pc >= USER_MEMORY_END {
+            Ordering::Greater
+        } else {
+            Ordering::Equal
         }
     }
 

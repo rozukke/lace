@@ -5,6 +5,8 @@ mod eval;
 mod parse;
 mod source;
 
+use std::cmp::Ordering;
+
 pub use self::breakpoint::{Breakpoint, Breakpoints};
 use self::command::{Command, Label, Location, MemoryLocation};
 use self::source::{CommandSource, SourceRead};
@@ -140,24 +142,27 @@ impl Debugger {
 
     /// Read and execute user commands, until an [`Action`] is raised.
     pub(super) fn next_action(&mut self, state: &mut RunState) -> Action {
-        if state.pc() < self.orig() {
-            // This can probably only happen with a bad `BR*` instruction
-            dprintln!(
-                Always,
-                Error,
-                "Out of bounds of user program memory (PC < 0x{:04x}). Pausing execution.",
-                self.orig(),
-            );
-            self.status = Status::WaitForAction;
-        }
-        if state.pc() >= USER_MEMORY_END && state.pc() != HALT_ADDRESS {
-            dprintln!(
-                Always,
-                Error,
-                "Out of bounds of user program memory (PC >= 0x{:04X}). Pausing execution.",
-                USER_MEMORY_END,
-            );
-            self.status = Status::WaitForAction;
+        match state.check_pc_bounds() {
+            Ordering::Less => {
+                // This can probably only happen with a bad `BR*` instruction
+                dprintln!(
+                    Always,
+                    Error,
+                    "Out of bounds of user program memory (PC < 0x{:04x}). Pausing execution.",
+                    self.orig(),
+                );
+                self.status = Status::WaitForAction;
+            }
+            Ordering::Greater if state.pc() != HALT_ADDRESS => {
+                dprintln!(
+                    Always,
+                    Error,
+                    "Out of bounds of user program memory (PC >= 0x{:04X}). Pausing execution.",
+                    USER_MEMORY_END,
+                );
+                self.status = Status::WaitForAction;
+            }
+            _ => (),
         }
 
         let instr = SignificantInstr::try_from(state.mem(state.pc())).ok();
