@@ -31,9 +31,9 @@ pub struct Debugger {
     command_source: CommandSource,
 
     breakpoints: Breakpoints,
-    /// Used to allow breakpoint to be passed on second attempt.
+    /// Used to allow breakpoint to be ignored if it just broke execution.
     ///
-    /// Compare this with a `HALT` instruction, which is NEVER passed with basic commands
+    /// Compare this with a `HALT` instruction, which is NEVER ignored with basic commands
     /// (`progress`, `next`, `continue`, `finish`).
     current_breakpoint: Option<u16>,
 
@@ -592,7 +592,12 @@ impl Debugger {
     }
 
     pub(super) fn orig(&self) -> u16 {
-        self.initial_state.pc()
+        debug_assert_eq!(
+            self.asm_source.orig,
+            self.initial_state.pc(),
+            "orig values do not match",
+        );
+        self.asm_source.orig
     }
 
     pub(super) fn increment_instruction_count(&mut self) {
