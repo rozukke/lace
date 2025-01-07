@@ -65,17 +65,17 @@ const PROMPT: &str = "DEBUGGER> ";
 
 /// Print prompt and command.
 fn echo_command(command: Option<&str>) {
-    // Echo prompt and command for non-terminal source
-    // Equivalent code found in terminal source
-    if command.is_some() {
-        dprint!(Sometimes, Normal, "\x1b[1m{}", PROMPT);
-        dprintln!(
-            Sometimes,
-            Normal,
-            "{}",
-            command.unwrap_or("\x1b[3m(end of input)").trim()
-        );
+    if command.is_some_and(|command| command.trim().is_empty()) {
+        return;
     }
+    // Equivalent code found in `Terminal`
+    dprint!(Sometimes, Normal, "\x1b[1m{}", PROMPT);
+    dprintln!(
+        Sometimes,
+        Normal,
+        "{}",
+        command.unwrap_or("\x1b[3m(end of input)").trim()
+    );
 }
 
 /// A trait for objects which can yield a command, by iterating a string or reading a file.
