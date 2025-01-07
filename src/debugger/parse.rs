@@ -52,7 +52,7 @@ impl Radix {
     }
 }
 
-/// Try to convert an `i32` into `u32`.
+/// Try to convert an `i32` into `i16`.
 fn int_as_i16(integer: i32) -> Result<i16, error::Value> {
     integer
         .try_into()
@@ -60,33 +60,68 @@ fn int_as_i16(integer: i32) -> Result<i16, error::Value> {
             max: i16::MAX as u16,
         })
 }
-/// Try to convert an `i32` into `u32`.
+/// Try to convert an `i32` into `u16`.
 fn int_as_u16(integer: i32) -> Result<u16, error::Value> {
     integer
         .try_into()
         .map_err(|_| error::Value::IntegerTooLarge { max: u16::MAX })
 }
 
+// TODO(feat): Add more aliases (such as undocumented typo aliases)
+#[rustfmt::skip]
+const COMMANDS: CommandNameList = &[
+    (CommandName::Help,        &["help", "--help", "h", "-h"]),
+    (CommandName::Continue,    &["continue", "cont", "c"]), // or 'proceed'
+    (CommandName::Finish,      &["finish", "fin", "f"]),
+    (CommandName::Exit,        &["exit"]),
+    (CommandName::Quit,        &["quit", "q"]),
+    (CommandName::Registers,   &["registers", "reg", "r"]),
+    (CommandName::Reset,       &["reset"]),
+    (CommandName::Step,        &["progress", "p"]), // or 'advance'
+    (CommandName::Next,        &["next", "n"]),
+    (CommandName::Get,         &["get", "g"]),
+    (CommandName::Set,         &["set", "s"]),
+    (CommandName::Jump,        &["jump", "j"]),
+    (CommandName::Source,      &["assembly", "asm", "a"]), // or 'source'
+    (CommandName::Eval,        &["eval", "e"]),
+    (CommandName::BreakList,   &["breaklist", "bl"]),
+    (CommandName::BreakAdd,    &["breakadd", "ba"]),
+    (CommandName::BreakRemove, &["breakremove", "br"]),
+];
+const BREAK_COMMAND: CandidateList = &["break", "b"];
+#[rustfmt::skip]
+const BREAK_SUBCOMMANDS: CommandNameList = &[
+    (CommandName::BreakList,   &["list", "l"]),
+    (CommandName::BreakAdd,    &["add", "a"]),
+    (CommandName::BreakRemove, &["remove", "r"]),
+];
+
+/// A [`CommandName`] with a list of name candidates
+type CommandNameList<'a> = &'a [(CommandName, CandidateList<'a>)];
+/// List of single-word aliases for a command or subcommand
+type CandidateList<'a> = &'a [&'a str];
+
+/// Returns the first [`CommandName`], which has a corresponding candidate which matches `name`
+/// (case insensitive).
+///
+/// Returns `None` if no match was found.
+fn find_name_match(name: &str, commands: CommandNameList) -> Option<CommandName> {
+    for (command, candidates) in commands {
+        if name_matches(name, candidates) {
+            return Some(*command);
+        }
+    }
+    None
+}
+
 /// Returns `true` if `name` matchs any item of `candidates` (case insensitive).
-fn matches(name: &str, candidates: &[&str]) -> bool {
+fn name_matches(name: &str, candidates: CandidateList) -> bool {
     for candidate in candidates {
         if name.eq_ignore_ascii_case(candidate) {
             return true;
         }
     }
     false
-}
-
-/// Returns the first [`CommandName`], which has a corresponding candidate which matches `name`(case insensitive).
-///
-/// Returns `None` if no match was found.
-fn find_match(name: &str, commands: &[(CommandName, &[&str])]) -> Option<CommandName> {
-    for (command, candidates) in commands {
-        if matches(name, candidates) {
-            return Some(*command);
-        }
-    }
-    None
 }
 
 impl Argument {
@@ -148,47 +183,19 @@ impl<'a> CommandIter<'a> {
         debug_assert!(command_name.is_some(), "missing command name");
         let command_name = command_name.unwrap_or("");
 
-        // TODO(feat): Add more aliases (such as undocumented typo aliases)
-        #[rustfmt::skip]
-        let commands: &[(_, &[_])] = &[
-            (CommandName::Help,        &["help", "--help", "h", "-h"]),
-            (CommandName::Continue,    &["continue", "cont", "c"]), // or 'proceed'
-            (CommandName::Finish,      &["finish", "fin", "f"]),
-            (CommandName::Exit,        &["exit"]),
-            (CommandName::Quit,        &["quit", "q"]),
-            (CommandName::Registers,   &["registers", "reg", "r"]),
-            (CommandName::Reset,       &["reset"]),
-            (CommandName::Step,        &["progress", "p"]), // or 'advance'
-            (CommandName::Next,        &["next", "n"]),
-            (CommandName::Get,         &["get", "g"]),
-            (CommandName::Set,         &["set", "s"]),
-            (CommandName::Jump,        &["jump", "j"]),
-            (CommandName::Source,      &["assembly", "asm", "a"]), // or 'source'
-            (CommandName::Eval,        &["eval", "e"]),
-            (CommandName::BreakList,   &["breaklist", "bl"]),
-            (CommandName::BreakAdd,    &["breakadd", "ba"]),
-            (CommandName::BreakRemove, &["breakremove", "br"]),
-        ];
-        let break_command = &["break", "b"];
-        #[rustfmt::skip]
-        let break_subcommands: &[(_, &[_])] = &[
-            (CommandName::BreakList,   &["list", "l"]),
-            (CommandName::BreakAdd,    &["add", "a"]),
-            (CommandName::BreakRemove, &["remove", "r"]),
-        ];
-
-        if let Some(command) = find_match(command_name, commands) {
+        if let Some(command) = find_name_match(command_name, COMMANDS) {
             return Ok(command);
         };
 
         // This could be written a bit nicer. But it doesn't seem necessary.
-        if matches(command_name, break_command) {
-            let command_name = break_command[0]; // Normalize name and get as `'static`
+        if name_matches(command_name, BREAK_COMMAND) {
+            debug_assert!(BREAK_COMMAND.len() > 0); // Must be true if this branch is being ran
+            let command_name = BREAK_COMMAND[0]; // Normalize name and get as `'static`
 
             let Some(subname) = self.next_command_name_part() else {
                 return Err(error::Command::MissingSubcommand { command_name });
             };
-            if let Some(command) = find_match(subname, break_subcommands) {
+            if let Some(command) = find_name_match(subname, BREAK_SUBCOMMANDS) {
                 return Ok(command);
             }
             return Err(error::Command::InvalidSubcommand {
