@@ -84,7 +84,7 @@ impl Display for TokenKind {
             | TokenKind::Eof
             | TokenKind::Byte(_)
             | TokenKind::Breakpoint => {
-                unreachable!("whitespace, comment, eof, byte, breakpoitn attempted to be displayed")
+                unreachable!("whitespace, comment, eof, byte, breakpoint attempted to be displayed")
             }
         };
         f.write_str(lit)
