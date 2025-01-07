@@ -39,10 +39,9 @@ fn eval_inner(state: &mut RunState, line: &'static str) -> Result<()> {
     let mut asm = AsmLine::new(0, stmt, Span::dummy());
     asm.backpatch()?;
 
-    // Emit
+    // Compile and execute
     let instr = asm.emit()?;
-    // Execute
-    RunState::OP_TABLE[(instr >> 12) as usize](state, instr);
+    state.execute(instr);
 
     Ok(())
 }

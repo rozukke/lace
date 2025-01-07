@@ -192,10 +192,9 @@ impl RunEnvironment {
             }
 
             let instr = self.state.mem[self.state.pc as usize];
-            let opcode = (instr >> 12) as usize;
             // PC incremented before instruction is performed
             self.state.pc += 1;
-            RunState::OP_TABLE[opcode](&mut self.state, instr);
+            self.state.execute(instr);
         }
 
         Output::Normal.start_new_line();
@@ -203,7 +202,12 @@ impl RunEnvironment {
 }
 
 impl RunState {
-    pub const OP_TABLE: [fn(&mut RunState, u16); 16] = [
+    pub fn execute(&mut self, instr: u16) {
+        let opcode = (instr >> 12) as usize;
+        RunState::OP_TABLE[opcode](self, instr);
+    }
+
+    const OP_TABLE: [fn(&mut RunState, u16); 16] = [
         Self::br,    // 0x0
         Self::add,   // 0x1
         Self::ld,    // 0x2
