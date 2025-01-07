@@ -2,7 +2,8 @@ use super::command::{CommandName, Label, Location, MemoryLocation};
 use super::error;
 use crate::symbol::Register;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 enum Argument {
     Register(Register),
     Integer(i32),

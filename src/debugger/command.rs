@@ -86,7 +86,8 @@ pub enum MemoryLocation {
 }
 
 /// Label with word offset.
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct Label {
     pub name: String,
     pub offset: i16,
