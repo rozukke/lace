@@ -6,6 +6,7 @@ mod parse;
 mod source;
 
 use std::cmp::Ordering;
+use std::ops::Range;
 
 pub use self::breakpoint::{Breakpoint, Breakpoints};
 use self::command::{Command, Label, Location, MemoryLocation};
@@ -62,13 +63,15 @@ enum Status {
     ///
     /// Stop execution early if breakpoint or `HALT` is reached.
     ///
-    /// Subroutines are not treated specially; `JSR`/`JSRR` and `RET` instructions are treated as
-    /// any other instruction is.
+    /// Subroutines are not treated specially; `JSR|JSRR|CALL` and `RET` instructions are treated
+    /// as any other instruction is.
     Step { count: u16 },
-    /// Execute the next instruction, or the whole subroutine if next instruction is `JSR`/`JSRR`,
-    /// until a breakpoint or `HALT`.
+    /// Execute the next instruction, or the whole subroutine if next instruction is
+    /// `JSR|JSRR|CALL`.
     ///
     /// Stop execution early if breakpoint or `HALT` is reached.
+    ///
+    /// Return address is necessary to support nested subroutine calls.
     Next { return_addr: u16 },
     /// Execute all instructions until breakpoint or `HALT` is reached.
     Continue,
@@ -78,7 +81,7 @@ enum Status {
     Finish,
 }
 
-/// An action, which the debugger passes to the runtime loop.
+/// A message which the debugger passes to the runtime loop.
 #[derive(Debug)]
 pub enum Action {
     /// Keep executing as normal (with the debugger active).
@@ -168,7 +171,7 @@ impl Debugger {
         let instr = SignificantInstr::try_from(state.mem(state.pc())).ok();
         self.check_interrupts(state.pc(), instr);
 
-        // `HALT` and breakpoints should be already handled by caller
+        // `HALT` and breakpoints should be already handled (above)
         loop {
             match &mut self.status {
                 Status::WaitForAction => {
@@ -189,7 +192,7 @@ impl Debugger {
 
                 Status::Next { return_addr } => {
                     if state.pc() == *return_addr {
-                        // If subroutine was excecuted (for `JSR`/`JSRR` + `RET`)
+                        // If subroutine was excecuted (for `JSR|JSRR|CALL` + `RET`)
                         // As opposed to a single instruction
                         if self.instruction_count > 1 {
                             dprintln!(
@@ -226,8 +229,8 @@ impl Debugger {
 
     /// An 'interrupt' here is a breakpoint or `HALT` trap.
     fn check_interrupts(&mut self, pc: u16, instr: Option<SignificantInstr>) {
-        // Always break from `continue|finish|step|next` on a breakpoint or `HALT`
-        // Breaking on `RET` (for `finish`), and end of `step` and `next` is handled later
+        // Always break from `continue|finish|progress|next` on a breakpoint or `HALT`
+        // Breaking on `RET` (for `finish`), and at end of `progress` and `next` is handled later
 
         // Remember if previous cycle paused on the same breakpoint
         // If so, don't break now
@@ -240,10 +243,14 @@ impl Debugger {
                 dprintln!(
                     Always,
                     Warning,
-                    "Reached predefined breakpoint. Pausing execution."
+                    "Reached preset breakpoint. Pausing execution."
                 );
             } else {
-                dprintln!(Always, Warning, "Reached breakpoint. Pausing execution.");
+                dprintln!(
+                    Always,
+                    Warning,
+                    "Reached runtime breakpoint. Pausing execution."
+                );
             }
             self.current_breakpoint = Some(pc);
             self.status = Status::WaitForAction;
@@ -263,7 +270,7 @@ impl Debugger {
 
     /// Read and execute the next [`Command`], returning an [`Action`] if it is raised.
     fn run_command(&mut self, state: &mut RunState) -> Option<Action> {
-        debug_assert!(
+        assert!(
             matches!(self.status, Status::WaitForAction),
             "`run_command` must only be called if `status == WaitForAction`",
         );
@@ -296,8 +303,8 @@ impl Debugger {
                 *state = self.initial_state.clone();
                 self.should_echo_pc = true;
                 // Other fields either:
-                //  - Shouldn't be mutated/reset: `initial_state`, `asm_source`, `command_source`, `breakpoints`
-                //  - Or would be redundant to do so: `status`, `current_breakpoint`, `instruction_count`
+                // - Shouldn't be mutated/reset
+                // - Or would be redundant to do so
                 dprintln!(Sometimes, Warning, "Reset program to initial state.");
             }
 
@@ -498,7 +505,7 @@ impl Debugger {
             return;
         }
 
-        let Some(stmt) = self.asm_source.get_source_statement(address) else {
+        let Some(stmt) = self.asm_source.show_line_context(address) else {
             return;
         };
 
@@ -510,8 +517,6 @@ impl Debugger {
                 "Note: Program memory may have been modified."
             );
         }
-
-        self.asm_source.show_line_context(address);
     }
 
     /// Returns `None` if `location` is out of bounds or an invalid label.
@@ -562,6 +567,7 @@ impl Debugger {
     /// Returns `None` if `label` is an invalid label.
     ///
     /// Label names are case-sensitive.
+    /// Print a warning if the given name only has a case-insensitive match.
     fn resolve_label_name_address(label: &str) -> Option<u16> {
         with_symbol_table(|sym| {
             if let Some(addr) = sym.get(label) {
@@ -607,9 +613,9 @@ impl Debugger {
 
 impl AsmSource {
     /// Show lines surrounding instruction/directive corresponding to `address`.
-    pub fn show_line_context(&self, address: u16) {
+    pub fn show_line_context(&self, address: u16) -> Option<&AsmLine> {
         let Some(stmt) = self.get_source_statement(address) else {
-            return;
+            return None;
         };
         let report = miette::miette!(
             severity = miette::Severity::Advice,
@@ -621,6 +627,7 @@ impl AsmSource {
         )
         .with_source_code(self.src);
         eprintln!("{:?}", report);
+        Some(stmt)
     }
 
     /// Show instruction/directive corresponding to `address`, with no context.
@@ -628,9 +635,8 @@ impl AsmSource {
         let Some(stmt) = self.get_source_statement(address) else {
             return;
         };
-        let start = stmt.span.offs();
-        let end = start + stmt.span.len();
-        let line = &self.src[start..end];
+        let range: Range<usize> = stmt.span.into();
+        let line = &self.src[range];
         dprintln!(Always, Normal, "{}", line);
     }
 
@@ -659,6 +665,8 @@ impl AsmSource {
         let stmt_start = stmt.span.offs();
         let stmt_end = stmt.span.end();
 
+        // Please note that this code demands trust, not comprehension
+
         // Split source into characters before and after span
         // Neither string contains characters in the span, but may contain characters in the same
         // line as the instruction
@@ -675,7 +683,7 @@ impl AsmSource {
             // Note inclusive range, to account for characters in current line, outside of
             // instruction span
             let mut line = 0;
-            // Restructuring/inverting this loop seems unproductive
+            // Previous attempts to restructure/invert this loop have been unproductive
             for ch in iter {
                 if ch == '\n' {
                     line += 1;
@@ -692,6 +700,8 @@ impl AsmSource {
         let end = stmt_end + count_chars_in_lines(source_below.chars());
 
         // Ugly -- but what else can be done...
+        // Please do not try to abstract this pair of expressions; it won't lead to anything good
+
         // Get address of earliest statement, whose span is (at least partially) within `start..`
         let start_addr = {
             let mut line = stmt.line;

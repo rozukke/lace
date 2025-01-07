@@ -295,7 +295,7 @@ impl RunState {
         }
     }
 
-    /// Returns `Ordering::Equal` if current program counter is within user memory.
+    /// Returns `Ordering::Equal` if current program counter is within user address space.
     /// Returns `Ordering::Less` or `Ordering::Greater` if PC `<` ORIG or PC `>=` [`USER_MEMORY_END`] respectively.
     pub fn check_pc_bounds(&self) -> Ordering {
         if self.pc < self.orig {
