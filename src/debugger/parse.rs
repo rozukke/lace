@@ -2,6 +2,8 @@ use super::command::{CommandName, Label, Location, MemoryLocation};
 use super::error;
 use crate::symbol::Register;
 
+// TODO(refactor): Rewrite argument parsing. Split at whitespace then parse value
+
 // TODO: rename to 'ValueResult' ??
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
@@ -487,9 +489,9 @@ impl<'a> CommandIter<'a> {
 
         // TODO(fix): Use `.get()` instead of slice indexing
         match self.next_argument_inner() {
-            Ok(Some(a)) => Ok(Some(ArgumentResult {
+            Ok(Some(argument)) => Ok(Some(ArgumentResult {
                 string: &self.buffer[start..self.base],
-                argument: a,
+                argument,
             })),
             Ok(None) => Ok(None),
             Err(error) => Err(error::Argument::InvalidValue {
@@ -793,7 +795,7 @@ mod tests {
 
         let argument_name = "dummy";
 
-        assert_eq!(iter.next_command_name_part(),self.head Some("name"));
+        assert_eq!(iter.next_command_name_part(), Some("name"));
         assert_eq!(
             iter.next_argument(argument_name),
             Ok(Some(Argument::Integer(-54)))
