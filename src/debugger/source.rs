@@ -7,18 +7,13 @@ use console::Key;
 use crate::output::DEBUGGER_PRIMARY_COLOR;
 use crate::{dprint, dprintln, output::Output};
 
+// TODO(feat): UTF-8 support for all sources
+
 /// Read from argument first, if `Some`. Then read from stream.
 #[derive(Debug)]
 pub struct CommandSource {
     argument: Option<Argument>,
     stream: Stream,
-}
-
-/// Stdin or interactive terminal.
-#[derive(Debug)]
-enum Stream {
-    Stdin(Stdin),
-    Terminal(Terminal),
 }
 
 /// Command-line argument.
@@ -27,6 +22,13 @@ struct Argument {
     buffer: String,
     /// Byte index.
     cursor: usize,
+}
+
+/// Stdin or interactive terminal.
+#[derive(Debug)]
+enum Stream {
+    Stdin(Stdin),
+    Terminal(Terminal),
 }
 
 /// Stdin which is not attached to a terminal, i.e. piped.
@@ -109,29 +111,6 @@ impl SourceRead for CommandSource {
     }
 }
 
-impl Stream {
-    pub fn new() -> Self {
-        let stdin = io::stdin();
-        if stdin.is_terminal() {
-            return Self::Terminal(Terminal::new());
-        }
-        Self::Stdin(Stdin::from(stdin))
-    }
-}
-
-impl SourceRead for Stream {
-    fn read(&mut self) -> Option<&str> {
-        match self {
-            Self::Stdin(stdin) => {
-                let command = stdin.read();
-                echo_command(command);
-                command
-            }
-            Self::Terminal(terminal) => terminal.read(),
-        }
-    }
-}
-
 impl Argument {
     pub fn from(source: String) -> Self {
         Self {
@@ -166,6 +145,30 @@ impl SourceRead for Argument {
     }
 }
 
+impl Stream {
+    pub fn new() -> Self {
+        let stdin = io::stdin();
+        if stdin.is_terminal() {
+            Self::Terminal(Terminal::new())
+        } else {
+            Self::Stdin(Stdin::from(stdin))
+        }
+    }
+}
+
+impl SourceRead for Stream {
+    fn read(&mut self) -> Option<&str> {
+        match self {
+            Self::Stdin(stdin) => {
+                let command = stdin.read();
+                echo_command(command);
+                command
+            }
+            Self::Terminal(terminal) => terminal.read(),
+        }
+    }
+}
+
 impl Stdin {
     pub fn from(stdin: io::Stdin) -> Self {
         Self {
@@ -177,7 +180,12 @@ impl Stdin {
     /// `None` indicates EOF.
     fn read_char(&mut self) -> Option<char> {
         let mut buffer = [0; 1];
-        if self.stdin.read(&mut buffer).unwrap() == 0 {
+        // TODO(fix): Does not support UTF-8 !!!
+        let bytes_read = self
+            .stdin
+            .read(&mut buffer)
+            .expect("failed to read character from stdin");
+        if bytes_read == 0 {
             return None;
         }
         Some(buffer[0] as char)

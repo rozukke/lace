@@ -485,6 +485,7 @@ impl<'a> CommandIter<'a> {
 
         self.arg_count += 1;
 
+        // TODO(fix): Use `.get()` instead of slice indexing
         match self.next_argument_inner() {
             Ok(Some(a)) => Ok(Some(ArgumentResult {
                 string: &self.buffer[start..self.base],

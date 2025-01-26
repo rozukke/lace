@@ -17,6 +17,8 @@ use crate::runtime::{RunState, HALT_ADDRESS, USER_MEMORY_END};
 use crate::symbol::with_symbol_table;
 use crate::{dprint, dprintln, DIAGNOSTIC_CONTEXT_LINES};
 
+// TODO(fix): `finish` (fibonacci.asm)
+
 /// Leave this as a struct, in case more options are added in the future. Plus it is more explicit.
 #[derive(Debug)]
 pub struct DebuggerOptions {
