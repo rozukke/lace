@@ -418,6 +418,18 @@ impl<'a> CommandIter<'a> {
         Some(next)
     }
 
+    /// Increment head past all remaing characters in the argument (i.e. until whitespace).
+    ///
+    /// Used to get entire argument for diagnosis.
+    fn next_end_of_argument(&mut self) {
+        while let Some(_) = self.peek() {
+            if self.is_end_of_argument() {
+                break;
+            }
+            self.next();
+        }
+    }
+
     /// Get characters between base..head, WITHOUT updating base.
     fn get(&self) -> &str {
         assert!(self.base <= self.head, "base exceeded head");
@@ -573,6 +585,17 @@ impl<'a> CommandIter<'a> {
     ///  - Multiple zeros before radix prefix. Eg. `00x4`.
     ///  - Absolute value out of bounds for `i32`. (Does *NOT* check if integer fits in specific bit size).
     fn next_integer_token(&mut self, require_sign: bool) -> Result<Option<i32>, error::Value> {
+        self.next_integer_token_inner(require_sign)
+            .map_err(|error| {
+                self.next_end_of_argument();
+                error
+            })
+    }
+
+    fn next_integer_token_inner(
+        &mut self,
+        require_sign: bool,
+    ) -> Result<Option<i32>, error::Value> {
         self.reset_head();
         // Don't skip whitespace
 
@@ -755,6 +778,7 @@ impl<'a> CommandIter<'a> {
         let offset = int_as_i16(self.next_integer_token(true)?.unwrap_or(0))?;
 
         if !self.is_end_of_argument() {
+            self.next_end_of_argument();
             return Err(error::Value::MalformedLabel {});
         }
         self.set_base();
