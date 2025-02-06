@@ -104,6 +104,7 @@ impl TryFrom<&str> for Command {
         let mut iter = ArgIter::from(line);
 
         let command_name = iter.get_command_name()?;
+        println!("-- {:?}", command_name);
         Command::parse_arguments(command_name, iter).map_err(|error| {
             error::Command::InvalidArgument {
                 command_name,

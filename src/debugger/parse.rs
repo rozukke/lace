@@ -214,7 +214,37 @@ impl<'a> ArgIter<'a> {
     ///
     /// Assumes line is non-empty.
     pub fn get_command_name(&mut self) -> Result<CommandName, error::Command> {
-        todo!();
+        let command_name = self.next_str();
+        // Command source should always return a string containing non-whitespace
+        // characters, so initial command name should always exist.
+        debug_assert!(command_name.is_some(), "missing command name");
+        let command_name = command_name.unwrap_or("");
+
+        if let Some(command) = find_name_match(command_name, COMMANDS) {
+            return Ok(command);
+        };
+
+        // This could be written a bit nicer. But it doesn't seem necessary.
+        if name_matches(command_name, BREAK_COMMAND) {
+            // Normalize name and get as `'static`
+            // Only used for errors
+            let command_name = BREAK_COMMAND[0]; // Array must be non-empty if this branch is being ran
+
+            let Some(subcommand_name) = self.next_str() else {
+                return Err(error::Command::MissingSubcommand { command_name });
+            };
+            let Some(command) = find_name_match(subcommand_name, BREAK_SUBCOMMANDS) else {
+                return Err(error::Command::InvalidSubcommand {
+                    command_name,
+                    subcommand_name: subcommand_name.to_string(),
+                });
+            };
+            return Ok(command);
+        }
+
+        Err(error::Command::InvalidCommand {
+            command_name: command_name.to_string(),
+        })
     }
 
     /// Parse and consume next integer argument.
