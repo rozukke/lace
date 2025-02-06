@@ -53,6 +53,7 @@ pub enum Value {
     },
     #[allow(clippy::enum_variant_names)]
     MalformedValue {},
+    // TODO(feat): Add subvariants
     MalformedInteger {},
     MalformedLabel {},
     IntegerTooLarge {
