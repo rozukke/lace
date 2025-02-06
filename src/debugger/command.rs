@@ -184,14 +184,14 @@ impl Command {
                 }
                 // Don't return `Err` for invalid argument count, as this shouldn't happen
                 debug_assert!(
-                    iter.expect_end_of_command(0, 0).is_ok(),
+                    iter.expect_end(0, 0).is_ok(),
                     "no more arguments should exist",
                 );
                 return Ok(Self::Eval { instruction });
             }
         };
 
-        iter.expect_end_of_command(expected_args, iter.arg_count() + 1)?;
+        iter.expect_end(expected_args, iter.arg_count() + 1)?;
 
         Ok(command)
     }

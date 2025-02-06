@@ -247,13 +247,38 @@ impl<'a> ArgIter<'a> {
         })
     }
 
+    /// Parse and consume next integer argument. Use default result value if argument is `None`.
+    fn next_integer_inner(
+        &mut self,
+        argument_name: &'static str,
+        default: Result<u16, error::Argument>,
+    ) -> Result<u16, error::Argument> {
+        let Some(argument) = self.next_str() else {
+            return default;
+        };
+
+        let Ok(integer) = parse_integer(argument, false) else {
+            return todo!();
+        };
+
+        let Some(integer) = integer else {
+            return todo!();
+        };
+
+        let Ok(integer) = integer.try_into() else {
+            return todo!();
+        };
+
+        Ok(integer)
+    }
+
     /// Parse and consume next integer argument.
     pub fn next_integer(
         &mut self,
         argument_name: &'static str,
         expected_count: u8,
     ) -> Result<u16, error::Argument> {
-        todo!();
+        self.next_integer_inner(argument_name, Err(todo!()))
     }
 
     /// Parse and consume next positive integer argument, defaulting to `1`.
@@ -263,7 +288,8 @@ impl<'a> ArgIter<'a> {
         &mut self,
         argument_name: &'static str,
     ) -> Result<u16, error::Argument> {
-        todo!();
+        self.next_integer_inner(argument_name, Ok(1))
+            .map(|value| value.max(1)) // 0 -> 1
     }
 
     /// Parse and consume next [`Location`] argument: a register or [`MemoryLocation`].
@@ -294,12 +320,12 @@ impl<'a> ArgIter<'a> {
     }
 
     /// Returns an error if the command contains any arguments which haven't been consumed.
-    pub fn expect_end_of_command(
-        &mut self,
-        expected: u8,
-        actual: u8,
-    ) -> Result<(), error::Argument> {
-        todo!();
+    pub fn expect_end(&mut self, expected: u8, actual: u8) -> Result<(), error::Argument> {
+        if self.next_str().is_none() {
+            Ok(())
+        } else {
+            Err(todo!())
+        }
     }
 
     /// Consume the rest of the command as one string.
@@ -313,6 +339,185 @@ impl<'a> ArgIter<'a> {
         todo!();
     }
 }
+
+// TODO(doc): Update doc comment
+/// Parse and consume the next integer argument.
+///
+/// Extremely liberal in accepted syntax.
+///
+/// Accepts:
+///  - Decimal (optional `#`), hex (`x`/`X`), octal (`o`/`O`), and binary (`b`/`B`).
+///  - Optional single zero before non-decimal radix prefix. Eg. `0x4`.
+///  - Leading zeros after prefix and sign. Eg. `0x0004`, `#-03`.
+///  - Sign character before xor after radix prefix. Eg. `-#2`, `x+4`.
+///
+/// Returns `Ok(None)` (not an integer) for:
+///  - Empty token.
+///  - Non-decimal radix prefix, with no zero before it, and non-digits after it. Eg. `xLabel`, `o`.
+///
+/// Returns `Err` (invalid integer and invalid token) for:
+///  - Invalid digits for the given radix.
+///  - Decimal radix prefix `#` with zeros before it. Eg. `0#2`.
+///  - Decimal radix prefix `#` with no digits after it. Eg. `#`.
+///  - Multiple sign characters (before or after prefix).
+///  - Missing sign character '-' or '+', if `require_sign == true`.
+///  - Multiple zeros before radix prefix. Eg. `00x4`.
+///  - Absolute value out of bounds for `i32`. (Does *NOT* check if integer fits in specific bit size).
+fn parse_integer(string: &str, require_sign: bool) -> Result<Option<i32>, ()> {
+    let mut chars = string.chars().peekable();
+
+    // Take sign BEFORE prefix
+    let first_sign = match chars.peek() {
+        Some('+') => {
+            chars.next();
+            Some(Sign::Positive)
+        }
+        Some('-') => {
+            chars.next();
+            Some(Sign::Negative)
+        }
+        _ => None,
+    };
+
+    // Only take ONE leading zero here
+    // Disallow `00x...` etc.
+    let leading_zeros = match chars.peek() {
+        Some('0') => {
+            chars.next();
+            true
+        }
+        _ => false,
+    };
+
+    // Take optional prefix
+    let (radix, non_alpha) = match chars.peek() {
+        // No prefix. Don't consume character -- so digit can be parsed
+        Some('0'..='9') => (Radix::Decimal, false),
+
+        Some('#') => {
+            // Disallow '0#...'
+            if leading_zeros {
+                return Err(todo!());
+            }
+            chars.next();
+            (Radix::Decimal, true)
+        }
+
+        Some('b' | 'B') => {
+            chars.next();
+            (Radix::Binary, false)
+        }
+        Some('x' | 'X') => {
+            chars.next();
+            (Radix::Hex, false)
+        }
+        Some('o' | 'O') => {
+            chars.next();
+            (Radix::Octal, false)
+        }
+
+        Some('-' | '+') => {
+            // Disallow '0-...' and '0+...'
+            // Disallow '--...', '-+...', etc
+            // Any legal pre-prefix sign character would have already been consumed
+            return Err(todo!());
+        }
+
+        // Not an integer
+        _ => {
+            // Sign was already given, so it must be an invalid token
+            if first_sign.is_some() {
+                return Err(todo!());
+            }
+            if leading_zeros {
+                todo!("CHECK LOGIC: \"0\" should parse");
+            }
+            return Ok(None);
+        }
+    };
+
+    // Take sign AFTER prefix
+    let second_sign = match chars.peek() {
+        Some('+') => {
+            chars.next();
+            Some(Sign::Positive)
+        }
+        Some('-') => {
+            chars.next();
+            Some(Sign::Negative)
+        }
+        _ => None,
+    };
+
+    // Reconcile multiple sign characters
+    let sign = match (first_sign, second_sign) {
+        (Some(sign), None) => Some(sign),
+        (None, Some(sign)) => Some(sign),
+        (None, None) => {
+            if require_sign {
+                return Err(todo!());
+            }
+            None
+        }
+        // Disallow multiple sign characters: '-x-...', '++...', etc
+        (Some(_), Some(_)) => return Err(todo!()),
+    };
+
+    // Check next character is digit
+    // Character must be checked against radix here to prevent valid non-integer tokens returning `Err`
+    if chars
+        .peek()
+        .is_none_or(|ch| radix.parse_digit(*ch).is_none())
+    {
+        // Sign, pre-prefix zeros, or non-alpha prefix (`#`) were given, so it must be an invalid integer token
+        if sign.is_some() || leading_zeros || non_alpha {
+            return Err(todo!());
+        }
+        return Ok(None);
+    };
+
+    let mut integer: i32 = 0;
+    loop {
+        // TODO(refactor): Call `next` here instead ?
+        let Some(ch) = chars.peek() else {
+            break;
+        };
+        // Invalid digit will always return `Err`
+        // Valid non-integer tokens should trigger early return before this loop
+        let Some(digit) = radix.parse_digit(*ch) else {
+            return Err(todo!());
+        };
+        chars.next();
+
+        // Re-checked later on convert to smaller int types
+        if integer > i32::MAX / radix as i32 {
+            return Err(todo!());
+        }
+
+        integer *= radix as i32;
+        integer += digit as i32;
+    }
+
+    assert!(
+        chars.next().is_none(),
+        "should have looped until end of argument, or early-returned `Err`",
+    );
+
+    // TODO(fix): I think there is an edge case here for overflow
+    if let Some(sign) = sign {
+        integer *= sign as i32;
+    }
+
+    Ok(Some(integer))
+}
+
+// impl TryFrom<&str> for CommandName {
+//     type Error = error::Command;
+//
+//     fn try_from(argument: &str) -> Result<Self, Self::Error> {
+//         todo!();
+//     }
+// }
 
 pub struct CommandIter<'a> {
     buffer: &'a str,

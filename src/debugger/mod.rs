@@ -494,6 +494,8 @@ impl Debugger {
                 }
             };
 
+            println!("-- {:?}", command);
+
             return Some(command);
         }
     }
