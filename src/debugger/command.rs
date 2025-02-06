@@ -1,9 +1,6 @@
 use std::fmt;
 
-use super::{
-    error,
-    parse::{ArgIter, CommandIter},
-};
+use super::{error, parse::ArgIter};
 use crate::symbol::Register;
 
 #[derive(Debug)]
