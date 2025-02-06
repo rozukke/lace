@@ -103,30 +103,20 @@ impl TryFrom<&str> for Command {
     fn try_from(line: &str) -> std::result::Result<Self, Self::Error> {
         let mut iter = ArgIter::from(line);
 
-        while let Some(arg) = iter.next_str() {
-            println!("<{}>", arg);
-        }
-
-        return Err(error::Command::InvalidCommand {
-            command_name: "<none>".to_string(),
-        });
-
-        // let mut iter = CommandIter::from(line);
-        //
-        // let command_name = iter.get_command_name()?;
-        // Command::parse_arguments(command_name, iter).map_err(|error| {
-        //     error::Command::InvalidArgument {
-        //         command_name,
-        //         error,
-        //     }
-        // })
+        let command_name = iter.get_command_name()?;
+        Command::parse_arguments(command_name, iter).map_err(|error| {
+            error::Command::InvalidArgument {
+                command_name,
+                error,
+            }
+        })
     }
 }
 
 impl Command {
     fn parse_arguments(
         name: CommandName,
-        mut iter: CommandIter<'_>,
+        mut iter: ArgIter<'_>,
     ) -> Result<Command, error::Argument> {
         let mut expected_args = 0;
 

@@ -151,11 +151,20 @@ pub struct ArgIter<'a> {
     buffer: &'a str,
     /// Byte index
     cursor: usize,
+
+    /// Amount of arguments requested (successfully or not).
+    ///
+    /// Must only be incremented by [`Self::next_argument`].
+    arg_count: u8,
 }
 
 impl<'a> From<&'a str> for ArgIter<'a> {
     fn from(buffer: &'a str) -> Self {
-        Self { buffer, cursor: 0 }
+        Self {
+            buffer,
+            cursor: 0,
+            arg_count: 0,
+        }
     }
 }
 
@@ -193,6 +202,85 @@ impl<'a> ArgIter<'a> {
         let argument = &self.buffer[start..end];
         self.cursor = end;
         Some(argument)
+    }
+
+    pub fn arg_count(&self) -> u8 {
+        self.arg_count
+    }
+
+    /// Parse and consume command name.
+    ///
+    /// Considers multi-word command names (i.e. subcommands) as one name. Eg. `break add`.
+    ///
+    /// Assumes line is non-empty.
+    pub fn get_command_name(&mut self) -> Result<CommandName, error::Command> {
+        todo!();
+    }
+
+    /// Parse and consume next integer argument.
+    pub fn next_integer(
+        &mut self,
+        argument_name: &'static str,
+        expected_count: u8,
+    ) -> Result<u16, error::Argument> {
+        todo!();
+    }
+
+    /// Parse and consume next positive integer argument, defaulting to `1`.
+    ///
+    /// Non-positive values will also be converted to `1`.
+    pub fn next_positive_integer_or_default(
+        &mut self,
+        argument_name: &'static str,
+    ) -> Result<u16, error::Argument> {
+        todo!();
+    }
+
+    /// Parse and consume next [`Location`] argument: a register or [`MemoryLocation`].
+    pub fn next_location(
+        &mut self,
+        argument_name: &'static str,
+        expected_count: u8,
+    ) -> Result<Location, error::Argument> {
+        todo!();
+    }
+
+    /// Parse and consume next [`MemoryLocation`] argument.
+    pub fn next_memory_location(
+        &mut self,
+        argument_name: &'static str,
+        expected_count: u8,
+    ) -> Result<MemoryLocation, error::Argument> {
+        todo!();
+    }
+
+    /// Parse and consume next [`MemoryLocation`] argument, defaulting to program counter.
+    /// ([`MemoryLocation::PCOffset`]).
+    pub fn next_memory_location_or_default(
+        &mut self,
+        argument_name: &'static str,
+    ) -> Result<MemoryLocation, error::Argument> {
+        todo!();
+    }
+
+    /// Returns an error if the command contains any arguments which haven't been consumed.
+    pub fn expect_end_of_command(
+        &mut self,
+        expected: u8,
+        actual: u8,
+    ) -> Result<(), error::Argument> {
+        todo!();
+    }
+
+    /// Consume the rest of the command as one string.
+    ///
+    /// Leading/trailing whitespace is trimmed.
+    ///
+    /// Used for `eval` command.
+    ///
+    /// This can be `String` bc it will be allocated later regardless for [`Command::Eval`].
+    pub fn collect_rest(&mut self) -> String {
+        todo!();
     }
 }
 
