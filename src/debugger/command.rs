@@ -1,6 +1,9 @@
 use std::fmt;
 
-use super::{error, parse::CommandIter};
+use super::{
+    error,
+    parse::{ArgIter, CommandIter},
+};
 use crate::symbol::Register;
 
 #[derive(Debug)]
@@ -98,15 +101,25 @@ impl TryFrom<&str> for Command {
 
     /// Assumes line is non-empty.
     fn try_from(line: &str) -> std::result::Result<Self, Self::Error> {
-        let mut iter = CommandIter::from(line);
+        let mut iter = ArgIter::from(line);
 
-        let command_name = iter.get_command_name()?;
-        Command::parse_arguments(command_name, iter).map_err(|error| {
-            error::Command::InvalidArgument {
-                command_name,
-                error,
-            }
-        })
+        while let Some(arg) = iter.next_str() {
+            println!("<{}>", arg);
+        }
+
+        return Err(error::Command::InvalidCommand {
+            command_name: "<none>".to_string(),
+        });
+
+        // let mut iter = CommandIter::from(line);
+        //
+        // let command_name = iter.get_command_name()?;
+        // Command::parse_arguments(command_name, iter).map_err(|error| {
+        //     error::Command::InvalidArgument {
+        //         command_name,
+        //         error,
+        //     }
+        // })
     }
 }
 

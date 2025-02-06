@@ -147,6 +147,55 @@ impl Argument {
     }
 }
 
+pub struct ArgIter<'a> {
+    buffer: &'a str,
+    /// Byte index
+    cursor: usize,
+}
+
+impl<'a> From<&'a str> for ArgIter<'a> {
+    fn from(buffer: &'a str) -> Self {
+        Self { buffer, cursor: 0 }
+    }
+}
+
+impl<'a> ArgIter<'a> {
+    // TODO: Make private
+    pub fn next_str(&mut self) -> Option<&str> {
+        let mut start = self.cursor;
+        let mut length = 0;
+        let mut is_start = true;
+
+        for ch in self.buffer[self.cursor..].chars() {
+            debug_assert!(
+                !matches!(ch, ';' | '\n'),
+                "semicolons/newlines should have been handled already"
+            );
+
+            // Skip leading whitespace
+            if is_start && ch == ' ' {
+                start += ch.len_utf8();
+                continue;
+            }
+            is_start = false;
+
+            if matches!(ch, ' ' | ';' | '\n') {
+                break;
+            }
+            length += ch.len_utf8();
+        }
+
+        let end = start + length;
+        if start == end {
+            return None;
+        }
+
+        let argument = &self.buffer[start..end];
+        self.cursor = end;
+        Some(argument)
+    }
+}
+
 pub struct CommandIter<'a> {
     buffer: &'a str,
     /// Characters before this index have been successfully parsed.
