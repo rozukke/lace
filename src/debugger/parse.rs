@@ -257,17 +257,29 @@ impl<'a> ArgIter<'a> {
             return default;
         };
 
-        let Ok(integer) = parse_integer(argument, false) else {
-            return todo!();
-        };
+        let integer =
+            parse_integer(argument, false).map_err(|error| error::Argument::InvalidValue {
+                argument_name,
+                string: argument.to_string(),
+                error,
+            })?;
 
         let Some(integer) = integer else {
-            return todo!();
+            return Err(error::Argument::InvalidValue {
+                argument_name,
+                string: argument.to_string(),
+                error: error::Value::MismatchedType {
+                    expected_type: "integer",
+                    actual_type: "{unknown}",
+                },
+            });
         };
 
-        let Ok(integer) = integer.try_into() else {
-            return todo!();
-        };
+        let integer = int_as_u16(integer).map_err(|error| error::Argument::InvalidValue {
+            argument_name,
+            string: argument.to_string(),
+            error,
+        })?;
 
         Ok(integer)
     }
@@ -278,7 +290,15 @@ impl<'a> ArgIter<'a> {
         argument_name: &'static str,
         expected_count: u8,
     ) -> Result<u16, error::Argument> {
-        self.next_integer_inner(argument_name, Err(todo!()))
+        let actual_count = self.arg_count;
+        self.next_integer_inner(
+            argument_name,
+            Err(error::Argument::MissingArgument {
+                argument_name,
+                expected_count,
+                actual_count,
+            }),
+        )
     }
 
     /// Parse and consume next positive integer argument, defaulting to `1`.
@@ -324,7 +344,10 @@ impl<'a> ArgIter<'a> {
         if self.next_str().is_none() {
             Ok(())
         } else {
-            Err(todo!())
+            Err(error::Argument::TooManyArguments {
+                expected_count: expected,
+                actual_count: actual,
+            })
         }
     }
 
@@ -363,7 +386,7 @@ impl<'a> ArgIter<'a> {
 ///  - Missing sign character '-' or '+', if `require_sign == true`.
 ///  - Multiple zeros before radix prefix. Eg. `00x4`.
 ///  - Absolute value out of bounds for `i32`. (Does *NOT* check if integer fits in specific bit size).
-fn parse_integer(string: &str, require_sign: bool) -> Result<Option<i32>, ()> {
+fn parse_integer(string: &str, require_sign: bool) -> Result<Option<i32>, error::Value> {
     let mut chars = string.chars().peekable();
 
     // Take sign BEFORE prefix
@@ -397,7 +420,7 @@ fn parse_integer(string: &str, require_sign: bool) -> Result<Option<i32>, ()> {
         Some('#') => {
             // Disallow '0#...'
             if leading_zeros {
-                return Err(todo!());
+                return Err(error::Value::MalformedInteger {});
             }
             chars.next();
             (Radix::Decimal, true)
@@ -420,17 +443,19 @@ fn parse_integer(string: &str, require_sign: bool) -> Result<Option<i32>, ()> {
             // Disallow '0-...' and '0+...'
             // Disallow '--...', '-+...', etc
             // Any legal pre-prefix sign character would have already been consumed
-            return Err(todo!());
+            return Err(error::Value::MalformedInteger {});
+        }
+
+        // Only a single "leading" zero (no sign or prefix)
+        None if leading_zeros => {
+            return Ok(Some(0));
         }
 
         // Not an integer
         _ => {
             // Sign was already given, so it must be an invalid token
             if first_sign.is_some() {
-                return Err(todo!());
-            }
-            if leading_zeros {
-                todo!("CHECK LOGIC: \"0\" should parse");
+                return Err(error::Value::MalformedInteger {});
             }
             return Ok(None);
         }
@@ -455,12 +480,12 @@ fn parse_integer(string: &str, require_sign: bool) -> Result<Option<i32>, ()> {
         (None, Some(sign)) => Some(sign),
         (None, None) => {
             if require_sign {
-                return Err(todo!());
+                return Err(error::Value::MalformedInteger {});
             }
             None
         }
         // Disallow multiple sign characters: '-x-...', '++...', etc
-        (Some(_), Some(_)) => return Err(todo!()),
+        (Some(_), Some(_)) => return Err(error::Value::MalformedInteger {}),
     };
 
     // Check next character is digit
@@ -471,7 +496,7 @@ fn parse_integer(string: &str, require_sign: bool) -> Result<Option<i32>, ()> {
     {
         // Sign, pre-prefix zeros, or non-alpha prefix (`#`) were given, so it must be an invalid integer token
         if sign.is_some() || leading_zeros || non_alpha {
-            return Err(todo!());
+            return Err(error::Value::MalformedInteger {});
         }
         return Ok(None);
     };
@@ -485,13 +510,15 @@ fn parse_integer(string: &str, require_sign: bool) -> Result<Option<i32>, ()> {
         // Invalid digit will always return `Err`
         // Valid non-integer tokens should trigger early return before this loop
         let Some(digit) = radix.parse_digit(*ch) else {
-            return Err(todo!());
+            return Err(error::Value::MalformedInteger {});
         };
         chars.next();
 
         // Re-checked later on convert to smaller int types
         if integer > i32::MAX / radix as i32 {
-            return Err(todo!());
+            return Err(error::Value::IntegerTooLarge {
+                max: i16::MAX as u16,
+            });
         }
 
         integer *= radix as i32;
@@ -510,14 +537,6 @@ fn parse_integer(string: &str, require_sign: bool) -> Result<Option<i32>, ()> {
 
     Ok(Some(integer))
 }
-
-// impl TryFrom<&str> for CommandName {
-//     type Error = error::Command;
-//
-//     fn try_from(argument: &str) -> Result<Self, Self::Error> {
-//         todo!();
-//     }
-// }
 
 pub struct CommandIter<'a> {
     buffer: &'a str,
