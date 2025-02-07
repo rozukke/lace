@@ -3,10 +3,14 @@ use std::fmt::{self, Write as _};
 
 use crate::runtime::RunState;
 
-/// Main color used by [`Output::Debugger`].
+/// Colors used by [`Output::Debugger`].
 ///
 /// Note that color depends on the [`Category`] used, and can be overridden.
-pub const DEBUGGER_PRIMARY_COLOR: &str = "34";
+pub mod debugger_colors {
+    pub const PRIMARY: &str = "34";
+    pub const WARNING: &str = "33";
+    pub const ERROR: &str = "31";
+}
 
 /// Print to [`Output::Debugger`].
 #[macro_export]
@@ -326,10 +330,10 @@ struct DebuggerWriter {
 impl fmt::Write for DebuggerWriter {
     fn write_str(&mut self, string: &str) -> fmt::Result {
         let color = match self.category {
-            Category::Normal => DEBUGGER_PRIMARY_COLOR,
-            Category::Info => DEBUGGER_PRIMARY_COLOR,
-            Category::Warning => "33",
-            Category::Error => "31",
+            Category::Normal => debugger_colors::PRIMARY,
+            Category::Info => debugger_colors::PRIMARY,
+            Category::Warning => debugger_colors::WARNING,
+            Category::Error => debugger_colors::ERROR,
 
             // Special behaviour. Note the return at the end of this branch
             Category::Special => {
@@ -351,7 +355,7 @@ impl fmt::Write for DebuggerWriter {
                 } else {
                     // Replace `{...}` with `\x1b[...m`
                     // Acts similar to `Colored::fmt`
-                    eprint!("\x1b[{}m", DEBUGGER_PRIMARY_COLOR);
+                    eprint!("\x1b[{}m", debugger_colors::PRIMARY);
                     while let Some(ch) = chars.next() {
                         if ch != '{' {
                             eprint!("{}", ch);
@@ -366,7 +370,7 @@ impl fmt::Write for DebuggerWriter {
                             eprint!("{}", ch);
                             // Re-apply color when reset
                             if ch == '0' {
-                                eprint!(";{}", DEBUGGER_PRIMARY_COLOR);
+                                eprint!(";{}", debugger_colors::PRIMARY);
                             }
                         }
                         eprint!("m");

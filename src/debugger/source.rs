@@ -4,7 +4,7 @@ use std::io::{self, BufRead, BufReader, IsTerminal, Read, Write};
 
 use console::Key;
 
-use crate::output::DEBUGGER_PRIMARY_COLOR;
+use crate::output::debugger_colors;
 use crate::{dprint, dprintln, output::Output};
 
 // TODO(feat): UTF-8 support for all sources
@@ -273,7 +273,8 @@ impl Terminal {
             write!(
                 &mut self.term,
                 "\x1b[1;{}m{}\x1b[0m",
-                DEBUGGER_PRIMARY_COLOR, PROMPT,
+                debugger_colors::PRIMARY,
+                PROMPT,
             )
             .unwrap();
         }
