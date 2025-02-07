@@ -1,3 +1,5 @@
+use std::fmt;
+
 use super::command::{CommandName, Label, Location, MemoryLocation};
 use super::error;
 use crate::symbol::{with_symbol_table, Register};
@@ -148,6 +150,36 @@ impl<'a> From<&'a str> for ArgIter<'a> {
     }
 }
 
+macro_rules! check_naive_type {
+    ( $pattern:pat, $expected_type:expr, ($argument_name:expr, $argument:expr) ) => {{
+        #[allow(unused_imports)]
+        use NaiveType::*;
+
+        match NaiveType::try_from($argument) {
+            // Types match
+            Ok($pattern) => (),
+
+            // Could not discern type
+            // Either an invalid type (which should be handled after a genuine parse attempt for
+            // each type, as `MalformedValue`), or a bug in the naive check (which the user can
+            // easily ignore)
+            Err(()) => (),
+
+            Ok(__naive_type) => {
+                return Err(error::Argument::InvalidValue {
+                    argument_name: $argument_name,
+                    string: $argument.to_string(),
+
+                    error: error::Value::MismatchedType {
+                        expected_type: $expected_type,
+                        actual_type: __naive_type,
+                    },
+                });
+            }
+        };
+    }};
+}
+
 impl<'a> ArgIter<'a> {
     // Do not `impl Iterator`. This method should be private
     fn next_str(&mut self) -> Option<&str> {
@@ -251,24 +283,26 @@ impl<'a> ArgIter<'a> {
             return default;
         };
 
+        check_naive_type!(
+            Integer,
+            "integer, label, register, or PC offset",
+            (argument_name, argument)
+        );
+
         let integer =
             parse_integer(argument, false).map_err(wrap_invalid_value(argument_name, argument))?;
 
-        let Some(integer) = integer else {
-            return Err(error::Argument::InvalidValue {
-                argument_name,
-                string: argument.to_string(),
-                error: error::Value::MismatchedType {
-                    expected_type: "integer",
-                    actual_type: "{unknown}",
-                },
-            });
+        if let Some(integer) = integer {
+            let integer =
+                int_as_u16_cast(integer).map_err(wrap_invalid_value(argument_name, argument))?;
+            return Ok(integer);
         };
 
-        let integer =
-            int_as_u16_cast(integer).map_err(wrap_invalid_value(argument_name, argument))?;
-
-        Ok(integer)
+        return Err(error::Argument::InvalidValue {
+            argument_name,
+            string: argument.to_string(),
+            error: error::Value::MalformedValue {},
+        });
     }
 
     /// Parse and consume next integer argument.
@@ -312,6 +346,10 @@ impl<'a> ArgIter<'a> {
             });
         };
 
+        // Don't perform a naive type check here
+        // All current valid types are allowed here, and any invalid value will be handled before
+        // the end of this function (as `MalformedValue`)
+
         if let Some(register) =
             parse_register(argument).map_err(wrap_invalid_value(argument_name, argument))?
         {
@@ -329,6 +367,12 @@ impl<'a> ArgIter<'a> {
         let Some(argument) = self.next_str() else {
             return default;
         };
+
+        check_naive_type!(
+            Integer | Label | PCOffset,
+            "integer, label, or PC offset",
+            (argument_name, argument)
+        );
 
         parse_memory_location(argument_name, argument)
     }
@@ -368,6 +412,105 @@ impl<'a> ArgIter<'a> {
                 actual_count: actual,
             })
         }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum NaiveType {
+    Integer,
+    Register,
+    Label,
+    PCOffset,
+}
+
+impl NaiveType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            NaiveType::Integer => "integer",
+            NaiveType::Register => "register",
+            NaiveType::Label => "label",
+            NaiveType::PCOffset => "PC offset",
+        }
+    }
+
+    /// If string does not start with `[-+#0-9]`, then all characters need to be checked, to ensure
+    /// labels starting with `[bBoOxX]` don't get classified as integers.
+    ///
+    /// - `^[-+#0-9]`
+    /// - or `^[bB][-+]?[01]+$`
+    /// - or `^[oO][-+]?[0-7]+$`
+    /// - or `^[xX][-+]?[0-9a-fA-F]+$`
+    fn is_str_integer(string: &str) -> bool {
+        let mut chars = string.chars().peekable();
+        if chars
+            .peek()
+            .is_some_and(|ch| matches!(ch, '-' | '+' | '#' | '0'..='9'))
+        {
+            return true;
+        }
+        let radix = match chars.next() {
+            Some('b' | 'B') => Radix::Binary,
+            Some('o' | 'O') => Radix::Octal,
+            Some('x' | 'X') => Radix::Hex,
+            _ => return false,
+        };
+        if matches!(chars.peek(), Some('-' | '+')) {
+            chars.next();
+        }
+        if chars.peek().is_none() {
+            return false;
+        }
+        for ch in chars {
+            if !radix.parse_digit(ch).is_some() {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// - `^[rR][0-7]$`
+    fn is_str_register(string: &str) -> bool {
+        let mut chars = string.chars();
+        chars.next().is_some_and(|ch| matches!(ch, 'r' | 'R'))
+            && chars.next().is_some_and(|ch| matches!(ch, '0'..='7'))
+            && !chars.next().is_some_and(label_can_contain)
+    }
+
+    /// - `^[a-zA-Z_]
+    fn is_str_label(string: &str) -> bool {
+        string.chars().next().is_some_and(label_can_start_with)
+    }
+
+    /// - `^\^`
+    fn is_str_pc_offset(string: &str) -> bool {
+        string.chars().next().is_some_and(|ch| ch == '^')
+    }
+}
+
+impl fmt::Display for NaiveType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl TryFrom<&str> for NaiveType {
+    type Error = ();
+
+    fn try_from(string: &str) -> Result<Self, Self::Error> {
+        // Ordered by approximate function speed
+        if Self::is_str_pc_offset(string) {
+            return Ok(Self::PCOffset);
+        }
+        if Self::is_str_register(string) {
+            return Ok(Self::Register);
+        }
+        if Self::is_str_integer(string) {
+            return Ok(Self::Integer);
+        }
+        if Self::is_str_label(string) {
+            return Ok(Self::Label);
+        }
+        Err(())
     }
 }
 
@@ -736,8 +879,8 @@ fn take_prefix(chars: &mut CharIter) -> Result<PrefixResult, error::Value> {
     let mut consume_char = true;
     let (radix, non_alpha) = match chars.peek() {
         Some('b' | 'B') => (Radix::Binary, false),
-        Some('x' | 'X') => (Radix::Hex, false),
         Some('o' | 'O') => (Radix::Octal, false),
+        Some('x' | 'X') => (Radix::Hex, false),
 
         Some('#') => {
             // Disallow "0#..."

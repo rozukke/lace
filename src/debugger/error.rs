@@ -1,6 +1,8 @@
-use std::{error::Error, fmt};
+use std::error::Error;
+use std::fmt;
 
 use super::command::CommandName;
+use super::parse::NaiveType;
 
 /// Error parsing a command.
 #[derive(Debug, PartialEq)]
@@ -49,7 +51,7 @@ pub enum Argument {
 pub enum Value {
     MismatchedType {
         expected_type: &'static str,
-        actual_type: &'static str,
+        actual_type: NaiveType,
     },
     #[allow(clippy::enum_variant_names)]
     MalformedValue {},
@@ -92,8 +94,8 @@ impl fmt::Display for Command {
                 command_name,
                 error,
             } => {
-                writeln!(f, "In command `{}`:", command_name)?;
-                write!(f, "    ")?;
+                write!(f, "In command `{}`:", command_name)?;
+                write!(f, "\n    ")?;
                 write!(f, "{}", error)?;
             }
         }
@@ -112,8 +114,8 @@ impl fmt::Display for Argument {
                 expected_count,
                 actual_count,
             } => {
-                writeln!(f, "Missing argument `{}`.", argument_name)?;
-                write!(f, "        ")?;
+                write!(f, "Missing argument `{}`.", argument_name)?;
+                write!(f, "\n        ")?;
                 write!(
                     f,
                     "Expected {} argument{}, found {}.",
@@ -126,8 +128,8 @@ impl fmt::Display for Argument {
                 expected_count,
                 actual_count,
             } => {
-                writeln!(f, "Too many arguments.")?;
-                write!(f, "        ")?;
+                write!(f, "Too many arguments.")?;
+                write!(f, "\n        ")?;
                 write!(
                     f,
                     "Expected {} argument{}, found {}.",
@@ -141,8 +143,8 @@ impl fmt::Display for Argument {
                 string: value,
                 error,
             } => {
-                writeln!(f, "For argument `{}`: `{}`.", argument_name, value)?;
-                write!(f, "        ")?;
+                write!(f, "For argument `{}`: `{}`.", argument_name, value)?;
+                write!(f, "\n        ")?;
                 write!(f, "{}", error)?;
             }
         }
@@ -157,9 +159,11 @@ impl fmt::Display for Value {
                 expected_type,
                 actual_type,
             } => {
-                writeln!(f, "Incorrect value type")?;
-                write!(f, "        ")?;
-                write!(f, "Expected {}, found {}.", expected_type, actual_type)?;
+                write!(f, "Incorrect value type")?;
+                write!(f, "\n        ")?;
+                write!(f, "Expected {}.", expected_type)?;
+                write!(f, "\n        ")?;
+                write!(f, "Found {}.", actual_type)?;
             }
             Value::MalformedValue {} => {
                 write!(f, "Invalid value.")?;
@@ -174,8 +178,8 @@ impl fmt::Display for Value {
                 write!(f, "Malformed register.")?;
             }
             Value::IntegerTooLarge { max } => {
-                writeln!(f, "Integer too large.")?;
-                write!(f, "        ")?;
+                write!(f, "Integer too large.")?;
+                write!(f, "\n        ")?;
                 write!(f, "Maximum value: 0x{:04x}.", max)?;
             }
             Value::LabelNotFound { similar } => {
