@@ -2,7 +2,7 @@ use std::fmt;
 
 use super::command::{CommandName, Label, Location, MemoryLocation};
 use super::error;
-use crate::symbol::{with_symbol_table, Register};
+use crate::symbol::Register;
 
 // TODO(doc): Update doc comments for parsing functions!!!
 
@@ -881,13 +881,11 @@ fn take_prefix(chars: &mut CharIter) -> Result<PrefixResult, error::Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::symbol::with_symbol_table;
 
     macro_rules! label {
-        ( $name:expr, $address:expr $(, $offset:expr )? $(,)? ) => {
+        ( $name:expr $(, $offset:expr )? $(,)? ) => {
             Label {
                 name: $name.into(),
-                address: $address,
                 offset: label!(@offset $($offset)?),
             }
         };
@@ -897,11 +895,6 @@ mod tests {
 
     #[test]
     fn many_arguments_works() {
-        with_symbol_table(|sym| {
-            sym.insert("Foo".into(), 0x3F00 + 1);
-            sym.insert("Baz".into(), 0x3BA5 + 1);
-        });
-
         let line = "  name  -54  r3 0x5812 Foo name2  Baz+0x04 4209";
         let mut iter = ArgIter::from(line);
 
@@ -917,12 +910,12 @@ mod tests {
         assert_eq!(iter.next_integer(argument_name, expected_count), Ok(0x5812));
         assert_eq!(
             iter.next_memory_location(argument_name, expected_count),
-            Ok(MemoryLocation::Label(label!("Foo", 0x3F00, 0))),
+            Ok(MemoryLocation::Label(label!("Foo", 0))),
         );
         assert_eq!(iter.next_str(), Some("name2"));
         assert_eq!(
             iter.next_memory_location(argument_name, expected_count),
-            Ok(MemoryLocation::Label(label!("Baz", 0x3BA5, 0x04))),
+            Ok(MemoryLocation::Label(label!("Baz", 0x04))),
         );
         assert_eq!(iter.next_integer(argument_name, expected_count), Ok(4209));
         assert_eq!(iter.next_str(), None);
@@ -960,14 +953,6 @@ mod tests {
 
     #[test]
     fn next_location_works() {
-        with_symbol_table(|sym| {
-            sym.insert("a".into(), 0x300a + 1);
-            sym.insert("rn".into(), 0x3075 + 1);
-            sym.insert("r8".into(), 0x3078 + 1);
-            sym.insert("R0n".into(), 0x3405 + 1);
-            sym.insert("r0n".into(), 0x3705 + 1);
-        });
-
         let argument_name = "dummy";
         let expected_count = 99;
         macro_rules! expect_location { ( $($x:tt)* ) => {
@@ -978,31 +963,23 @@ mod tests {
         expect_location!("R7+1", Err(_));
         expect_location!(
             "a",
-            Ok(Location::Memory(MemoryLocation::Label(label!("a", 0x300a)))),
+            Ok(Location::Memory(MemoryLocation::Label(label!("a")))),
         );
         expect_location!(
             "rn",
-            Ok(Location::Memory(MemoryLocation::Label(label!(
-                "rn", 0x3075
-            )))),
+            Ok(Location::Memory(MemoryLocation::Label(label!("rn")))),
         );
         expect_location!(
             "r8",
-            Ok(Location::Memory(MemoryLocation::Label(label!(
-                "r8", 0x3078
-            )))),
+            Ok(Location::Memory(MemoryLocation::Label(label!("r8")))),
         );
         expect_location!(
             "R0n",
-            Ok(Location::Memory(MemoryLocation::Label(label!(
-                "R0n", 0x3405
-            )))),
+            Ok(Location::Memory(MemoryLocation::Label(label!("R0n")))),
         );
         expect_location!(
             "r0n",
-            Ok(Location::Memory(MemoryLocation::Label(label!(
-                "r0n", 0x3705
-            )))),
+            Ok(Location::Memory(MemoryLocation::Label(label!("r0n")))),
         );
         expect_location!("r0", Ok(Location::Register(Register::R0)));
         expect_location!("R7", Ok(Location::Register(Register::R7)));
@@ -1269,15 +1246,6 @@ mod tests {
 
     #[test]
     fn next_label_token_works() {
-        with_symbol_table(|sym| {
-            sym.insert("F".into(), 0x300F + 1);
-            sym.insert("Foo".into(), 0x3F00 + 1);
-            sym.insert("_Foo".into(), 0x30F0 + 1);
-            sym.insert("_Foo12".into(), 0x30F2 + 1);
-            sym.insert("F_oo12".into(), 0x3F02 + 1);
-            sym.insert("Foo12_".into(), 0x3F20 + 1);
-        });
-
         macro_rules! expect_label { ( $($x:tt)* ) => {
             expect_tokens!(parse_label(), $($x)*);
         }}
@@ -1287,24 +1255,24 @@ mod tests {
         expect_label!("!@*)#", Ok(None));
         expect_label!("0Foo", Ok(None));
         expect_label!("Foo!", Err(_));
-        expect_label!("F", Ok(Some(label!("F", 0x300F))));
-        expect_label!("Foo", Ok(Some(label!("Foo", 0x3F00))));
-        expect_label!("_Foo", Ok(Some(label!("_Foo", 0x30F0))));
-        expect_label!("F_oo12", Ok(Some(label!("F_oo12", 0x3F02))));
-        expect_label!("Foo12_", Ok(Some(label!("Foo12_", 0x3F20))));
-        expect_label!("Foo+0", Ok(Some(label!("Foo", 0x3F00, 0))));
-        expect_label!("Foo-0", Ok(Some(label!("Foo", 0x3F00, 0))));
-        expect_label!("Foo+4", Ok(Some(label!("Foo", 0x3F00, 4))));
-        expect_label!("Foo-43", Ok(Some(label!("Foo", 0x3F00, -43))));
+        expect_label!("F", Ok(Some(label!("F"))));
+        expect_label!("Foo", Ok(Some(label!("Foo"))));
+        expect_label!("_Foo", Ok(Some(label!("_Foo"))));
+        expect_label!("F_oo12", Ok(Some(label!("F_oo12"))));
+        expect_label!("Foo12_", Ok(Some(label!("Foo12_"))));
+        expect_label!("Foo+0", Ok(Some(label!("Foo", 0))));
+        expect_label!("Foo-0", Ok(Some(label!("Foo", 0))));
+        expect_label!("Foo+4", Ok(Some(label!("Foo", 4))));
+        expect_label!("Foo-43", Ok(Some(label!("Foo", -43))));
         expect_label!("Foo+", Err(_));
         expect_label!("Foo-", Err(_));
-        expect_label!("Foo", Ok(Some(label!("Foo", 0x3F00))));
-        expect_label!("Foo+4", Ok(Some(label!("Foo", 0x3F00, 4))));
+        expect_label!("Foo", Ok(Some(label!("Foo"))));
+        expect_label!("Foo+4", Ok(Some(label!("Foo", 4))));
         expect_label!("Foo+", Err(_));
         expect_label!("Foo-", Err(_));
-        expect_label!("Foo+0x034", Ok(Some(label!("Foo", 0x3F00, 0x34))));
-        expect_label!("Foo-0o4", Ok(Some(label!("Foo", 0x3F00, -4))));
-        expect_label!("Foo-#24", Ok(Some(label!("Foo", 0x3F00, -24))));
-        expect_label!("Foo+#024", Ok(Some(label!("Foo", 0x3F00, 24))));
+        expect_label!("Foo+0x034", Ok(Some(label!("Foo", 0x34))));
+        expect_label!("Foo-0o4", Ok(Some(label!("Foo", -4))));
+        expect_label!("Foo-#24", Ok(Some(label!("Foo", -24))));
+        expect_label!("Foo+#024", Ok(Some(label!("Foo", 24))));
     }
 }
