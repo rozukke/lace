@@ -293,30 +293,7 @@ impl<'a> ArgIter<'a> {
         if let Some(register) = parse_register(argument) {
             return Ok(Location::Register(register));
         };
-
-        // TODO(refactor): use `next_memory_location_inner` ?
-
-        if let Some(address) =
-            parse_integer(argument, false).map_err(wrap_invalid_value(argument_name, argument))?
-        {
-            let address =
-                int_as_u16(address).map_err(wrap_invalid_value(argument_name, argument))?;
-            return Ok(Location::Memory(MemoryLocation::Address(address)));
-        };
-
-        if let Some(label) =
-            parse_label(argument).map_err(wrap_invalid_value(argument_name, argument))?
-        {
-            return Ok(Location::Memory(MemoryLocation::Label(label)));
-        };
-
-        if let Some(offset) =
-            parse_pc_offset(argument).map_err(wrap_invalid_value(argument_name, argument))?
-        {
-            return Ok(Location::Memory(MemoryLocation::PCOffset(offset)));
-        };
-
-        todo!("invalid argument");
+        parse_memory_location(argument_name, argument).map(|location| Location::Memory(location))
     }
 
     /// Parse and consume next [`MemoryLocation`] argument. Use default result value if argument is `None`.
@@ -329,28 +306,7 @@ impl<'a> ArgIter<'a> {
             return default;
         };
 
-        // TODO(refactor): Create function to create `error::Argument::InvalidValue` from parts
-        if let Some(address) =
-            parse_integer(argument, false).map_err(wrap_invalid_value(argument_name, argument))?
-        {
-            let address =
-                int_as_u16(address).map_err(wrap_invalid_value(argument_name, argument))?;
-            return Ok(MemoryLocation::Address(address));
-        };
-
-        if let Some(label) =
-            parse_label(argument).map_err(wrap_invalid_value(argument_name, argument))?
-        {
-            return Ok(MemoryLocation::Label(label));
-        };
-
-        if let Some(offset) =
-            parse_pc_offset(argument).map_err(wrap_invalid_value(argument_name, argument))?
-        {
-            return Ok(MemoryLocation::PCOffset(offset));
-        };
-
-        todo!("invalid argument");
+        parse_memory_location(argument_name, argument)
     }
 
     /// Parse and consume next [`MemoryLocation`] argument.
@@ -411,6 +367,33 @@ fn wrap_invalid_value<'a>(
         string: argument.to_string(),
         error,
     }
+}
+
+fn parse_memory_location(
+    argument_name: &'static str,
+    argument: &str,
+) -> Result<MemoryLocation, error::Argument> {
+    // TODO(refactor): Create function to create `error::Argument::InvalidValue` from parts
+    if let Some(address) =
+        parse_integer(argument, false).map_err(wrap_invalid_value(argument_name, argument))?
+    {
+        let address = int_as_u16(address).map_err(wrap_invalid_value(argument_name, argument))?;
+        return Ok(MemoryLocation::Address(address));
+    };
+
+    if let Some(label) =
+        parse_label(argument).map_err(wrap_invalid_value(argument_name, argument))?
+    {
+        return Ok(MemoryLocation::Label(label));
+    };
+
+    if let Some(offset) =
+        parse_pc_offset(argument).map_err(wrap_invalid_value(argument_name, argument))?
+    {
+        return Ok(MemoryLocation::PCOffset(offset));
+    };
+
+    todo!("invalid argument");
 }
 
 /// Returns `true` if the given character can appear at the start of a label.
