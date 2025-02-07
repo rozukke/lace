@@ -73,12 +73,14 @@ impl fmt::Display for CommandName {
 
 /// Register or memory location.
 #[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum Location {
     Register(Register),
     Memory(MemoryLocation),
 }
 
 #[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum MemoryLocation {
     PCOffset(i16),
     Address(u16),
