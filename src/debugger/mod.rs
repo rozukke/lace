@@ -293,8 +293,39 @@ impl Debugger {
             self.instruction_count = 0;
         }
 
-        // Convert `EOF` to `quit` command
-        let command = self.next_command().unwrap_or(Command::Quit);
+        // Read and parse next command
+        // Inlined to avoid lifetime complications borrowing `self` entirely
+        let command = loop {
+            let line = match self.command_source.read() {
+                Some(line) => line.trim(),
+                None => break Command::Quit, // EOF
+            };
+
+            // Necessary, since `Command::try_from` assumes non-empty line
+            if line.is_empty() {
+                continue;
+            }
+
+            // Remove silly lifetime restriction
+            // SAFETY: Any reference which is returned from this function WILL be valid
+            // SAFETY: The buffer which owns this string is not freed until all debugger business
+            // has ended
+            // SAFETY: The buffer also will not be overwritten until command has entirely
+            // completed its execution. The fact that the buffer holds a line of multiple commands
+            // does not change this fact
+            let line = unsafe { &*(line as *const str) };
+
+            let command = match Command::try_from(line) {
+                Ok(command) => command,
+                Err(error) => {
+                    dprintln!(Always, Error, "{}", error);
+                    dprintln!(Sometimes, Error, "Type `help` for a list of commands.");
+                    continue;
+                }
+            };
+
+            break command;
+        };
 
         match command {
             Command::Quit => return Some(Action::StopDebugger),
@@ -472,38 +503,6 @@ impl Debugger {
         }
 
         None
-    }
-
-    /// Returns `None` on EOF.
-    fn next_command<'a>(&'a mut self) -> Option<Command<'a>> {
-        // Loop until valid command or EOF
-        loop {
-            let line = self.command_source.read()?.trim();
-            // Necessary, since `Command::try_from` assumes non-empty line
-            if line.is_empty() {
-                continue;
-            }
-
-            // Remove silly lifetime restriction
-            // SAFETY: Any reference which is returned from this function WILL be valid
-            // SAFETY: The buffer which owns this string is not freed until all debugger business
-            // has ended
-            // SAFETY: The buffer also will not be overwritten until command has entirely
-            // completed its execution. The fact that the buffer holds a line of multiple commands
-            // does not change this fact
-            let line = unsafe { &*(line as *const str) };
-
-            let command = match Command::try_from(line) {
-                Ok(command) => command,
-                Err(error) => {
-                    dprintln!(Always, Error, "{}", error);
-                    dprintln!(Sometimes, Error, "Type `help` for a list of commands.");
-                    continue;
-                }
-            };
-
-            return Some(command);
-        }
     }
 
     /// Wrapper for [`AsmSource::get_source_statement`].

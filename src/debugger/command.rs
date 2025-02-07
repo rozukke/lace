@@ -13,14 +13,14 @@ pub enum Command<'a> {
     Quit,
     Exit,
     BreakList,
-    BreakAdd { location: MemoryLocation },
-    BreakRemove { location: MemoryLocation },
-    Get { location: Location },
-    Set { location: Location, value: u16 },
-    Jump { location: MemoryLocation },
+    BreakAdd { location: MemoryLocation<'a> },
+    BreakRemove { location: MemoryLocation<'a> },
+    Get { location: Location<'a> },
+    Set { location: Location<'a>, value: u16 },
+    Jump { location: MemoryLocation<'a> },
     Registers,
     Reset,
-    Source { location: MemoryLocation },
+    Source { location: MemoryLocation<'a> },
     // This can be `String` bc it will be allocated later regardless to get a &'static str
     // Unless parsing code is changed, and can accept a non-static string
     Eval { instruction: &'a str },
@@ -74,24 +74,24 @@ impl fmt::Display for CommandName {
 /// Register or memory location.
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
-pub enum Location {
+pub enum Location<'a> {
     Register(Register),
-    Memory(MemoryLocation),
+    Memory(MemoryLocation<'a>),
 }
 
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
-pub enum MemoryLocation {
+pub enum MemoryLocation<'a> {
     PCOffset(i16),
     Address(u16),
-    Label(Label),
+    Label(Label<'a>),
 }
 
 /// Label with word offset.
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
-pub struct Label {
-    pub name: &'static str,
+pub struct Label<'a> {
+    pub name: &'a str,
     pub address: u16,
     pub offset: i16,
 }

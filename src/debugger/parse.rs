@@ -182,7 +182,7 @@ macro_rules! check_naive_type {
 
 impl<'a> ArgIter<'a> {
     // Do not `impl Iterator`. This method should be private
-    fn next_str(&mut self) -> Option<&str> {
+    fn next_str(&mut self) -> Option<&'a str> {
         let mut start = self.cursor;
         let mut length = 0;
         let mut is_start = true;
@@ -335,7 +335,7 @@ impl<'a> ArgIter<'a> {
         &mut self,
         argument_name: &'static str,
         expected_count: u8,
-    ) -> Result<Location, error::Argument> {
+    ) -> Result<Location<'a>, error::Argument> {
         let Some(argument) = self.next_str() else {
             return Err(error::Argument::MissingArgument {
                 argument_name,
@@ -360,8 +360,8 @@ impl<'a> ArgIter<'a> {
     fn next_memory_location_inner(
         &mut self,
         argument_name: &'static str,
-        default: Result<MemoryLocation, error::Argument>,
-    ) -> Result<MemoryLocation, error::Argument> {
+        default: Result<MemoryLocation<'a>, error::Argument>,
+    ) -> Result<MemoryLocation<'a>, error::Argument> {
         let Some(argument) = self.next_str() else {
             return default;
         };
@@ -380,7 +380,7 @@ impl<'a> ArgIter<'a> {
         &mut self,
         argument_name: &'static str,
         expected_count: u8,
-    ) -> Result<MemoryLocation, error::Argument> {
+    ) -> Result<MemoryLocation<'a>, error::Argument> {
         self.next_memory_location_inner(
             argument_name,
             Err(error::Argument::MissingArgument {
@@ -396,7 +396,7 @@ impl<'a> ArgIter<'a> {
     pub fn next_memory_location_or_default(
         &mut self,
         argument_name: &'static str,
-    ) -> Result<MemoryLocation, error::Argument> {
+    ) -> Result<MemoryLocation<'a>, error::Argument> {
         self.next_memory_location_inner(argument_name, Ok(MemoryLocation::PCOffset(0)))
     }
 
@@ -523,10 +523,10 @@ fn wrap_invalid_value<'a>(
     }
 }
 
-fn parse_memory_location(
+fn parse_memory_location<'a>(
     argument_name: &'static str,
-    argument: &str,
-) -> Result<MemoryLocation, error::Argument> {
+    argument: &'a str,
+) -> Result<MemoryLocation<'a>, error::Argument> {
     // TODO(refactor): Create function to create `error::Argument::InvalidValue` from parts
     if let Some(address) =
         parse_integer(argument, false).map_err(wrap_invalid_value(argument_name, argument))?
