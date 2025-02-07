@@ -651,7 +651,7 @@ fn resolve_label_address(name: &str) -> LabelResult {
             return LabelResult::Exists {
                 name: unsafe { make_key_static(key) },
                 // Account for PC being incremented before instruction is executed
-                address: address + 1,
+                address: address - 1,
             };
         }
 
@@ -945,8 +945,8 @@ mod tests {
     #[test]
     fn many_arguments_works() {
         with_symbol_table(|sym| {
-            sym.insert("Foo".into(), 0x3F00 - 1);
-            sym.insert("Baz".into(), 0x3BA5 - 1);
+            sym.insert("Foo".into(), 0x3F00 + 1);
+            sym.insert("Baz".into(), 0x3BA5 + 1);
         });
 
         let line = "  name  -54  r3 0x5812 Foo name2  Baz+0x04 4209";
@@ -1008,11 +1008,11 @@ mod tests {
     #[test]
     fn next_location_works() {
         with_symbol_table(|sym| {
-            sym.insert("a".into(), 0x300a - 1);
-            sym.insert("rn".into(), 0x3075 - 1);
-            sym.insert("r8".into(), 0x3078 - 1);
-            sym.insert("R0n".into(), 0x3405 - 1);
-            sym.insert("r0n".into(), 0x3705 - 1);
+            sym.insert("a".into(), 0x300a + 1);
+            sym.insert("rn".into(), 0x3075 + 1);
+            sym.insert("r8".into(), 0x3078 + 1);
+            sym.insert("R0n".into(), 0x3405 + 1);
+            sym.insert("r0n".into(), 0x3705 + 1);
         });
 
         let argument_name = "dummy";
@@ -1317,12 +1317,12 @@ mod tests {
     #[test]
     fn next_label_token_works() {
         with_symbol_table(|sym| {
-            sym.insert("F".into(), 0x300F - 1);
-            sym.insert("Foo".into(), 0x3F00 - 1);
-            sym.insert("_Foo".into(), 0x30F0 - 1);
-            sym.insert("_Foo12".into(), 0x30F2 - 1);
-            sym.insert("F_oo12".into(), 0x3F02 - 1);
-            sym.insert("Foo12_".into(), 0x3F20 - 1);
+            sym.insert("F".into(), 0x300F + 1);
+            sym.insert("Foo".into(), 0x3F00 + 1);
+            sym.insert("_Foo".into(), 0x30F0 + 1);
+            sym.insert("_Foo12".into(), 0x30F2 + 1);
+            sym.insert("F_oo12".into(), 0x3F02 + 1);
+            sym.insert("Foo12_".into(), 0x3F20 + 1);
         });
 
         macro_rules! expect_label { ( $($x:tt)* ) => {
