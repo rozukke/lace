@@ -2,26 +2,9 @@ use super::command::{CommandName, Label, Location, MemoryLocation};
 use super::error;
 use crate::symbol::Register;
 
-// TODO(refactor): Rewrite argument parsing. Split at whitespace then parse value
+// TODO(doc): Update doc comments for parsing functions!!!
 
-// TODO: rename to 'ValueResult' ??
-#[derive(Debug)]
-#[cfg_attr(test, derive(PartialEq))]
-struct ArgumentResult<'a> {
-    // TODO: Rename fields ?
-    pub string: &'a str,
-    pub argument: Argument,
-}
-
-// TODO: rename to 'Value' ??
-#[derive(Debug)]
-#[cfg_attr(test, derive(PartialEq))]
-enum Argument {
-    Register(Register),
-    Integer(i32),
-    Label(Label),
-    PCOffset(i16),
-}
+// TODO(refactor): Move integer parsing to submodule
 
 #[derive(Clone, Copy, Debug)]
 enum Sign {
@@ -78,6 +61,14 @@ fn int_as_u16(integer: i32) -> Result<u16, error::Value> {
         .try_into()
         .map_err(|_| error::Value::IntegerTooLarge { max: u16::MAX })
 }
+/// Try to convert an `i32` into `u16`. Cast negative values.
+fn int_as_u16_cast(integer: i32) -> Result<u16, error::Value> {
+    if integer < 0 {
+        Ok(int_as_i16(integer)? as u16)
+    } else {
+        int_as_u16(integer)
+    }
+}
 
 // TODO(feat): Add more aliases (such as undocumented typo aliases)
 #[rustfmt::skip]
@@ -108,9 +99,9 @@ const BREAK_SUBCOMMANDS: CommandNameList = &[
     (CommandName::BreakRemove, &["remove", "r"]),
 ];
 
-/// A [`CommandName`] with a list of name candidates
+/// A [`CommandName`] with a list of name candidates.
 type CommandNameList<'a> = &'a [(CommandName, CandidateList<'a>)];
-/// List of single-word aliases for a command or subcommand
+/// List of single-word aliases for a command or subcommand.
 type CandidateList<'a> = &'a [&'a str];
 
 /// Returns the first [`CommandName`], which has a corresponding candidate which matches `name`
@@ -136,50 +127,78 @@ fn name_matches(name: &str, candidates: CandidateList) -> bool {
     false
 }
 
-impl Argument {
-    pub fn kind(&self) -> &'static str {
-        match self {
-            Argument::Register(_) => "register",
-            Argument::Integer(_) => "integer",
-            Argument::Label(_) => "label",
-            Argument::PCOffset(_) => "program counter offset",
-        }
-    }
-}
-
-pub struct CommandIter<'a> {
+pub struct ArgIter<'a> {
     buffer: &'a str,
-    /// Characters before this index have been successfully parsed.
-    base: usize,
-    /// Characters between base..head are currently being parsed.
-    head: usize,
+    /// Byte index.
+    cursor: usize,
+
     /// Amount of arguments requested (successfully or not).
     ///
     /// Must only be incremented by [`Self::next_argument`].
     arg_count: u8,
 }
 
-/// Helper struct for retaining syntax information when parsing integer prefix.
-struct IntegerPrefix {
-    /// Radix corresponding to prefix character.
-    radix: Radix,
-    /// Whether prefix character is preceeded by zeros.
-    leading_zeros: bool,
-    /// Whether prefix character is a symbol (i.e. `#`).
-    non_alpha: bool,
-}
-
-impl<'a> CommandIter<'a> {
-    pub fn from(buffer: &'a str) -> Self {
+impl<'a> From<&'a str> for ArgIter<'a> {
+    fn from(buffer: &'a str) -> Self {
         Self {
             buffer,
-            base: 0,
-            head: 0,
+            cursor: 0,
             arg_count: 0,
         }
     }
+}
+
+impl<'a> ArgIter<'a> {
+    // Do not `impl Iterator`. This method should be private
+    fn next_str(&mut self) -> Option<&str> {
+        let mut start = self.cursor;
+        let mut length = 0;
+        let mut is_start = true;
+
+        for ch in self.buffer[self.cursor..].chars() {
+            debug_assert!(
+                !matches!(ch, ';' | '\n'),
+                "semicolons/newlines should have been handled already"
+            );
+
+            // Skip leading whitespace
+            if is_start && ch == ' ' {
+                start += ch.len_utf8();
+                continue;
+            }
+            is_start = false;
+
+            if matches!(ch, ' ' | ';' | '\n') {
+                break;
+            }
+            length += ch.len_utf8();
+        }
+
+        let end = start + length;
+        if start == end {
+            return None;
+        }
+
+        let argument = &self.buffer[start..end];
+        self.cursor = end;
+        Some(argument)
+    }
+
+    /// Consume the rest of the command as one string.
+    ///
+    /// Leading/trailing whitespace is trimmed.
+    ///
+    /// Used for `eval` command.
+    ///
+    /// This can be `String` bc it will be allocated later regardless for [`Command::Eval`].
+    pub fn collect_rest(&mut self) -> String {
+        let start = self.cursor;
+        self.cursor = self.buffer.len();
+        self.buffer[start..].trim().to_string()
+    }
 
     pub fn arg_count(&self) -> u8 {
+        // TODO: Increment argument count in parsing methods
         self.arg_count
     }
 
@@ -189,7 +208,7 @@ impl<'a> CommandIter<'a> {
     ///
     /// Assumes line is non-empty.
     pub fn get_command_name(&mut self) -> Result<CommandName, error::Command> {
-        let command_name = self.next_command_name_part();
+        let command_name = self.next_str();
         // Command source should always return a string containing non-whitespace
         // characters, so initial command name should always exist.
         debug_assert!(command_name.is_some(), "missing command name");
@@ -205,7 +224,7 @@ impl<'a> CommandIter<'a> {
             // Only used for errors
             let command_name = BREAK_COMMAND[0]; // Array must be non-empty if this branch is being ran
 
-            let Some(subcommand_name) = self.next_command_name_part() else {
+            let Some(subcommand_name) = self.next_str() else {
                 return Err(error::Command::MissingSubcommand { command_name });
             };
             let Some(command) = find_name_match(subcommand_name, BREAK_SUBCOMMANDS) else {
@@ -222,19 +241,48 @@ impl<'a> CommandIter<'a> {
         })
     }
 
+    /// Parse and consume next integer argument. Use default result value if argument is `None`.
+    fn next_integer_inner(
+        &mut self,
+        argument_name: &'static str,
+        default: Result<u16, error::Argument>,
+    ) -> Result<u16, error::Argument> {
+        let Some(argument) = self.next_str() else {
+            return default;
+        };
+
+        let integer =
+            parse_integer(argument, false).map_err(wrap_invalid_value(argument_name, argument))?;
+
+        let Some(integer) = integer else {
+            return Err(error::Argument::InvalidValue {
+                argument_name,
+                string: argument.to_string(),
+                error: error::Value::MismatchedType {
+                    expected_type: "integer",
+                    actual_type: "{unknown}",
+                },
+            });
+        };
+
+        let integer =
+            int_as_u16_cast(integer).map_err(wrap_invalid_value(argument_name, argument))?;
+
+        Ok(integer)
+    }
+
     /// Parse and consume next integer argument.
     pub fn next_integer(
         &mut self,
         argument_name: &'static str,
         expected_count: u8,
     ) -> Result<u16, error::Argument> {
-        let actual_count = self.arg_count;
         self.next_integer_inner(
             argument_name,
             Err(error::Argument::MissingArgument {
                 argument_name,
                 expected_count,
-                actual_count,
+                actual_count: 99, // TODO
             }),
         )
     }
@@ -247,36 +295,7 @@ impl<'a> CommandIter<'a> {
         argument_name: &'static str,
     ) -> Result<u16, error::Argument> {
         self.next_integer_inner(argument_name, Ok(1))
-            .map(|value| value.max(1))
-    }
-
-    /// Parse and consume next integer argument. Use default result value if argument is `None`.
-    fn next_integer_inner(
-        &mut self,
-        argument_name: &'static str,
-        default: Result<u16, error::Argument>,
-    ) -> Result<u16, error::Argument> {
-        let Some(argument) = self.next_argument(argument_name)? else {
-            return default;
-        };
-        match argument.argument {
-            Argument::Integer(count) => {
-                int_as_u16(count).map_err(|error| error::Argument::InvalidValue {
-                    argument_name,
-                    string: argument.string.to_string(),
-                    error,
-                })
-            }
-
-            value => Err(error::Argument::InvalidValue {
-                argument_name,
-                string: argument.string.to_string(),
-                error: error::Value::MismatchedType {
-                    expected_type: "integer",
-                    actual_type: value.kind(),
-                },
-            }),
-        }
+            .map(|value| value.max(1)) // 0 -> 1
     }
 
     /// Parse and consume next [`Location`] argument: a register or [`MemoryLocation`].
@@ -285,29 +304,33 @@ impl<'a> CommandIter<'a> {
         argument_name: &'static str,
         expected_count: u8,
     ) -> Result<Location, error::Argument> {
-        let actual_count = self.arg_count;
-        let Some(argument) = self.next_argument(argument_name)? else {
+        let Some(argument) = self.next_str() else {
             return Err(error::Argument::MissingArgument {
                 argument_name,
                 expected_count,
-                actual_count,
+                actual_count: 99,
             });
         };
-        match argument.argument {
-            Argument::Register(register) => Ok(Location::Register(register)),
 
-            Argument::Integer(address) => Ok(Location::Memory(MemoryLocation::Address(
-                int_as_u16(address).map_err(|error| error::Argument::InvalidValue {
-                    argument_name,
-                    string: argument.string.to_string(),
-                    error,
-                })?,
-            ))),
+        if let Some(register) =
+            parse_register(argument).map_err(wrap_invalid_value(argument_name, argument))?
+        {
+            return Ok(Location::Register(register));
+        };
+        parse_memory_location(argument_name, argument).map(|location| Location::Memory(location))
+    }
 
-            Argument::Label(label) => Ok(Location::Memory(MemoryLocation::Label(label))),
+    /// Parse and consume next [`MemoryLocation`] argument. Use default result value if argument is `None`.
+    fn next_memory_location_inner(
+        &mut self,
+        argument_name: &'static str,
+        default: Result<MemoryLocation, error::Argument>,
+    ) -> Result<MemoryLocation, error::Argument> {
+        let Some(argument) = self.next_str() else {
+            return default;
+        };
 
-            Argument::PCOffset(offset) => Ok(Location::Memory(MemoryLocation::PCOffset(offset))),
-        }
+        parse_memory_location(argument_name, argument)
     }
 
     /// Parse and consume next [`MemoryLocation`] argument.
@@ -316,13 +339,12 @@ impl<'a> CommandIter<'a> {
         argument_name: &'static str,
         expected_count: u8,
     ) -> Result<MemoryLocation, error::Argument> {
-        let actual_count = self.arg_count;
         self.next_memory_location_inner(
             argument_name,
             Err(error::Argument::MissingArgument {
                 argument_name,
                 expected_count,
-                actual_count,
+                actual_count: 99,
             }),
         )
     }
@@ -336,539 +358,391 @@ impl<'a> CommandIter<'a> {
         self.next_memory_location_inner(argument_name, Ok(MemoryLocation::PCOffset(0)))
     }
 
-    /// Parse and consume next [`MemoryLocation`] argument. Use default result value if argument is `None`.
-    fn next_memory_location_inner(
-        &mut self,
-        argument_name: &'static str,
-        default: Result<MemoryLocation, error::Argument>,
-    ) -> Result<MemoryLocation, error::Argument> {
-        let Some(argument) = self.next_argument(argument_name)? else {
-            return default;
-        };
-        match argument.argument {
-            Argument::Integer(address) => Ok(MemoryLocation::Address(
-                int_as_u16(address).map_err(|error| error::Argument::InvalidValue {
-                    argument_name,
-                    string: argument.string.to_string(),
-                    error,
-                })?,
-            )),
-
-            Argument::Label(label) => Ok(MemoryLocation::Label(label)),
-
-            Argument::PCOffset(offset) => Ok(MemoryLocation::PCOffset(offset)),
-
-            value => Err(error::Argument::InvalidValue {
-                argument_name,
-                string: argument.string.to_string(),
-                error: error::Value::MismatchedType {
-                    expected_type: "address, label, or program counter offset",
-                    actual_type: value.kind(),
-                },
-            }),
-        }
-    }
-
     /// Returns an error if the command contains any arguments which haven't been consumed.
-    pub fn expect_end_of_command(
-        &mut self,
-        expected: u8,
-        actual: u8,
-    ) -> Result<(), error::Argument> {
-        self.skip_whitespace();
-        let ch = self.peek();
-        debug_assert!(
-            !matches!(ch, Some(';' | '\n')),
-            "semicolons/newlines should have been handled already"
-        );
-        if !matches!(ch, None | Some(';' | '\n')) {
-            return Err(error::Argument::TooManyArguments {
+    pub fn expect_end(&mut self, expected: u8, actual: u8) -> Result<(), error::Argument> {
+        if self.next_str().is_none() {
+            Ok(())
+        } else {
+            Err(error::Argument::TooManyArguments {
                 expected_count: expected,
                 actual_count: actual,
-            });
-        }
-        Ok(())
-    }
-
-    /// Consume the rest of the command as one string.
-    ///
-    /// Leading/trailing whitespace is trimmed.
-    ///
-    /// Used for `eval` command.
-    ///
-    /// This can be `String` bc it will be allocated later regardless for [`Command::Eval`].
-    pub fn collect_rest(&mut self) -> String {
-        let rest = self.buffer[self.head..].trim().to_string();
-        self.head = self.buffer.len();
-        rest
-    }
-
-    /// Get next character at head, WITHOUT incrementing head.
-    fn peek(&self) -> Option<char> {
-        if self.head >= self.buffer.len() {
-            return None;
-        }
-        let next = self.buffer[self.head..].chars().next()?;
-        Some(next)
-    }
-    /// Get next character at head, incrementing head.
-    fn next(&mut self) -> Option<char> {
-        let next = self.peek()?;
-        self.head += next.len_utf8();
-        Some(next)
-    }
-
-    /// Increment head past all remaing characters in the argument (i.e. until whitespace).
-    ///
-    /// Used to get entire argument for diagnosis.
-    fn next_end_of_argument(&mut self) {
-        while let Some(_) = self.peek() {
-            if self.is_end_of_argument() {
-                break;
-            }
-            self.next();
-        }
-    }
-
-    /// Get characters between base..head, WITHOUT updating base.
-    fn get(&self) -> &str {
-        assert!(self.base <= self.head, "base exceeded head");
-        &self.buffer[self.base..self.head]
-    }
-    /// Get characters between base..head, updating base.
-    fn take(&mut self) -> &str {
-        assert!(self.base <= self.head, "base exceeded head");
-        let slice = &self.buffer[self.base..self.head];
-        self.set_base();
-        slice
-    }
-
-    /// Update base to head.
-    fn set_base(&mut self) {
-        self.base = self.head;
-    }
-    /// Backtrack head to base.
-    fn reset_head(&mut self) {
-        self.head = self.base;
-    }
-
-    fn is_end_of_argument(&self) -> bool {
-        let ch = self.peek();
-        debug_assert!(
-            !matches!(ch, Some(';' | '\n')),
-            "semicolons/newlines should have been handled already"
-        );
-        matches!(ch, None | Some(' ' | ';' | '\n'))
-    }
-
-    /// Consume all whitespace before next non-whitespace character.
-    fn skip_whitespace(&mut self) {
-        while self.peek().is_some_and(|ch| ch.is_whitespace()) {
-            self.next();
-        }
-        self.set_base();
-    }
-
-    /// Used for both main command and subcommand (eg. `break add`).
-    fn next_command_name_part(&mut self) -> Option<&str> {
-        self.skip_whitespace();
-        self.reset_head();
-
-        while self.peek().is_some_and(|ch| !ch.is_whitespace()) {
-            self.next();
-        }
-
-        if self.get().is_empty() {
-            return None;
-        }
-        Some(self.take())
-    }
-
-    /// Parse and consume the next [`Argument`].
-    fn next_argument(
-        &mut self,
-        argument_name: &'static str,
-    ) -> Result<Option<ArgumentResult>, error::Argument> {
-        debug_assert!(
-            self.head == self.base,
-            "should have been called with head==base"
-        );
-        self.reset_head();
-        self.skip_whitespace();
-        let start = self.head;
-
-        self.arg_count += 1;
-
-        // TODO(fix): Use `.get()` instead of slice indexing
-        match self.next_argument_inner() {
-            Ok(Some(argument)) => Ok(Some(ArgumentResult {
-                string: &self.buffer[start..self.base],
-                argument,
-            })),
-            Ok(None) => Ok(None),
-            Err(error) => Err(error::Argument::InvalidValue {
-                argument_name,
-                // Base has not been updated
-                string: self.buffer[start..self.head].to_string(),
-                error,
-            }),
-        }
-    }
-
-    fn next_argument_inner(&mut self) -> Result<Option<Argument>, error::Value> {
-        if self.is_end_of_argument() {
-            return Ok(None);
-        }
-        if let Some(offset) = self.next_pc_offset()? {
-            return Ok(Some(Argument::PCOffset(offset)));
-        }
-        if let Some(register) = self.next_register() {
-            return Ok(Some(Argument::Register(register)));
-        }
-        if let Some(integer) = self.next_integer_token(false)? {
-            return Ok(Some(Argument::Integer(integer)));
-        }
-        if let Some(label) = self.next_label_token()? {
-            return Ok(Some(Argument::Label(label)));
-        }
-        Err(error::Value::MalformedValue {})
-    }
-
-    /// Parse and consume the next [`Register`] argument.
-    fn next_register(&mut self) -> Option<Register> {
-        self.reset_head();
-        // Don't skip whitespace
-
-        if !self.next().is_some_and(|ch| ch == 'r' || ch == 'R') {
-            return None;
-        }
-        let register = match self.next()? {
-            '0' => Register::R0,
-            '1' => Register::R1,
-            '2' => Register::R2,
-            '3' => Register::R3,
-            '4' => Register::R4,
-            '5' => Register::R5,
-            '6' => Register::R6,
-            '7' => Register::R7,
-            _ => return None,
-        };
-
-        // Possibly the start of a label
-        if !self.is_end_of_argument() {
-            return None;
-        }
-        self.set_base();
-        Some(register)
-    }
-
-    /// Parse and consume the next integer argument.
-    ///
-    /// Extremely liberal in accepted syntax.
-    ///
-    /// Accepts:
-    ///  - Decimal (optional `#`), hex (`x`/`X`), octal (`o`/`O`), and binary (`b`/`B`).
-    ///  - Optional single zero before non-decimal radix prefix. Eg. `0x4`.
-    ///  - Leading zeros after prefix and sign. Eg. `0x0004`, `#-03`.
-    ///  - Sign character before xor after radix prefix. Eg. `-#2`, `x+4`.
-    ///
-    /// Returns `Ok(None)` (not an integer) for:
-    ///  - Empty token.
-    ///  - Non-decimal radix prefix, with no zero before it, and non-digits after it. Eg. `xLabel`, `o`.
-    ///
-    /// Returns `Err` (invalid integer and invalid token) for:
-    ///  - Invalid digits for the given radix.
-    ///  - Decimal radix prefix `#` with zeros before it. Eg. `0#2`.
-    ///  - Decimal radix prefix `#` with no digits after it. Eg. `#`.
-    ///  - Multiple sign characters (before or after prefix).
-    ///  - Missing sign character '-' or '+', if `require_sign == true`.
-    ///  - Multiple zeros before radix prefix. Eg. `00x4`.
-    ///  - Absolute value out of bounds for `i32`. (Does *NOT* check if integer fits in specific bit size).
-    fn next_integer_token(&mut self, require_sign: bool) -> Result<Option<i32>, error::Value> {
-        self.next_integer_token_inner(require_sign)
-            .map_err(|error| {
-                self.next_end_of_argument();
-                error
             })
+        }
+    }
+}
+
+fn wrap_invalid_value<'a>(
+    argument_name: &'static str,
+    argument: &'a str,
+) -> impl Fn(error::Value) -> error::Argument + 'a {
+    move |error| error::Argument::InvalidValue {
+        argument_name,
+        string: argument.to_string(),
+        error,
+    }
+}
+
+fn parse_memory_location(
+    argument_name: &'static str,
+    argument: &str,
+) -> Result<MemoryLocation, error::Argument> {
+    // TODO(refactor): Create function to create `error::Argument::InvalidValue` from parts
+    if let Some(address) =
+        parse_integer(argument, false).map_err(wrap_invalid_value(argument_name, argument))?
+    {
+        let address = int_as_u16(address).map_err(wrap_invalid_value(argument_name, argument))?;
+        return Ok(MemoryLocation::Address(address));
+    };
+
+    if let Some(label) =
+        parse_label(argument).map_err(wrap_invalid_value(argument_name, argument))?
+    {
+        return Ok(MemoryLocation::Label(label));
+    };
+
+    if let Some(offset) =
+        parse_pc_offset(argument).map_err(wrap_invalid_value(argument_name, argument))?
+    {
+        return Ok(MemoryLocation::PCOffset(offset));
+    };
+
+    Err(error::Argument::InvalidValue {
+        argument_name,
+        string: argument.to_string(),
+        error: error::Value::MalformedValue {},
+    })
+}
+
+/// Returns `true` if the given character can appear at the start of a label.
+fn label_can_start_with(ch: char) -> bool {
+    matches!(ch, 'a'..='z' | 'A'..='Z' | '_')
+}
+/// Returns `true` if the given character can appear as a subsequent character of a label.
+fn label_can_contain(ch: char) -> bool {
+    matches!(ch, 'a'..='z' | 'A'..='Z' | '0'..='9' | '_')
+}
+
+type CharIter<'a> = std::iter::Peekable<std::str::Chars<'a>>;
+
+/// Track byte length of consumed characters.
+struct ByteCounted<'a> {
+    inner: CharIter<'a>,
+    len: usize,
+}
+
+impl<'a> Iterator for ByteCounted<'a> {
+    type Item = char;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let ch = self.inner.next()?;
+        self.len += ch.len_utf8();
+        Some(ch)
+    }
+}
+
+impl<'a> ByteCounted<'a> {
+    pub fn from(inner: CharIter<'a>) -> Self {
+        Self { inner, len: 0 }
+    }
+    pub fn len(&self) -> usize {
+        self.len
+    }
+    pub fn peek(&mut self) -> Option<&char> {
+        self.inner.peek()
+    }
+}
+
+fn parse_label(string: &str) -> Result<Option<Label>, error::Value> {
+    let mut chars = ByteCounted::from(string.chars().peekable());
+
+    // Check first character can begin a label
+    if !chars.next().is_some_and(label_can_start_with) {
+        return Ok(None);
+    };
+    // Take characters until non-alphanumeric
+    while chars.peek().copied().is_some_and(label_can_contain) {
+        chars.next();
     }
 
-    fn next_integer_token_inner(
-        &mut self,
-        require_sign: bool,
-    ) -> Result<Option<i32>, error::Value> {
-        self.reset_head();
-        // Don't skip whitespace
+    let length = chars.len();
+    let (name, offset_str) = string.split_at(length);
 
-        // Take sign BEFORE prefix
-        let first_sign: Option<Sign> = self.next_integer_sign();
+    let offset = if offset_str.is_empty() {
+        0
+    } else {
+        match parse_integer(offset_str, true)? {
+            Some(offset) => int_as_i16(offset)?,
+            None => return Err(error::Value::MalformedLabel {}),
+        }
+    };
 
-        // Take optional prefix
-        let Some(prefix) = self.next_integer_prefix()? else {
+    Ok(Some(Label {
+        name: name.to_string(),
+        offset,
+    }))
+}
+
+fn parse_pc_offset(string: &str) -> Result<Option<i16>, error::Value> {
+    if !string.chars().next().is_some_and(|ch| ch == '^') {
+        return Ok(None);
+    }
+    let offset_str = &string['^'.len_utf8()..];
+
+    let offset = if offset_str.is_empty() {
+        0
+    } else {
+        match parse_integer(offset_str, true)? {
+            Some(offset) => int_as_i16(offset)?,
+            None => return Err(error::Value::MalformedInteger {}),
+        }
+    };
+
+    Ok(Some(offset))
+}
+
+fn parse_register(string: &str) -> Result<Option<Register>, error::Value> {
+    let mut chars = string.chars();
+
+    match chars.next() {
+        Some('r' | 'R') => (),
+        _ => return Ok(None),
+    }
+
+    let Some(digit) = chars.next() else {
+        return Ok(None);
+    };
+    let register = match digit {
+        '0' => Register::R0,
+        '1' => Register::R1,
+        '2' => Register::R2,
+        '3' => Register::R3,
+        '4' => Register::R4,
+        '5' => Register::R5,
+        '6' => Register::R6,
+        '7' => Register::R7,
+        _ => return Ok(None),
+    };
+
+    if let Some(ch) = chars.next() {
+        // Possibly the start of a label
+        if label_can_contain(ch) {
+            return Ok(None);
+        } else {
+            return Err(error::Value::MalformedRegister {});
+        }
+    }
+
+    Ok(Some(register))
+}
+
+// TODO(refactor): `.peek` -> `.next_if` where possible
+
+/// Parse and consume the next integer argument.
+///
+/// Extremely liberal in accepted syntax.
+///
+/// Accepts:
+///  - Decimal (optional "#"), hex ("x"/"X"), octal ("o"/"O"), and binary ("b"/"B").
+///  - Optional single zero before non-decimal radix prefix. Eg. "0x4".
+///  - Leading zeros after prefix and sign. Eg. "0x0004", "#-03".
+///  - Sign character before xor after radix prefix. Eg. "-#2", "x+4".
+///
+/// Returns `Ok(None)` (not an integer) for:
+///  - Empty token.
+///  - Non-decimal radix prefix, with no zero before it, and non-digits after it. Eg. "xLabel", "o".
+///
+/// Returns `Err` (invalid integer and invalid token) for:
+///  - Invalid digits for the given radix.
+///  - Decimal radix prefix "#" with zeros before it. Eg. "0#2".
+///  - Decimal radix prefix "#" with no digits after it. Eg. "#".
+///  - Multiple sign characters (before or after prefix).
+///  - Missing sign character "-" or "+", if `require_sign == true`.
+///  - Multiple zeros before radix prefix. Eg. "00x4".
+///  - Absolute value out of bounds for `i32`. (Does *NOT* check if integer fits in specific bit size).
+fn parse_integer(string: &str, require_sign: bool) -> Result<Option<i32>, error::Value> {
+    // Useful for parsing label/pc offset
+    if string.is_empty() {
+        return Ok(None);
+    }
+
+    let mut chars: CharIter = string.chars().peekable();
+
+    // Take sign BEFORE prefix
+    let first_sign = take_sign(&mut chars);
+
+    let prefix = match take_prefix(&mut chars)? {
+        PrefixResult::Integer(prefix) => prefix,
+        // Bypass normal parsing
+        // The string must be "0" so no concerns about trailing characters
+        PrefixResult::SingleZero => return Ok(Some(0)),
+
+        PrefixResult::NonInteger => {
             // Sign was already given, so it must be an invalid token
             if first_sign.is_some() {
                 return Err(error::Value::MalformedInteger {});
             }
             return Ok(None);
-        };
+        }
+    };
 
-        // Take sign AFTER prefix
-        let second_sign = self.next_integer_sign();
-        let sign = match (first_sign, second_sign) {
-            (Some(sign), None) => Some(sign),
-            (None, Some(sign)) => Some(sign),
-            (None, None) => {
-                if require_sign {
-                    return Err(error::Value::MalformedInteger {});
-                }
-                None
-            }
-            // Disallow multiple sign characters: '-x-...', '++...', etc
-            (Some(_), Some(_)) => return Err(error::Value::MalformedInteger {}),
-        };
+    // Take sign AFTER prefix
+    let second_sign = take_sign(&mut chars);
 
-        // Check next character is digit
-        if self
-            .peek()
-            .is_none_or(|ch| prefix.radix.parse_digit(ch).is_none())
-        {
-            // Sign, '#', or pre-prefix zeros were given, so it must be an invalid integer token
-            if sign.is_some() || prefix.leading_zeros || prefix.non_alpha {
+    // Reconcile multiple sign characters
+    let sign = match (first_sign, second_sign) {
+        (Some(sign), None) => Some(sign),
+        (None, Some(sign)) => Some(sign),
+        (None, None) => {
+            if require_sign {
                 return Err(error::Value::MalformedInteger {});
             }
-            return Ok(None);
-        };
-
-        // Take digits until non-digit character
-        // Note that this loop handles post-prefix leading zeros like any other digit
-        let mut integer: i32 = 0;
-        while let Some(ch) = self.peek() {
-            if self.is_end_of_argument() {
-                break;
-            }
-            let Some(digit) = prefix.radix.parse_digit(ch) else {
-                return Err(error::Value::MalformedInteger {});
-            };
-            self.next();
-
-            // Re-checked later on convert to smaller int types
-            if integer > i32::MAX / prefix.radix as i32 {
-                return Err(error::Value::IntegerTooLarge {
-                    max: i16::MAX as u16,
-                });
-            }
-
-            integer *= prefix.radix as i32;
-            integer += digit as i32;
+            None
         }
-        if let Some(sign) = sign {
-            integer *= sign as i32;
-        }
+        // Disallow multiple sign characters: "-x-...", "++...", etc
+        (Some(_), Some(_)) => return Err(error::Value::MalformedInteger {}),
+    };
 
-        if !self.is_end_of_argument() {
+    // Check next character is digit
+    // Character must be checked against radix here to prevent valid non-integer tokens returning `Err`
+    if chars
+        .peek()
+        .is_none_or(|ch| prefix.radix.parse_digit(*ch).is_none())
+    {
+        // Sign, pre-prefix zeros, or non-alpha prefix ("#") were given, so it must be an invalid integer token
+        if sign.is_some() || prefix.leading_zeros || prefix.non_alpha {
             return Err(error::Value::MalformedInteger {});
         }
-        self.set_base();
-        Ok(Some(integer))
-    }
+        return Ok(None);
+    };
 
-    /// Consume the sign character for an integer.
-    /// Must only be called by `next_token_integer`.
-    fn next_integer_sign(&mut self) -> Option<Sign> {
-        // Don't reset head
-        // Don't skip whitespace
-
-        let sign = match self.peek() {
-            Some('-') => Sign::Negative,
-            Some('+') => Sign::Positive,
-            _ => return None,
+    // Take digits until non-digit character
+    // Note that this loop handles post-prefix leading zeros like any other digit
+    let mut integer: i32 = 0;
+    while let Some(ch) = chars.next() {
+        // Invalid digit will always return `Err`
+        // Valid non-integer tokens should trigger early return before this loop
+        let Some(digit) = prefix.radix.parse_digit(ch) else {
+            return Err(error::Value::MalformedInteger {});
         };
 
-        self.next();
-        self.set_base();
-        Some(sign)
+        // Re-checked later on convert to smaller int types
+        if integer > i32::MAX / prefix.radix as i32 {
+            return Err(error::Value::IntegerTooLarge {
+                max: i16::MAX as u16,
+            });
+        }
+
+        integer *= prefix.radix as i32;
+        integer += digit as i32;
     }
 
-    /// Get radix from integer prefix.
-    /// Must only be called by `next_token_integer`.
-    fn next_integer_prefix(&mut self) -> Result<Option<IntegerPrefix>, error::Value> {
-        // Don't reset head
-        // Don't skip whitespace
+    assert!(
+        chars.next().is_none(),
+        "should have looped until end of argument, or early-returned `Err`",
+    );
 
-        // Take single leading zero before prefix
-        let leading_zeros = self.peek().is_some_and(|ch| ch == '0');
-        if leading_zeros {
-            self.next();
+    // TODO(fix): I think there is an edge case here for overflow
+    if let Some(sign) = sign {
+        integer *= sign as i32;
+    }
+
+    Ok(Some(integer))
+}
+
+fn take_sign(chars: &mut CharIter) -> Option<Sign> {
+    let sign = match chars.peek() {
+        Some('+') => Sign::Positive,
+        Some('-') => Sign::Negative,
+        _ => return None,
+    };
+    chars.next();
+    return Some(sign);
+}
+
+/// Helper struct for retaining syntax information when parsing integer prefix.
+struct Prefix {
+    /// Radix corresponding to prefix character.
+    radix: Radix,
+    /// Whether prefix character is preceeded by zeros.
+    leading_zeros: bool,
+    /// Whether prefix character is a symbol (i.e. "#").
+    non_alpha: bool,
+}
+
+/// Helper struct similar to `Option<Prefix>` but also handles "0" case.
+enum PrefixResult {
+    /// Normal integer with (explicit or implicit) prefix.
+    Integer(Prefix),
+    /// Special case to handle "0".
+    SingleZero,
+    /// This token is not an integer, but not necessary invalid (yet).
+    NonInteger,
+}
+
+fn take_prefix(chars: &mut CharIter) -> Result<PrefixResult, error::Value> {
+    // Only take ONE leading zero here
+    // Disallow "00x..." etc.
+    let leading_zeros = match chars.peek() {
+        Some('0') => {
+            chars.next();
+            true
         }
+        _ => false,
+    };
 
-        // Number is all zeroes (no radix prefix)
-        // Zeroes were taken as leading zeros
-        if leading_zeros && self.is_end_of_argument() {
-            self.reset_head();
-            return Ok(Some(IntegerPrefix {
-                radix: Radix::Decimal,
-                leading_zeros: true,
-                non_alpha: false,
-            }));
-        }
+    // Take optional prefix
+    let mut consume_char = true;
+    let (radix, non_alpha) = match chars.peek() {
+        Some('b' | 'B') => (Radix::Binary, false),
+        Some('x' | 'X') => (Radix::Hex, false),
+        Some('o' | 'O') => (Radix::Octal, false),
 
-        let mut next_char = true; // Whether to increment head for prefix character
-        let (radix, non_alpha) = match self.peek() {
-            Some('#') => {
-                // Disallow '0#...'
-                if leading_zeros {
-                    return Err(error::Value::MalformedInteger {});
-                }
-                (Radix::Decimal, true)
-            }
-            // Allow 'b...' or 'x...'
-            // Caller must check next characters are valid digits in the radix, so as to not parse
-            // non-integer tokens like 'xLabel' as integers (and fail)
-            Some('b' | 'B') => (Radix::Binary, false),
-            Some('o' | 'O') => (Radix::Octal, false),
-            Some('x' | 'X') => (Radix::Hex, false),
-            // No prefix. Don't skip character
-            Some('0'..='9') => {
-                next_char = false;
-                (Radix::Decimal, false)
-            }
-            Some('-' | '+') => {
-                // Disallow '0-...' and '0+...'
-                // Disallow '--...', '-+...', etc
+        Some('#') => {
+            // Disallow "0#..."
+            if leading_zeros {
                 return Err(error::Value::MalformedInteger {});
             }
-            // Not an integer
-            _ => return Ok(None),
-        };
-        if next_char {
-            self.next(); // Skip prefix character
+            (Radix::Decimal, true)
         }
 
-        // Don't set base; might not be an integer yet
-        Ok(Some(IntegerPrefix {
-            radix,
-            leading_zeros,
-            non_alpha,
-        }))
-    }
-
-    /// Returns `true` if the given character can appear at the start of a label.
-    fn label_can_start_with(ch: char) -> bool {
-        matches!(ch, 'a'..='z' | 'A'..='Z' | '_')
-    }
-    /// Returns `true` if the given character can appear as a subsequent character of a label.
-    fn label_can_contain(ch: char) -> bool {
-        matches!(ch, 'a'..='z' | 'A'..='Z' | '0'..='9' | '_')
-    }
-
-    /// Consume the next [`Label`] argument.
-    fn next_label_token(&mut self) -> Result<Option<Label>, error::Value> {
-        self.reset_head();
-        // Don't skip whitespace
-
-        // Check first character can begin a label
-        if !self.next().is_some_and(Self::label_can_start_with) {
-            return Ok(None);
-        };
-        // Take characters until non-alphanumeric
-        while self.peek().is_some_and(Self::label_can_contain) {
-            self.next();
+        // No prefix
+        Some('0'..='9') => {
+            consume_char = false; // Leave initial digit, to be parsed by caller
+            (Radix::Decimal, false)
         }
 
-        let label = self.take().to_string();
-        let offset = int_as_i16(self.next_integer_token(true)?.unwrap_or(0))?;
-
-        if !self.is_end_of_argument() {
-            self.next_end_of_argument();
-            return Err(error::Value::MalformedLabel {});
-        }
-        self.set_base();
-        Ok(Some(Label {
-            name: label,
-            offset,
-        }))
-    }
-
-    /// Parse and consume the next PC offset argument.
-    fn next_pc_offset(&mut self) -> Result<Option<i16>, error::Value> {
-        self.reset_head();
-        // Don't skip whitespace
-
-        if self.next().is_none_or(|ch| ch != '^') {
-            return Ok(None);
+        // Disallow "0-..." and "0+..."
+        // Disallow "--...", "-+...", etc
+        // Any legal pre-prefix sign character would have already been consumed
+        Some('-' | '+') => {
+            return Err(error::Value::MalformedInteger {});
         }
 
-        self.set_base();
-        let offset = int_as_i16(self.next_integer_token(false)?.unwrap_or(0))?;
+        // Special case for "0"
+        // Only a single "leading" zero (no sign or prefix)
+        None if leading_zeros => {
+            return Ok(PrefixResult::SingleZero);
+        }
 
-        debug_assert!(
-            self.is_end_of_argument(),
-            "should have consumed characters until end of argument, whether integer succesfully parsed or not");
-        self.set_base();
-        Ok(Some(offset))
+        _ => {
+            return Ok(PrefixResult::NonInteger);
+        }
+    };
+
+    if consume_char {
+        chars.next();
     }
+
+    Ok(PrefixResult::Integer(Prefix {
+        radix,
+        leading_zeros,
+        non_alpha,
+    }))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn many_arguments_works() {
-        let line = "  name  -54  r3 0x5812 Foo naself.headme2  Bar+0x04 4209";
-        let mut iter = CommandIter::from(line);
-
-        let argument_name = "dummy";
-
-        assert_eq!(iter.next_command_name_part(), Some("name"));
-        assert_eq!(
-            iter.next_argument(argument_name),
-            Ok(Some(Argument::Integer(-54)))
-        );
-        assert_eq!(
-            iter.next_argument(argument_name),
-            Ok(Some(Argument::Register(Register::R3)))
-        );
-        assert_eq!(
-            iter.next_argument(argument_name),
-            Ok(Some(Argument::Integer(0x5812)))
-        );
-        assert_eq!(
-            iter.next_argument(argument_name),
-            Ok(Some(Argument::Label(Label {
-                name: "Foo".into(),
-                offset: 0,
-            })))
-        );
-        assert_eq!(iter.next_command_name_part(), Some("name2"));
-        assert_eq!(
-            iter.next_argument(argument_name),
-            Ok(Some(Argument::Label(Label {
-                name: "Bar".into(),
-                offset: 0x04,
-            })))
-        );
-        assert_eq!(
-            iter.next_argument(argument_name),
-            Ok(Some(Argument::Integer(4209)))
-        );
-        assert_eq!(iter.next_argument(argument_name), Ok(None));
-        assert_eq!(iter.next_argument(argument_name), Ok(None));
-    }
-
-    macro_rules! expect_tokens {
-        ( $method:ident ($($args:tt)*), $input:expr, $($expected:tt)* ) => {{
-            eprintln!("Test input: <{}>", $input);
-            let mut iter = CommandIter::from($input);
-            let result = iter.$method($($args)*);
-            expect_tokens!(@expected result, $($expected)*);
-        }};
-        (@expected $result:expr, Err(_)) => {
-            assert!($result.is_err());
-        };
-        (@expected $result:expr, $expected:expr) => {
-            assert_eq!($result, $expected, stringify!($expected));
-        };
-    }
 
     macro_rules! label {
         ( $name:expr $(, $offset:expr )? $(,)? ) => {
@@ -882,51 +756,101 @@ mod tests {
     }
 
     #[test]
-    fn next_argument_works() {
+    fn many_arguments_works() {
+        let line = "  name  -54  r3 0x5812 Foo name2  Bar+0x04 4209";
+        let mut iter = ArgIter::from(line);
+
         let argument_name = "dummy";
-        macro_rules! expect_argument { ( $($x:tt)* ) => {
-            expect_tokens!(next_argument(argument_name), $($x)*);
-        }}
-        expect_argument!("", Ok(None));
-        expect_argument!("   ", Ok(None));
-        expect_argument!("r0", Ok(Some(Argument::Register(Register::R0))));
-        expect_argument!("   R3  Foo", Ok(Some(Argument::Register(Register::R3))));
-        expect_argument!("123", Ok(Some(Argument::Integer(123))));
-        expect_argument!("  123  ", Ok(Some(Argument::Integer(123))));
-        expect_argument!("123 Foo", Ok(Some(Argument::Integer(123))));
-        expect_argument!("0x-853", Ok(Some(Argument::Integer(-0x853))));
-        expect_argument!("Foo  ", Ok(Some(Argument::Label(label!("Foo")))));
-        expect_argument!("Foo-23", Ok(Some(Argument::Label(label!("Foo", -23)))));
-        expect_argument!("  Foo 23", Ok(Some(Argument::Label(label!("Foo")))));
+        let expected_count = 99;
+
+        assert_eq!(iter.next_str(), Some("name"));
+        assert_eq!(iter.next_integer(argument_name, 99), Ok(-54i16 as u16));
+        assert_eq!(
+            iter.next_location(argument_name, 99),
+            Ok(Location::Register(Register::R3)),
+        );
+        assert_eq!(iter.next_integer(argument_name, expected_count), Ok(0x5812));
+        assert_eq!(
+            iter.next_memory_location(argument_name, expected_count),
+            Ok(MemoryLocation::Label(label!("Foo", 0))),
+        );
+        assert_eq!(iter.next_str(), Some("name2"));
+        assert_eq!(
+            iter.next_memory_location(argument_name, expected_count),
+            Ok(MemoryLocation::Label(label!("Bar", 0x04))),
+        );
+        assert_eq!(iter.next_integer(argument_name, expected_count), Ok(4209));
+        assert_eq!(iter.next_str(), None);
+        assert_eq!(iter.expect_end(expected_count, 100), Ok(()));
+    }
+
+    macro_rules! expect_tokens {
+        ( . $method:ident ($($args:tt)*), $input:expr, $($expected:tt)* ) => {{
+            eprintln!("Test input: <{}>", $input);
+            let mut iter = ArgIter::from($input);
+            let result = iter.$method($($args)*);
+            expect_tokens!(@expected result, $($expected)*);
+        }};
+        ( $function:ident ($($args:tt)*), $input:expr, $($expected:tt)* ) => {{
+            eprintln!("Test input: <{}>", $input);
+            let result = $function($input, $($args)*);
+            expect_tokens!(@expected result, $($expected)*);
+        }};
+        (@expected $result:expr, Err(_) $(,)?) => {
+            assert!($result.is_err());
+        };
+        (@expected $result:expr, $expected:expr $(,)?) => {
+            assert_eq!($result, $expected, stringify!($expected));
+        };
     }
 
     #[test]
+    #[cfg(debug_assertions)]
     #[should_panic]
-    fn semicolon_panics() {
+    fn semicolon_fails_assert() {
         let argument_name = "dummy";
-        expect_tokens!(next_argument(argument_name), "  ;  ", Err(_));
+        let expected_count = 99;
+        expect_tokens!(.next_integer(argument_name, expected_count), "  ;  ", Err(_));
     }
 
     #[test]
-    fn next_register_works() {
-        macro_rules! expect_register { ( $($x:tt)* ) => {
-            expect_tokens!(next_register(), $($x)*);
+    fn next_location_works() {
+        let argument_name = "dummy";
+        let expected_count = 99;
+        macro_rules! expect_location { ( $($x:tt)* ) => {
+            expect_tokens!(.next_location(argument_name, expected_count), $($x)*);
         }}
 
-        expect_register!("", None);
-        expect_register!("a", None);
-        expect_register!("rn", None);
-        expect_register!("r8", None);
-        expect_register!("R0n", None);
-        expect_register!("r0n", None);
-        expect_register!("r0", Some(Register::R0));
-        expect_register!("R7", Some(Register::R7));
+        expect_location!("", Err(_));
+        expect_location!("R7+1", Err(_));
+        expect_location!(
+            "a",
+            Ok(Location::Memory(MemoryLocation::Label(label!("a", 0)))),
+        );
+        expect_location!(
+            "rn",
+            Ok(Location::Memory(MemoryLocation::Label(label!("rn", 0)))),
+        );
+        expect_location!(
+            "r8",
+            Ok(Location::Memory(MemoryLocation::Label(label!("r8", 0)))),
+        );
+        expect_location!(
+            "R0n",
+            Ok(Location::Memory(MemoryLocation::Label(label!("R0n", 0)))),
+        );
+        expect_location!(
+            "r0n",
+            Ok(Location::Memory(MemoryLocation::Label(label!("r0n", 0)))),
+        );
+        expect_location!("r0", Ok(Location::Register(Register::R0)));
+        expect_location!("R7", Ok(Location::Register(Register::R7)));
     }
 
     #[test]
     fn next_integer_token_works() {
         macro_rules! expect_integer { ( $require_sign:expr, $($x:tt)* ) => {
-            expect_tokens!(next_integer_token($require_sign), $($x)*);
+            expect_tokens!(parse_integer($require_sign), $($x)*);
         }}
 
         // These tests cover all edge cases which I can think of
@@ -1185,7 +1109,7 @@ mod tests {
     #[test]
     fn next_label_token_works() {
         macro_rules! expect_label { ( $($x:tt)* ) => {
-            expect_tokens!(next_label_token(), $($x)*);
+            expect_tokens!(parse_label(), $($x)*);
         }}
 
         expect_label!("", Ok(None));
@@ -1204,13 +1128,10 @@ mod tests {
         expect_label!("Foo-43", Ok(Some(label!("Foo", -43))));
         expect_label!("Foo+", Err(_));
         expect_label!("Foo-", Err(_));
-        expect_label!("Foo  ", Ok(Some(label!("Foo"))));
-        expect_label!("Foo+4  ", Ok(Some(label!("Foo", 4))));
-        expect_label!("Foo-4  !!", Ok(Some(label!("Foo", -4))));
-        expect_label!("Foo+  ", Err(_));
-        expect_label!("Foo-  ", Err(_));
-        expect_label!("Foo -4", Ok(Some(label!("Foo"))));
-        expect_label!("Foo +4", Ok(Some(label!("Foo"))));
+        expect_label!("Foo", Ok(Some(label!("Foo"))));
+        expect_label!("Foo+4", Ok(Some(label!("Foo", 4))));
+        expect_label!("Foo+", Err(_));
+        expect_label!("Foo-", Err(_));
         expect_label!("Foo+0x034", Ok(Some(label!("Foo", 0x34))));
         expect_label!("Foo-0o4", Ok(Some(label!("Foo", -4))));
         expect_label!("Foo-#24", Ok(Some(label!("Foo", -24))));

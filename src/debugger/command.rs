@@ -1,6 +1,6 @@
 use std::fmt;
 
-use super::{error, parse::CommandIter};
+use super::{error, parse::ArgIter};
 use crate::symbol::Register;
 
 #[derive(Debug)]
@@ -73,12 +73,14 @@ impl fmt::Display for CommandName {
 
 /// Register or memory location.
 #[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum Location {
     Register(Register),
     Memory(MemoryLocation),
 }
 
 #[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum MemoryLocation {
     PCOffset(i16),
     Address(u16),
@@ -98,7 +100,7 @@ impl TryFrom<&str> for Command {
 
     /// Assumes line is non-empty.
     fn try_from(line: &str) -> std::result::Result<Self, Self::Error> {
-        let mut iter = CommandIter::from(line);
+        let mut iter = ArgIter::from(line);
 
         let command_name = iter.get_command_name()?;
         Command::parse_arguments(command_name, iter).map_err(|error| {
@@ -113,7 +115,7 @@ impl TryFrom<&str> for Command {
 impl Command {
     fn parse_arguments(
         name: CommandName,
-        mut iter: CommandIter<'_>,
+        mut iter: ArgIter<'_>,
     ) -> Result<Command, error::Argument> {
         let mut expected_args = 0;
 
@@ -180,14 +182,14 @@ impl Command {
                 }
                 // Don't return `Err` for invalid argument count, as this shouldn't happen
                 debug_assert!(
-                    iter.expect_end_of_command(0, 0).is_ok(),
+                    iter.expect_end(0, 0).is_ok(),
                     "no more arguments should exist",
                 );
                 return Ok(Self::Eval { instruction });
             }
         };
 
-        iter.expect_end_of_command(expected_args, iter.arg_count() + 1)?;
+        iter.expect_end(expected_args, iter.arg_count() + 1)?;
 
         Ok(command)
     }
