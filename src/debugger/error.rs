@@ -63,7 +63,7 @@ pub enum Value {
         max: u16,
     },
     LabelNotFound {
-        similar: Option<&'static String>,
+        similar: Option<&'static str>,
     },
 }
 

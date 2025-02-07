@@ -91,7 +91,7 @@ pub enum MemoryLocation {
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct Label {
-    pub name: &'static String,
+    pub name: &'static str,
     pub address: u16,
     pub offset: i16,
 }
