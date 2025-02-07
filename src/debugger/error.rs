@@ -73,26 +73,31 @@ impl fmt::Display for Command {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidCommand { command_name } => {
-                write!(f, "Not a command: `{}`", command_name)
+                write!(f, "Not a command: `{}`", command_name)?;
             }
             Self::InvalidSubcommand {
                 command_name,
                 subcommand_name,
-            } => write!(
-                f,
-                "Invalid subcommand `{}` for command `{}`",
-                subcommand_name, command_name
-            ),
+            } => {
+                write!(
+                    f,
+                    "Invalid subcommand: `{} {}`",
+                    command_name, subcommand_name
+                )?;
+            }
             Self::MissingSubcommand { command_name } => {
-                write!(f, "Missing subcommand for `{}`", command_name)
+                write!(f, "Missing subcommand: `{} ?`", command_name)?;
             }
             Self::InvalidArgument {
                 command_name,
                 error,
             } => {
-                write!(f, "In command `{}`: {}", command_name, error)
+                writeln!(f, "In command `{}`:", command_name)?;
+                write!(f, "    ")?;
+                write!(f, "{}", error)?;
             }
         }
+        Ok(())
     }
 }
 
@@ -100,41 +105,48 @@ impl fmt::Display for Argument {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Argument::MissingArgumentList { argument_name } => {
-                write!(f, "Missing argument list `{}`.", argument_name)
+                write!(f, "Missing text argument `{}`.", argument_name)?;
             }
             Argument::MissingArgument {
                 argument_name,
                 expected_count,
                 actual_count,
             } => {
+                writeln!(f, "Missing argument `{}`.", argument_name)?;
+                write!(f, "        ")?;
                 write!(
                     f,
-                    "Missing argument `{}` (expected {}, found {}).",
-                    argument_name, expected_count, actual_count
-                )
+                    "Expected {} argument{}, found {}.",
+                    expected_count,
+                    if *expected_count == 1 { "" } else { "s" },
+                    actual_count,
+                )?;
             }
             Argument::TooManyArguments {
                 expected_count,
                 actual_count,
             } => {
+                writeln!(f, "Too many arguments.")?;
+                write!(f, "        ")?;
                 write!(
                     f,
-                    "Too many arguments (expected {}, found {}).",
-                    expected_count, actual_count
-                )
+                    "Expected {} argument{}, found {}.",
+                    expected_count,
+                    if *expected_count == 1 { "" } else { "s" },
+                    actual_count,
+                )?;
             }
             Argument::InvalidValue {
                 argument_name,
                 string: value,
                 error,
             } => {
-                write!(
-                    f,
-                    "For argument `{}`: `{}`. {}",
-                    argument_name, value, error
-                )
+                writeln!(f, "For argument `{}`: `{}`.", argument_name, value)?;
+                write!(f, "        ")?;
+                write!(f, "{}", error)?;
             }
         }
+        Ok(())
     }
 }
 
@@ -145,34 +157,34 @@ impl fmt::Display for Value {
                 expected_type,
                 actual_type,
             } => {
-                write!(
-                    f,
-                    "Incorrect value type (expected {}, found {}).",
-                    expected_type, actual_type
-                )
+                writeln!(f, "Incorrect value type")?;
+                write!(f, "        ")?;
+                write!(f, "Expected {}, found {}.", expected_type, actual_type)?;
             }
             Value::MalformedValue {} => {
-                write!(f, "Invalid value.")
+                write!(f, "Invalid value.")?;
             }
             Value::MalformedInteger {} => {
-                write!(f, "Malformed integer.")
+                write!(f, "Malformed integer.")?;
             }
             Value::MalformedLabel {} => {
-                write!(f, "Malformed label.")
+                write!(f, "Malformed label.")?;
             }
             Value::MalformedRegister {} => {
-                write!(f, "Malformed register.")
+                write!(f, "Malformed register.")?;
             }
             Value::IntegerTooLarge { max } => {
-                write!(f, "Integer too large (maximum value: 0x{:04x}).", max)
+                writeln!(f, "Integer too large.")?;
+                write!(f, "        ")?;
+                write!(f, "Maximum value: 0x{:04x}.", max)?;
             }
             Value::LabelNotFound { similar } => {
                 write!(f, "Label not found")?;
                 if let Some(similar) = similar {
                     write!(f, ". Did you mean `{}`?", similar)?;
                 }
-                Ok(())
             }
         }
+        Ok(())
     }
 }
