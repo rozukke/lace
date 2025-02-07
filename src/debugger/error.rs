@@ -62,9 +62,6 @@ pub enum Value {
     IntegerTooLarge {
         max: u16,
     },
-    LabelNotFound {
-        similar: Option<&'static str>,
-    },
 }
 
 impl Error for Command {}
@@ -181,12 +178,6 @@ impl fmt::Display for Value {
                 write!(f, "Integer too large.")?;
                 write!(f, "\n        ")?;
                 write!(f, "Maximum value: 0x{:04x}.", max)?;
-            }
-            Value::LabelNotFound { similar } => {
-                write!(f, "Label not found")?;
-                if let Some(similar) = similar {
-                    write!(f, ". Did you mean `{}`?", similar)?;
-                }
             }
         }
         Ok(())

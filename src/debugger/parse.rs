@@ -617,52 +617,7 @@ fn parse_label(string: &str) -> Result<Option<Label>, error::Value> {
         }
     };
 
-    let (name, address) = match resolve_label_address(name) {
-        LabelResult::Exists { name, address } => (name, address),
-        LabelResult::NotFound { similar } => {
-            return Err(error::Value::LabelNotFound { similar });
-        }
-    };
-
-    Ok(Some(Label {
-        name,
-        address,
-        offset,
-    }))
-}
-
-enum LabelResult {
-    Exists { name: &'static str, address: u16 },
-    NotFound { similar: Option<&'static str> },
-}
-
-fn resolve_label_address(name: &str) -> LabelResult {
-    // SAFETY: The symbol table metadata is static memory, and the heap data is allocated for the
-    // entire program lifetime
-    // SAFETY: Keys and values will not be removed or overwritten
-    unsafe fn make_key_static(value: &String) -> &'static str {
-        &*(value.as_str() as *const str)
-    }
-
-    with_symbol_table(|sym| {
-        if let Some((key, address)) = sym.get_key_value(name) {
-            return LabelResult::Exists {
-                name: unsafe { make_key_static(key) },
-                // Account for PC being incremented before instruction is executed
-                address: address - 1,
-            };
-        }
-
-        // Check for case-*insensitive* match
-        let similar = sym.keys().find_map(|key| {
-            if key.eq_ignore_ascii_case(name) {
-                return Some(unsafe { make_key_static(key) });
-            }
-            None
-        });
-
-        LabelResult::NotFound { similar }
-    })
+    Ok(Some(Label { name, offset }))
 }
 
 fn parse_pc_offset(string: &str) -> Result<Option<i16>, error::Value> {
