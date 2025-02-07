@@ -637,11 +637,11 @@ enum LabelResult {
 }
 
 fn resolve_label_address(name: &str) -> LabelResult {
-    // SAFETY: Symbol table is static
-    // SAFETY: Each key/value pair remains for the entire program lifetime
+    // SAFETY: The symbol table metadata is static memory, and the heap data is allocated for the
+    // entire program lifetime
+    // SAFETY: Keys and values will not be removed or overwritten
     unsafe fn make_key_static(value: &String) -> &'static str {
-        let ptr = value.as_str() as *const str;
-        unsafe { &*ptr }
+        &*(value.as_str() as *const str)
     }
 
     with_symbol_table(|sym| {
