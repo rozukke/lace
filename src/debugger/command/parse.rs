@@ -1,7 +1,7 @@
 use std::fmt;
 
-use super::command::{CommandName, Label, Location, MemoryLocation};
 use super::error;
+use super::{CommandName, Label, Location, MemoryLocation};
 use crate::symbol::Register;
 
 // TODO(doc): Update doc comments for parsing functions!!!

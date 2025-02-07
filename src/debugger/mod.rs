@@ -1,16 +1,13 @@
 mod breakpoint;
 mod command;
-mod error;
 mod eval;
-mod parse;
-mod source;
 
 use std::cmp::Ordering;
 use std::ops::Range;
 
 pub use self::breakpoint::{Breakpoint, Breakpoints};
+use self::command::read::{CommandSource, SourceRead};
 use self::command::{Command, Label, Location, MemoryLocation};
-use self::source::{CommandSource, SourceRead};
 use crate::air::AsmLine;
 use crate::output::{Condition, Output};
 use crate::runtime::{RunState, HALT_ADDRESS, USER_MEMORY_END};

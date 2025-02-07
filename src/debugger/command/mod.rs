@@ -1,6 +1,10 @@
+pub mod error;
+mod parse;
+pub mod read;
+
 use std::fmt;
 
-use super::{error, parse::ArgIter};
+use self::parse::ArgIter;
 use crate::symbol::Register;
 
 #[derive(Debug)]

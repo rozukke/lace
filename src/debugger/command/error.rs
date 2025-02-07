@@ -1,8 +1,8 @@
 use std::error::Error;
 use std::fmt;
 
-use super::command::CommandName;
 use super::parse::NaiveType;
+use super::CommandName;
 
 /// Error parsing a command.
 #[derive(Debug, PartialEq)]
