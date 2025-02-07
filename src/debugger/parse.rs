@@ -176,6 +176,19 @@ impl<'a> ArgIter<'a> {
         Some(argument)
     }
 
+    /// Consume the rest of the command as one string.
+    ///
+    /// Leading/trailing whitespace is trimmed.
+    ///
+    /// Used for `eval` command.
+    ///
+    /// This can be `String` bc it will be allocated later regardless for [`Command::Eval`].
+    pub fn collect_rest(&mut self) -> String {
+        let start = self.cursor;
+        self.cursor = self.buffer.len();
+        self.buffer[start..].trim().to_string()
+    }
+
     pub fn arg_count(&self) -> u8 {
         // TODO: Increment argument count in parsing methods
         self.arg_count
@@ -344,17 +357,6 @@ impl<'a> ArgIter<'a> {
                 actual_count: actual,
             })
         }
-    }
-
-    /// Consume the rest of the command as one string.
-    ///
-    /// Leading/trailing whitespace is trimmed.
-    ///
-    /// Used for `eval` command.
-    ///
-    /// This can be `String` bc it will be allocated later regardless for [`Command::Eval`].
-    pub fn collect_rest(&mut self) -> String {
-        todo!();
     }
 }
 
