@@ -553,7 +553,7 @@ impl Debugger {
 
     /// Returns `None` if `label` is out of bounds or an invalid label.
     fn resolve_label_address(&self, label: &Label) -> Option<u16> {
-        let address = Self::resolve_label_name_address(&label.name)?;
+        let address = Self::resolve_label_name_address(label.name)?;
 
         let Some(address) = self.add_address_offset(address + self.orig(), label.offset) else {
             dprintln!(
@@ -624,9 +624,7 @@ impl Debugger {
 impl AsmSource {
     /// Show lines surrounding instruction/directive corresponding to `address`.
     pub fn show_line_context(&self, address: u16) -> Option<&AsmLine> {
-        let Some(stmt) = self.get_source_statement(address) else {
-            return None;
-        };
+        let stmt = self.get_source_statement(address)?;
         let report = miette::miette!(
             severity = miette::Severity::Advice,
             labels = vec![miette::LabeledSpan::at(

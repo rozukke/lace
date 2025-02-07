@@ -296,11 +296,11 @@ impl<'a> ArgIter<'a> {
             return Ok(integer);
         };
 
-        return Err(error::Argument::InvalidValue {
+        Err(error::Argument::InvalidValue {
             argument_name,
             string: argument.to_string(),
             error: error::Value::MalformedValue {},
-        });
+        })
     }
 
     /// Parse and consume next integer argument.
@@ -353,7 +353,7 @@ impl<'a> ArgIter<'a> {
         {
             return Ok(Location::Register(register));
         };
-        parse_memory_location(argument_name, argument).map(|location| Location::Memory(location))
+        parse_memory_location(argument_name, argument).map(Location::Memory)
     }
 
     /// Parse and consume next [`MemoryLocation`] argument. Use default result value if argument is `None`.
@@ -459,7 +459,7 @@ impl NaiveType {
             return false;
         }
         for ch in chars {
-            if !radix.parse_digit(ch).is_some() {
+            if radix.parse_digit(ch).is_none() {
                 return false;
             }
         }
@@ -571,7 +571,7 @@ struct ByteCounted<'a> {
     len: usize,
 }
 
-impl<'a> Iterator for ByteCounted<'a> {
+impl Iterator for ByteCounted<'_> {
     type Item = char;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -621,7 +621,7 @@ fn parse_label(string: &str) -> Result<Option<Label>, error::Value> {
 }
 
 fn parse_pc_offset(string: &str) -> Result<Option<i16>, error::Value> {
-    if !string.chars().next().is_some_and(|ch| ch == '^') {
+    if string.chars().next().is_none_or(|ch| ch != '^') {
         return Ok(None);
     }
     let offset_str = &string['^'.len_utf8()..];
@@ -756,7 +756,7 @@ fn parse_integer(string: &str, require_sign: bool) -> Result<Option<i32>, error:
     // Take digits until non-digit character
     // Note that this loop handles post-prefix leading zeros like any other digit
     let mut integer: i32 = 0;
-    while let Some(ch) = chars.next() {
+    for ch in chars.by_ref() {
         // Invalid digit will always return `Err`
         // Valid non-integer tokens should trigger early return before this loop
         let Some(digit) = prefix.radix.parse_digit(ch) else {
@@ -794,7 +794,7 @@ fn take_sign(chars: &mut CharIter) -> Option<Sign> {
         _ => return None,
     };
     chars.next();
-    return Some(sign);
+    Some(sign)
 }
 
 /// Helper struct for retaining syntax information when parsing integer prefix.
