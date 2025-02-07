@@ -141,6 +141,7 @@ impl<'a> From<&'a str> for ArgIter<'a> {
 }
 
 impl<'a> ArgIter<'a> {
+    // Do not `impl Iterator`. This method should be private
     fn next_str(&mut self) -> Option<&str> {
         let mut start = self.cursor;
         let mut length = 0;
@@ -176,6 +177,7 @@ impl<'a> ArgIter<'a> {
     }
 
     pub fn arg_count(&self) -> u8 {
+        // TODO: Increment argument count in parsing methods
         self.arg_count
     }
 
@@ -261,13 +263,12 @@ impl<'a> ArgIter<'a> {
         argument_name: &'static str,
         expected_count: u8,
     ) -> Result<u16, error::Argument> {
-        let actual_count = self.arg_count;
         self.next_integer_inner(
             argument_name,
             Err(error::Argument::MissingArgument {
                 argument_name,
                 expected_count,
-                actual_count,
+                actual_count: 99, // TODO
             }),
         )
     }
@@ -289,7 +290,65 @@ impl<'a> ArgIter<'a> {
         argument_name: &'static str,
         expected_count: u8,
     ) -> Result<Location, error::Argument> {
-        todo!();
+        let Some(argument) = self.next_str() else {
+            return Err(error::Argument::MissingArgument {
+                argument_name,
+                expected_count,
+                actual_count: 99,
+            });
+        };
+
+        if let Some(register) = parse_register(argument) {
+            return Ok(Location::Register(register));
+        };
+
+        // TODO(refactor): use `next_memory_location_inner` ?
+
+        if let Some(address) =
+            parse_integer(argument, false).map_err(|error| error::Argument::InvalidValue {
+                argument_name,
+                string: argument.to_string(),
+                error,
+            })?
+        {
+            let address = int_as_u16(address).map_err(|error| error::Argument::InvalidValue {
+                argument_name,
+                string: argument.to_string(),
+                error,
+            })?;
+            return Ok(Location::Memory(MemoryLocation::Address(address)));
+        };
+
+        todo!("try parse label, pc offset");
+    }
+
+    /// Parse and consume next [`MemoryLocation`] argument. Use default result value if argument is `None`.
+    fn next_memory_location_inner(
+        &mut self,
+        argument_name: &'static str,
+        default: Result<MemoryLocation, error::Argument>,
+    ) -> Result<MemoryLocation, error::Argument> {
+        let Some(argument) = self.next_str() else {
+            return default;
+        };
+
+        // TODO(refactor): Create function to create `error::Argument::InvalidValue` from parts
+        if let Some(address) =
+            parse_integer(argument, false).map_err(|error| error::Argument::InvalidValue {
+                argument_name,
+                string: argument.to_string(),
+                error,
+            })?
+        {
+            let address = int_as_u16(address).map_err(|error| error::Argument::InvalidValue {
+                argument_name,
+                string: argument.to_string(),
+                error,
+            })?;
+            return Ok(MemoryLocation::Address(address));
+        };
+
+        todo!("try parse label, pc offset");
     }
 
     /// Parse and consume next [`MemoryLocation`] argument.
@@ -298,7 +357,14 @@ impl<'a> ArgIter<'a> {
         argument_name: &'static str,
         expected_count: u8,
     ) -> Result<MemoryLocation, error::Argument> {
-        todo!();
+        self.next_memory_location_inner(
+            argument_name,
+            Err(error::Argument::MissingArgument {
+                argument_name,
+                expected_count,
+                actual_count: 99,
+            }),
+        )
     }
 
     /// Parse and consume next [`MemoryLocation`] argument, defaulting to program counter.
@@ -307,7 +373,7 @@ impl<'a> ArgIter<'a> {
         &mut self,
         argument_name: &'static str,
     ) -> Result<MemoryLocation, error::Argument> {
-        todo!();
+        self.next_memory_location_inner(argument_name, Ok(MemoryLocation::PCOffset(0)))
     }
 
     /// Returns an error if the command contains any arguments which haven't been consumed.
@@ -332,6 +398,32 @@ impl<'a> ArgIter<'a> {
     pub fn collect_rest(&mut self) -> String {
         todo!();
     }
+}
+
+pub fn parse_register(string: &str) -> Option<Register> {
+    let mut chars = string.chars();
+
+    match chars.next() {
+        Some('r' | 'R') => (),
+        _ => return None,
+    }
+    let register = match chars.next()? {
+        '0' => Register::R0,
+        '1' => Register::R1,
+        '2' => Register::R2,
+        '3' => Register::R3,
+        '4' => Register::R4,
+        '5' => Register::R5,
+        '6' => Register::R6,
+        '7' => Register::R7,
+        _ => return None,
+    };
+
+    // Possibly the start of a label
+    if chars.next().is_some() {
+        return None;
+    }
+    Some(register)
 }
 
 type CharIter<'a> = std::iter::Peekable<std::str::Chars<'a>>;
