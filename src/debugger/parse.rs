@@ -221,12 +221,10 @@ impl<'a> ArgIter<'a> {
     /// Leading/trailing whitespace is trimmed.
     ///
     /// Used for `eval` command.
-    ///
-    /// This can be `String` bc it will be allocated later regardless for [`Command::Eval`].
-    pub fn collect_rest(&mut self) -> String {
+    pub fn collect_rest(&mut self) -> &'a str {
         let start = self.cursor;
         self.cursor = self.buffer.len();
-        self.buffer[start..].trim().to_string()
+        self.buffer[start..].trim()
     }
 
     pub fn arg_count(&self) -> u8 {

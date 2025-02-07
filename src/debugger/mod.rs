@@ -403,8 +403,8 @@ impl Debugger {
             }
 
             Command::Eval { instruction } => {
-                self.should_echo_pc = true;
                 eval::eval(state, instruction);
+                self.should_echo_pc = true;
             }
 
             Command::Source { location } => {
@@ -475,7 +475,7 @@ impl Debugger {
     }
 
     /// Returns `None` on EOF.
-    fn next_command(&mut self) -> Option<Command> {
+    fn next_command<'a>(&'a mut self) -> Option<Command<'a>> {
         // Loop until valid command or EOF
         loop {
             let line = self.command_source.read()?.trim();
@@ -483,6 +483,15 @@ impl Debugger {
             if line.is_empty() {
                 continue;
             }
+
+            // Remove silly lifetime restriction
+            // SAFETY: Any reference which is returned from this function WILL be valid
+            // SAFETY: The buffer which owns this string is not freed until all debugger business
+            // has ended
+            // SAFETY: The buffer also will not be overwritten until command has entirely
+            // completed its execution. The fact that the buffer holds a line of multiple commands
+            // does not change this fact
+            let line = unsafe { &*(line as *const str) };
 
             let command = match Command::try_from(line) {
                 Ok(command) => command,

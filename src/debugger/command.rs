@@ -4,7 +4,7 @@ use super::{error, parse::ArgIter};
 use crate::symbol::Register;
 
 #[derive(Debug)]
-pub enum Command {
+pub enum Command<'a> {
     Help,
     Step { count: u16 },
     Next,
@@ -23,7 +23,7 @@ pub enum Command {
     Source { location: MemoryLocation },
     // This can be `String` bc it will be allocated later regardless to get a &'static str
     // Unless parsing code is changed, and can accept a non-static string
-    Eval { instruction: String },
+    Eval { instruction: &'a str },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -96,15 +96,15 @@ pub struct Label {
     pub offset: i16,
 }
 
-impl TryFrom<&str> for Command {
+impl<'a> TryFrom<&'a str> for Command<'a> {
     type Error = error::Command;
 
     /// Assumes line is non-empty.
-    fn try_from(line: &str) -> std::result::Result<Self, Self::Error> {
+    fn try_from(line: &'a str) -> std::result::Result<Self, Self::Error> {
         let mut iter = ArgIter::from(line);
 
         let command_name = iter.get_command_name()?;
-        Command::parse_arguments(command_name, iter).map_err(|error| {
+        Command::parse_arguments(command_name, &mut iter).map_err(|error| {
             error::Command::InvalidArgument {
                 command_name,
                 error,
@@ -113,11 +113,8 @@ impl TryFrom<&str> for Command {
     }
 }
 
-impl Command {
-    fn parse_arguments(
-        name: CommandName,
-        mut iter: ArgIter<'_>,
-    ) -> Result<Command, error::Argument> {
+impl<'a> Command<'a> {
+    fn parse_arguments(name: CommandName, iter: &mut ArgIter<'a>) -> Result<Self, error::Argument> {
         let mut expected_args = 0;
 
         let command = match name {

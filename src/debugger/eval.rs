@@ -5,13 +5,14 @@ use crate::runtime::RunState;
 use crate::symbol::Span;
 use crate::{dprintln, AsmParser};
 
-pub fn eval(state: &mut RunState, line: String) {
+pub fn eval(state: &mut RunState, line: &str) {
     // Required to make temporarily 'static
     // Automatically dropped at end of scope
     let line = StaticStr::from(line);
 
     // Note that error cannot be returned from this function, without the caller
     // being responsible for dropping `line`
+    // TODO(doc): Write safety comment !!
     if let Err(err) = eval_inner(state, unsafe { line.as_str() }) {
         eprintln!("{:?}", err);
     }
