@@ -310,7 +310,13 @@ impl<'a> ArgIter<'a> {
             return Ok(Location::Memory(MemoryLocation::Label(label)));
         };
 
-        todo!("try parse label, pc offset");
+        if let Some(offset) =
+            parse_pc_offset(argument).map_err(wrap_invalid_value(argument_name, argument))?
+        {
+            return Ok(Location::Memory(MemoryLocation::PCOffset(offset)));
+        };
+
+        todo!("invalid argument");
     }
 
     /// Parse and consume next [`MemoryLocation`] argument. Use default result value if argument is `None`.
@@ -332,7 +338,19 @@ impl<'a> ArgIter<'a> {
             return Ok(MemoryLocation::Address(address));
         };
 
-        todo!("try parse label, pc offset");
+        if let Some(label) =
+            parse_label(argument).map_err(wrap_invalid_value(argument_name, argument))?
+        {
+            return Ok(MemoryLocation::Label(label));
+        };
+
+        if let Some(offset) =
+            parse_pc_offset(argument).map_err(wrap_invalid_value(argument_name, argument))?
+        {
+            return Ok(MemoryLocation::PCOffset(offset));
+        };
+
+        todo!("invalid argument");
     }
 
     /// Parse and consume next [`MemoryLocation`] argument.
@@ -461,6 +479,21 @@ fn parse_label(string: &str) -> Result<Option<Label>, error::Value> {
     }))
 }
 
+fn parse_pc_offset(string: &str) -> Result<Option<i16>, error::Value> {
+    if !string.chars().next().is_some_and(|ch| ch == '^') {
+        return Ok(None);
+    }
+    let offset_str = &string['^'.len_utf8()..];
+
+    // TODO(feat): Differenciate pc offset error to normal integer error
+    let offset = match parse_integer(offset_str, true)? {
+        Some(offset) => int_as_i16(offset)?,
+        None => 0,
+    };
+
+    Ok(Some(offset))
+}
+
 fn parse_register(string: &str) -> Option<Register> {
     let mut chars = string.chars();
 
@@ -512,7 +545,10 @@ fn parse_register(string: &str) -> Option<Register> {
 ///  - Multiple zeros before radix prefix. Eg. "00x4".
 ///  - Absolute value out of bounds for `i32`. (Does *NOT* check if integer fits in specific bit size).
 fn parse_integer(string: &str, require_sign: bool) -> Result<Option<i32>, error::Value> {
-    assert!(!string.is_empty(), "argument string must not be empty");
+    // Useful for parsing label/pc offset
+    if string.is_empty() {
+        return Ok(None);
+    }
 
     let mut chars: CharIter = string.chars().peekable();
 
