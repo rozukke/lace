@@ -56,6 +56,7 @@ pub enum Value {
     // TODO(feat): Add subvariants
     MalformedInteger {},
     MalformedLabel {},
+    MalformedRegister {},
     IntegerTooLarge {
         max: u16,
     },
@@ -155,6 +156,9 @@ impl fmt::Display for Value {
             }
             Value::MalformedLabel {} => {
                 write!(f, "Malformed label")
+            }
+            Value::MalformedRegister {} => {
+                write!(f, "Malformed register")
             }
             Value::IntegerTooLarge { max } => {
                 write!(f, "Integer too large (maximum value: 0x{:04x})", max)

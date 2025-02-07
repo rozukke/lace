@@ -312,7 +312,9 @@ impl<'a> ArgIter<'a> {
             });
         };
 
-        if let Some(register) = parse_register(argument) {
+        if let Some(register) =
+            parse_register(argument).map_err(wrap_invalid_value(argument_name, argument))?
+        {
             return Ok(Location::Register(register));
         };
         parse_memory_location(argument_name, argument).map(|location| Location::Memory(location))
@@ -498,14 +500,18 @@ fn parse_pc_offset(string: &str) -> Result<Option<i16>, error::Value> {
     Ok(Some(offset))
 }
 
-fn parse_register(string: &str) -> Option<Register> {
+fn parse_register(string: &str) -> Result<Option<Register>, error::Value> {
     let mut chars = string.chars();
 
     match chars.next() {
         Some('r' | 'R') => (),
-        _ => return None,
+        _ => return Ok(None),
     }
-    let register = match chars.next()? {
+
+    let Some(digit) = chars.next() else {
+        return Ok(None);
+    };
+    let register = match digit {
         '0' => Register::R0,
         '1' => Register::R1,
         '2' => Register::R2,
@@ -514,14 +520,19 @@ fn parse_register(string: &str) -> Option<Register> {
         '5' => Register::R5,
         '6' => Register::R6,
         '7' => Register::R7,
-        _ => return None,
+        _ => return Ok(None),
     };
 
-    // Possibly the start of a label
-    if chars.next().is_some() {
-        return None;
+    if let Some(ch) = chars.next() {
+        // Possibly the start of a label
+        if label_can_contain(ch) {
+            return Ok(None);
+        } else {
+            return Err(error::Value::MalformedRegister {});
+        }
     }
-    Some(register)
+
+    Ok(Some(register))
 }
 
 // TODO(refactor): `.peek` -> `.next_if` where possible
@@ -733,6 +744,17 @@ fn take_prefix(chars: &mut CharIter) -> Result<PrefixResult, error::Value> {
 mod tests {
     use super::*;
 
+    macro_rules! label {
+        ( $name:expr $(, $offset:expr )? $(,)? ) => {
+            Label {
+                name: ($name).into(),
+                offset: label!(@offset $($offset)?),
+            }
+        };
+        (@offset $offset:expr) => { $offset };
+        (@offset) => { 0 };
+    }
+
     #[test]
     fn many_arguments_works() {
         let line = "  name  -54  r3 0x5812 Foo name2  Bar+0x04 4209";
@@ -745,23 +767,17 @@ mod tests {
         assert_eq!(iter.next_integer(argument_name, 99), Ok(-54i16 as u16));
         assert_eq!(
             iter.next_location(argument_name, 99),
-            Ok(Location::Register(Register::R3))
+            Ok(Location::Register(Register::R3)),
         );
         assert_eq!(iter.next_integer(argument_name, expected_count), Ok(0x5812));
         assert_eq!(
             iter.next_memory_location(argument_name, expected_count),
-            Ok(MemoryLocation::Label(Label {
-                name: "Foo".into(),
-                offset: 0,
-            }))
+            Ok(MemoryLocation::Label(label!("Foo", 0))),
         );
         assert_eq!(iter.next_str(), Some("name2"));
         assert_eq!(
             iter.next_memory_location(argument_name, expected_count),
-            Ok(MemoryLocation::Label(Label {
-                name: "Bar".into(),
-                offset: 0x04,
-            }))
+            Ok(MemoryLocation::Label(label!("Bar", 0x04))),
         );
         assert_eq!(iter.next_integer(argument_name, expected_count), Ok(4209));
         assert_eq!(iter.next_str(), None);
@@ -775,67 +791,57 @@ mod tests {
             let result = iter.$method($($args)*);
             expect_tokens!(@expected result, $($expected)*);
         }};
-        (@expected $result:expr, Err(_)) => {
+        (@expected $result:expr, Err(_) $(,)?) => {
             assert!($result.is_err());
         };
-        (@expected $result:expr, $expected:expr) => {
+        (@expected $result:expr, $expected:expr $(,)?) => {
             assert_eq!($result, $expected, stringify!($expected));
         };
     }
 
-    macro_rules! label {
-        ( $name:expr $(, $offset:expr )? $(,)? ) => {
-            Label {
-                name: ($name).into(),
-                offset: label!(@offset $($offset)?),
-            }
-        };
-        (@offset $offset:expr) => { $offset };
-        (@offset) => { 0 };
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic]
+    fn semicolon_fails_assert() {
+        let argument_name = "dummy";
+        let expected_count = 99;
+        expect_tokens!(next_integer(argument_name, expected_count), "  ;  ", Err(_));
     }
-    //
-    // #[test]
-    // fn next_argument_works() {
-    //     let argument_name = "dummy";
-    //     macro_rules! expect_argument { ( $($x:tt)* ) => {
-    //         expect_tokens!(next_argument(argument_name), $($x)*);
-    //     }}
-    //     expect_argument!("", Ok(None));
-    //     expect_argument!("   ", Ok(None));
-    //     expect_argument!("r0", Ok(Some(Argument::Register(Register::R0))));
-    //     expect_argument!("   R3  Foo", Ok(Some(Argument::Register(Register::R3))));
-    //     expect_argument!("123", Ok(Some(Argument::Integer(123))));
-    //     expect_argument!("  123  ", Ok(Some(Argument::Integer(123))));
-    //     expect_argument!("123 Foo", Ok(Some(Argument::Integer(123))));
-    //     expect_argument!("0x-853", Ok(Some(Argument::Integer(-0x853))));
-    //     expect_argument!("Foo  ", Ok(Some(Argument::Label(label!("Foo")))));
-    //     expect_argument!("Foo-23", Ok(Some(Argument::Label(label!("Foo", -23)))));
-    //     expect_argument!("  Foo 23", Ok(Some(Argument::Label(label!("Foo")))));
-    // }
-    //
-    // #[test]
-    // #[should_panic]
-    // fn semicolon_panics() {
-    //     let argument_name = "dummy";
-    //     expect_tokens!(next_argument(argument_name), "  ;  ", Err(_));
-    // }
-    //
-    // #[test]
-    // fn next_register_works() {
-    //     macro_rules! expect_register { ( $($x:tt)* ) => {
-    //         expect_tokens!(next_register(), $($x)*);
-    //     }}
-    //
-    //     expect_register!("", None);
-    //     expect_register!("a", None);
-    //     expect_register!("rn", None);
-    //     expect_register!("r8", None);
-    //     expect_register!("R0n", None);
-    //     expect_register!("r0n", None);
-    //     expect_register!("r0", Some(Register::R0));
-    //     expect_register!("R7", Some(Register::R7));
-    // }
-    //
+
+    #[test]
+    fn next_location_works() {
+        let argument_name = "dummy";
+        let expected_count = 99;
+        macro_rules! expect_location { ( $($x:tt)* ) => {
+            expect_tokens!(next_location(argument_name, expected_count), $($x)*);
+        }}
+
+        expect_location!("", Err(_));
+        expect_location!("R7+1", Err(_));
+        expect_location!(
+            "a",
+            Ok(Location::Memory(MemoryLocation::Label(label!("a", 0)))),
+        );
+        expect_location!(
+            "rn",
+            Ok(Location::Memory(MemoryLocation::Label(label!("rn", 0)))),
+        );
+        expect_location!(
+            "r8",
+            Ok(Location::Memory(MemoryLocation::Label(label!("r8", 0)))),
+        );
+        expect_location!(
+            "R0n",
+            Ok(Location::Memory(MemoryLocation::Label(label!("R0n", 0)))),
+        );
+        expect_location!(
+            "r0n",
+            Ok(Location::Memory(MemoryLocation::Label(label!("r0n", 0)))),
+        );
+        expect_location!("r0", Ok(Location::Register(Register::R0)));
+        expect_location!("R7", Ok(Location::Register(Register::R7)));
+    }
+
     // #[test]
     // fn next_integer_token_works() {
     //     macro_rules! expect_integer { ( $require_sign:expr, $($x:tt)* ) => {
