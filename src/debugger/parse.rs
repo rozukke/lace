@@ -231,11 +231,7 @@ impl<'a> ArgIter<'a> {
         };
 
         let integer =
-            parse_integer(argument, false).map_err(|error| error::Argument::InvalidValue {
-                argument_name,
-                string: argument.to_string(),
-                error,
-            })?;
+            parse_integer(argument, false).map_err(wrap_invalid_value(argument_name, argument))?;
 
         let Some(integer) = integer else {
             return Err(error::Argument::InvalidValue {
@@ -248,11 +244,7 @@ impl<'a> ArgIter<'a> {
             });
         };
 
-        let integer = int_as_u16(integer).map_err(|error| error::Argument::InvalidValue {
-            argument_name,
-            string: argument.to_string(),
-            error,
-        })?;
+        let integer = int_as_u16(integer).map_err(wrap_invalid_value(argument_name, argument))?;
 
         Ok(integer)
     }
@@ -305,18 +297,17 @@ impl<'a> ArgIter<'a> {
         // TODO(refactor): use `next_memory_location_inner` ?
 
         if let Some(address) =
-            parse_integer(argument, false).map_err(|error| error::Argument::InvalidValue {
-                argument_name,
-                string: argument.to_string(),
-                error,
-            })?
+            parse_integer(argument, false).map_err(wrap_invalid_value(argument_name, argument))?
         {
-            let address = int_as_u16(address).map_err(|error| error::Argument::InvalidValue {
-                argument_name,
-                string: argument.to_string(),
-                error,
-            })?;
+            let address =
+                int_as_u16(address).map_err(wrap_invalid_value(argument_name, argument))?;
             return Ok(Location::Memory(MemoryLocation::Address(address)));
+        };
+
+        if let Some(label) =
+            parse_label(argument).map_err(wrap_invalid_value(argument_name, argument))?
+        {
+            return Ok(Location::Memory(MemoryLocation::Label(label)));
         };
 
         todo!("try parse label, pc offset");
@@ -334,17 +325,10 @@ impl<'a> ArgIter<'a> {
 
         // TODO(refactor): Create function to create `error::Argument::InvalidValue` from parts
         if let Some(address) =
-            parse_integer(argument, false).map_err(|error| error::Argument::InvalidValue {
-                argument_name,
-                string: argument.to_string(),
-                error,
-            })?
+            parse_integer(argument, false).map_err(wrap_invalid_value(argument_name, argument))?
         {
-            let address = int_as_u16(address).map_err(|error| error::Argument::InvalidValue {
-                argument_name,
-                string: argument.to_string(),
-                error,
-            })?;
+            let address =
+                int_as_u16(address).map_err(wrap_invalid_value(argument_name, argument))?;
             return Ok(MemoryLocation::Address(address));
         };
 
@@ -400,7 +384,84 @@ impl<'a> ArgIter<'a> {
     }
 }
 
-pub fn parse_register(string: &str) -> Option<Register> {
+fn wrap_invalid_value<'a>(
+    argument_name: &'static str,
+    argument: &'a str,
+) -> impl Fn(error::Value) -> error::Argument + 'a {
+    move |error| error::Argument::InvalidValue {
+        argument_name,
+        string: argument.to_string(),
+        error,
+    }
+}
+
+/// Returns `true` if the given character can appear at the start of a label.
+fn label_can_start_with(ch: char) -> bool {
+    matches!(ch, 'a'..='z' | 'A'..='Z' | '_')
+}
+/// Returns `true` if the given character can appear as a subsequent character of a label.
+fn label_can_contain(ch: char) -> bool {
+    matches!(ch, 'a'..='z' | 'A'..='Z' | '0'..='9' | '_')
+}
+
+type CharIter<'a> = std::iter::Peekable<std::str::Chars<'a>>;
+
+/// Track byte length of consumed characters.
+struct ByteCounted<'a> {
+    inner: CharIter<'a>,
+    len: usize,
+}
+
+impl<'a> Iterator for ByteCounted<'a> {
+    type Item = char;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let ch = self.inner.next()?;
+        self.len += ch.len_utf8();
+        Some(ch)
+    }
+}
+
+impl<'a> ByteCounted<'a> {
+    pub fn from(inner: CharIter<'a>) -> Self {
+        Self { inner, len: 0 }
+    }
+    pub fn len(&self) -> usize {
+        self.len
+    }
+    pub fn peek(&mut self) -> Option<&char> {
+        self.inner.peek()
+    }
+}
+
+fn parse_label(string: &str) -> Result<Option<Label>, error::Value> {
+    let mut chars = ByteCounted::from(string.chars().peekable());
+
+    // Check first character can begin a label
+    if !chars.next().is_some_and(label_can_start_with) {
+        return Ok(None);
+    };
+    // Take characters until non-alphanumeric
+    while chars.peek().copied().is_some_and(label_can_contain) {
+        chars.next();
+    }
+
+    let length = chars.len();
+    let (name, offset_str) = string.split_at(length);
+
+    // TODO(feat): Differenciate label offset error to normal integer error
+    let offset = match parse_integer(offset_str, true)? {
+        Some(offset) => int_as_i16(offset)?,
+        None => 0,
+    };
+
+    Ok(Some(Label {
+        name: name.to_string(),
+        offset,
+    }))
+}
+
+fn parse_register(string: &str) -> Option<Register> {
     let mut chars = string.chars();
 
     match chars.next() {
@@ -425,8 +486,6 @@ pub fn parse_register(string: &str) -> Option<Register> {
     }
     Some(register)
 }
-
-type CharIter<'a> = std::iter::Peekable<std::str::Chars<'a>>;
 
 // TODO(refactor): `.peek` -> `.next_if` where possible
 
@@ -455,7 +514,7 @@ type CharIter<'a> = std::iter::Peekable<std::str::Chars<'a>>;
 fn parse_integer(string: &str, require_sign: bool) -> Result<Option<i32>, error::Value> {
     assert!(!string.is_empty(), "argument string must not be empty");
 
-    let mut chars = string.chars().peekable();
+    let mut chars: CharIter = string.chars().peekable();
 
     // Take sign BEFORE prefix
     let first_sign = take_sign(&mut chars);
