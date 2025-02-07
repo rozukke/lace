@@ -393,7 +393,11 @@ fn parse_memory_location(
         return Ok(MemoryLocation::PCOffset(offset));
     };
 
-    todo!("invalid argument");
+    Err(error::Argument::InvalidValue {
+        argument_name,
+        string: argument.to_string(),
+        error: error::Value::MalformedValue {},
+    })
 }
 
 /// Returns `true` if the given character can appear at the start of a label.
@@ -450,10 +454,13 @@ fn parse_label(string: &str) -> Result<Option<Label>, error::Value> {
     let length = chars.len();
     let (name, offset_str) = string.split_at(length);
 
-    // TODO(feat): Differenciate label offset error to normal integer error
-    let offset = match parse_integer(offset_str, true)? {
-        Some(offset) => int_as_i16(offset)?,
-        None => 0,
+    let offset = if offset_str.is_empty() {
+        0
+    } else {
+        match parse_integer(offset_str, true)? {
+            Some(offset) => int_as_i16(offset)?,
+            None => return Err(error::Value::MalformedLabel {}),
+        }
     };
 
     Ok(Some(Label {
@@ -468,10 +475,13 @@ fn parse_pc_offset(string: &str) -> Result<Option<i16>, error::Value> {
     }
     let offset_str = &string['^'.len_utf8()..];
 
-    // TODO(feat): Differenciate pc offset error to normal integer error
-    let offset = match parse_integer(offset_str, true)? {
-        Some(offset) => int_as_i16(offset)?,
-        None => 0,
+    let offset = if offset_str.is_empty() {
+        0
+    } else {
+        match parse_integer(offset_str, true)? {
+            Some(offset) => int_as_i16(offset)?,
+            None => return Err(error::Value::MalformedInteger {}),
+        }
     };
 
     Ok(Some(offset))
