@@ -1106,38 +1106,35 @@ mod tests {
         expect_integer!(false, "0b-00101", Ok(Some(-0b101)));
     }
 
-    // #[test]
-    // fn next_label_token_works() {
-    //     macro_rules! expect_label { ( $($x:tt)* ) => {
-    //         expect_tokens!(next_label_token(), $($x)*);
-    //     }}
-    //
-    //     expect_label!("", Ok(None));
-    //     expect_label!("0x1283", Ok(None));
-    //     expect_label!("!@*)#", Ok(None));
-    //     expect_label!("0Foo", Ok(None));
-    //     expect_label!("Foo!", Err(_));
-    //     expect_label!("F", Ok(Some(label!("F"))));
-    //     expect_label!("Foo", Ok(Some(label!("Foo"))));
-    //     expect_label!("_Foo", Ok(Some(label!("_Foo"))));
-    //     expect_label!("F_oo12", Ok(Some(label!("F_oo12"))));
-    //     expect_label!("Foo12_", Ok(Some(label!("Foo12_"))));
-    //     expect_label!("Foo+0", Ok(Some(label!("Foo", 0))));
-    //     expect_label!("Foo-0", Ok(Some(label!("Foo", 0))));
-    //     expect_label!("Foo+4", Ok(Some(label!("Foo", 4))));
-    //     expect_label!("Foo-43", Ok(Some(label!("Foo", -43))));
-    //     expect_label!("Foo+", Err(_));
-    //     expect_label!("Foo-", Err(_));
-    //     expect_label!("Foo  ", Ok(Some(label!("Foo"))));
-    //     expect_label!("Foo+4  ", Ok(Some(label!("Foo", 4))));
-    //     expect_label!("Foo-4  !!", Ok(Some(label!("Foo", -4))));
-    //     expect_label!("Foo+  ", Err(_));
-    //     expect_label!("Foo-  ", Err(_));
-    //     expect_label!("Foo -4", Ok(Some(label!("Foo"))));
-    //     expect_label!("Foo +4", Ok(Some(label!("Foo"))));
-    //     expect_label!("Foo+0x034", Ok(Some(label!("Foo", 0x34))));
-    //     expect_label!("Foo-0o4", Ok(Some(label!("Foo", -4))));
-    //     expect_label!("Foo-#24", Ok(Some(label!("Foo", -24))));
-    //     expect_label!("Foo+#024", Ok(Some(label!("Foo", 24))));
-    // }
+    #[test]
+    fn next_label_token_works() {
+        macro_rules! expect_label { ( $($x:tt)* ) => {
+            expect_tokens!(parse_label(), $($x)*);
+        }}
+
+        expect_label!("", Ok(None));
+        expect_label!("0x1283", Ok(None));
+        expect_label!("!@*)#", Ok(None));
+        expect_label!("0Foo", Ok(None));
+        expect_label!("Foo!", Err(_));
+        expect_label!("F", Ok(Some(label!("F"))));
+        expect_label!("Foo", Ok(Some(label!("Foo"))));
+        expect_label!("_Foo", Ok(Some(label!("_Foo"))));
+        expect_label!("F_oo12", Ok(Some(label!("F_oo12"))));
+        expect_label!("Foo12_", Ok(Some(label!("Foo12_"))));
+        expect_label!("Foo+0", Ok(Some(label!("Foo", 0))));
+        expect_label!("Foo-0", Ok(Some(label!("Foo", 0))));
+        expect_label!("Foo+4", Ok(Some(label!("Foo", 4))));
+        expect_label!("Foo-43", Ok(Some(label!("Foo", -43))));
+        expect_label!("Foo+", Err(_));
+        expect_label!("Foo-", Err(_));
+        expect_label!("Foo", Ok(Some(label!("Foo"))));
+        expect_label!("Foo+4", Ok(Some(label!("Foo", 4))));
+        expect_label!("Foo+", Err(_));
+        expect_label!("Foo-", Err(_));
+        expect_label!("Foo+0x034", Ok(Some(label!("Foo", 0x34))));
+        expect_label!("Foo-0o4", Ok(Some(label!("Foo", -4))));
+        expect_label!("Foo-#24", Ok(Some(label!("Foo", -24))));
+        expect_label!("Foo+#024", Ok(Some(label!("Foo", 24))));
+    }
 }
