@@ -60,6 +60,9 @@ pub enum Value {
     IntegerTooLarge {
         max: u16,
     },
+    LabelNotFound {
+        similar: Option<&'static String>,
+    },
 }
 
 impl Error for Command {}
@@ -97,7 +100,7 @@ impl fmt::Display for Argument {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Argument::MissingArgumentList { argument_name } => {
-                write!(f, "Missing argument list `{}`", argument_name)
+                write!(f, "Missing argument list `{}`.", argument_name)
             }
             Argument::MissingArgument {
                 argument_name,
@@ -106,7 +109,7 @@ impl fmt::Display for Argument {
             } => {
                 write!(
                     f,
-                    "Missing argument `{}` (expected {}, found {})",
+                    "Missing argument `{}` (expected {}, found {}).",
                     argument_name, expected_count, actual_count
                 )
             }
@@ -116,7 +119,7 @@ impl fmt::Display for Argument {
             } => {
                 write!(
                     f,
-                    "Too many arguments (expected {}, found {})",
+                    "Too many arguments (expected {}, found {}).",
                     expected_count, actual_count
                 )
             }
@@ -127,8 +130,8 @@ impl fmt::Display for Argument {
             } => {
                 write!(
                     f,
-                    "For argument `{}`: {}: `{}`",
-                    argument_name, error, value
+                    "For argument `{}`: `{}`. {}",
+                    argument_name, value, error
                 )
             }
         }
@@ -144,24 +147,31 @@ impl fmt::Display for Value {
             } => {
                 write!(
                     f,
-                    "Incorrect value type (expected {}, found {})",
+                    "Incorrect value type (expected {}, found {}).",
                     expected_type, actual_type
                 )
             }
             Value::MalformedValue {} => {
-                write!(f, "Invalid value")
+                write!(f, "Invalid value.")
             }
             Value::MalformedInteger {} => {
-                write!(f, "Malformed integer")
+                write!(f, "Malformed integer.")
             }
             Value::MalformedLabel {} => {
-                write!(f, "Malformed label")
+                write!(f, "Malformed label.")
             }
             Value::MalformedRegister {} => {
-                write!(f, "Malformed register")
+                write!(f, "Malformed register.")
             }
             Value::IntegerTooLarge { max } => {
-                write!(f, "Integer too large (maximum value: 0x{:04x})", max)
+                write!(f, "Integer too large (maximum value: 0x{:04x}).", max)
+            }
+            Value::LabelNotFound { similar } => {
+                write!(f, "Label not found")?;
+                if let Some(similar) = similar {
+                    write!(f, ". Did you mean `{}`?", similar)?;
+                }
+                Ok(())
             }
         }
     }

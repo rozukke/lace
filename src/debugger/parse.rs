@@ -1,6 +1,6 @@
 use super::command::{CommandName, Label, Location, MemoryLocation};
 use super::error;
-use crate::symbol::Register;
+use crate::symbol::{with_symbol_table, Register};
 
 // TODO(doc): Update doc comments for parsing functions!!!
 
@@ -476,10 +476,52 @@ fn parse_label(string: &str) -> Result<Option<Label>, error::Value> {
         }
     };
 
+    let (name, address) = match resolve_label_address(name) {
+        LabelResult::Exists { name, address } => (name, address),
+        LabelResult::NotFound { similar } => {
+            return Err(error::Value::LabelNotFound { similar });
+        }
+    };
+
     Ok(Some(Label {
-        name: name.to_string(),
+        name,
+        address,
         offset,
     }))
+}
+
+enum LabelResult {
+    Exists { name: &'static String, address: u16 },
+    NotFound { similar: Option<&'static String> },
+}
+
+fn resolve_label_address(name: &str) -> LabelResult {
+    // SAFETY: Symbol table is static
+    // SAFETY: Each key/value pair remains for the entire program lifetime
+    unsafe fn make_key_static(value: &String) -> &'static String {
+        let ptr = value as *const String;
+        unsafe { &*ptr }
+    }
+
+    with_symbol_table(|sym| {
+        if let Some((key, address)) = sym.get_key_value(name) {
+            return LabelResult::Exists {
+                name: unsafe { make_key_static(key) },
+                // Account for PC being incremented before instruction is executed
+                address: address + 1,
+            };
+        }
+
+        // Check for case-*insensitive* match
+        let similar = sym.keys().find_map(|key| {
+            if key.eq_ignore_ascii_case(name) {
+                return Some(unsafe { make_key_static(key) });
+            }
+            None
+        });
+
+        LabelResult::NotFound { similar }
+    })
 }
 
 fn parse_pc_offset(string: &str) -> Result<Option<i16>, error::Value> {

@@ -14,7 +14,6 @@ use self::source::{CommandSource, SourceRead};
 use crate::air::AsmLine;
 use crate::output::{Condition, Output};
 use crate::runtime::{RunState, HALT_ADDRESS, USER_MEMORY_END};
-use crate::symbol::with_symbol_table;
 use crate::{dprint, dprintln, DIAGNOSTIC_CONTEXT_LINES};
 
 // TODO(fix): `finish` (fibonacci.asm)
@@ -488,7 +487,7 @@ impl Debugger {
             let command = match Command::try_from(line) {
                 Ok(command) => command,
                 Err(error) => {
-                    dprintln!(Always, Error, "{}.", error);
+                    dprintln!(Always, Error, "{}", error);
                     dprintln!(Sometimes, Error, "Type `help` for a list of commands.");
                     continue;
                 }
@@ -545,9 +544,8 @@ impl Debugger {
 
     /// Returns `None` if `label` is out of bounds or an invalid label.
     fn resolve_label_address(&self, label: &Label) -> Option<u16> {
-        let address = Self::resolve_label_name_address(&label.name)?;
-
-        let Some(address) = self.add_address_offset(address + self.orig(), label.offset) else {
+        let Some(address) = self.add_address_offset(label.address + self.orig(), label.offset)
+        else {
             dprintln!(
                 Always,
                 Error,
@@ -564,28 +562,6 @@ impl Debugger {
             address
         );
         Some(address)
-    }
-
-    /// Returns `None` if `label` is an invalid label.
-    ///
-    /// Label names are case-sensitive.
-    /// Print a warning if the given name only has a case-insensitive match.
-    fn resolve_label_name_address(label: &str) -> Option<u16> {
-        with_symbol_table(|sym| {
-            if let Some(addr) = sym.get(label) {
-                // Account for PC being incremented before instruction is executed
-                return Some(addr + 1);
-            }
-            dprintln!(Always, Error, "Label not found named `{}`.", label);
-            // Check for case-*insensitive* match
-            for key in sym.keys() {
-                if key.eq_ignore_ascii_case(label) {
-                    dprintln!(Sometimes, Warning, "Hint: Similar label named `{}`", key);
-                    break;
-                }
-            }
-            None
-        })
     }
 
     /// Returns `None` if `pc + offset` is out of bounds.
