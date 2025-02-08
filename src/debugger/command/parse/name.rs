@@ -64,7 +64,7 @@ impl Arguments<'_> {
     ///
     /// Assumes line is non-empty.
     pub fn get_command_name(&mut self) -> Result<CommandName, error::Command> {
-        let command_name = self.next_str();
+        let command_name = self.next_str_name();
         // Command source should always return a string containing non-whitespace
         // characters, so initial command name should always exist.
         debug_assert!(command_name.is_some(), "missing command name");
@@ -80,7 +80,7 @@ impl Arguments<'_> {
             // Only used for errors
             let command_name = BREAK_COMMAND[0]; // Array must be non-empty if this branch is being ran
 
-            let Some(subcommand_name) = self.next_str() else {
+            let Some(subcommand_name) = self.next_str_name() else {
                 return Err(error::Command::MissingSubcommand { command_name });
             };
             let Some(command) = find_name_match(subcommand_name, BREAK_SUBCOMMANDS) else {

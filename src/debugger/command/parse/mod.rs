@@ -74,7 +74,20 @@ macro_rules! check_naive_type {
 
 impl<'a> Arguments<'a> {
     // Do not `impl Iterator`. This method should be private
+    /// Get next argument string, incrementing `arg_count`.
+    ///
+    /// Do not use for reading [`CommandName`].
     fn next_str(&mut self) -> Option<&'a str> {
+        let argument = self.next_str_name()?;
+        self.arg_count += 1;
+        Some(argument)
+    }
+
+    // TODO(rename): next_str_name
+    /// Get next argument string, WITHOUT incrementing `arg_count`.
+    ///
+    /// Only use for reading [`CommandName`].
+    fn next_str_name(&mut self) -> Option<&'a str> {
         let mut start = self.cursor;
         let mut length = 0;
         let mut is_start = true;
@@ -119,8 +132,10 @@ impl<'a> Arguments<'a> {
         self.buffer[start..].trim()
     }
 
+    /// Amount of arguments requested (successfully or not).
+    ///
+    /// Does not include [`CommandName`] argument(s).
     pub fn arg_count(&self) -> u8 {
-        // TODO(feat): Increment argument count in parsing methods
         self.arg_count
     }
 
@@ -173,12 +188,13 @@ impl<'a> Arguments<'a> {
         argument_name: &'static str,
         expected_count: u8,
     ) -> Result<u16, error::Argument> {
+        let actual_count = self.arg_count();
         self.next_integer_inner(
             argument_name,
             Err(error::Argument::MissingArgument {
                 argument_name,
                 expected_count,
-                actual_count: 99, // TODO
+                actual_count,
             }),
         )
     }
@@ -200,11 +216,12 @@ impl<'a> Arguments<'a> {
         argument_name: &'static str,
         expected_count: u8,
     ) -> Result<Location<'a>, error::Argument> {
+        let actual_count = self.arg_count();
         let Some(argument) = self.next_str() else {
             return Err(error::Argument::MissingArgument {
                 argument_name,
                 expected_count,
-                actual_count: 99,
+                actual_count,
             });
         };
 
@@ -253,12 +270,13 @@ impl<'a> Arguments<'a> {
         argument_name: &'static str,
         expected_count: u8,
     ) -> Result<MemoryLocation<'a>, error::Argument> {
+        let actual_count = self.arg_count();
         self.next_memory_location_inner(
             argument_name,
             Err(error::Argument::MissingArgument {
                 argument_name,
                 expected_count,
-                actual_count: 99,
+                actual_count,
             }),
         )
     }
