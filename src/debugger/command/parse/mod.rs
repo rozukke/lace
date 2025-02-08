@@ -3,10 +3,10 @@ mod label;
 mod naive;
 mod name;
 
-use integer::Integer;
+use std::ops::Deref;
 
-use super::error;
-use super::{CommandName, Label, Location, MemoryLocation};
+use self::integer::Integer;
+use super::{error, CommandName, Label, Location, MemoryLocation};
 use crate::symbol::Register;
 
 pub use self::naive::NaiveType;
@@ -40,17 +40,6 @@ impl<'a> From<&'a str> for ArgIter<'a> {
 
 trait TryParse<'a>: Sized {
     fn try_parse(string: &'a str) -> Result<Option<Self>, error::Value>;
-}
-
-fn wrap_invalid_value<'a>(
-    argument_name: &'static str,
-    argument: &'a str,
-) -> impl Fn(error::Value) -> error::Argument + 'a {
-    move |error| error::Argument::InvalidValue {
-        argument_name,
-        string: argument.to_string(),
-        error,
-    }
 }
 
 macro_rules! check_naive_type {
@@ -173,11 +162,9 @@ impl<'a> ArgIter<'a> {
             return Ok(integer);
         };
 
-        Err(error::Argument::InvalidValue {
-            argument_name,
-            string: argument.to_string(),
-            error: error::Value::MalformedValue {},
-        })
+        Err(wrap_invalid_value(argument_name, argument)(
+            error::Value::MalformedValue {},
+        ))
     }
 
     /// Parse and consume next integer argument.
@@ -230,7 +217,12 @@ impl<'a> ArgIter<'a> {
         {
             return Ok(Location::Register(register));
         };
-        parse_memory_location(argument_name, argument).map(Location::Memory)
+
+        MemoryLocation::try_parse(argument)
+            // `Ok(None)` -> `Err(...)`
+            .and_then(|opt| opt.ok_or(error::Value::MalformedValue {}))
+            .map_err(wrap_invalid_value(argument_name, argument))
+            .map(Location::Memory)
     }
 
     /// Parse and consume next [`MemoryLocation`] argument. Use default result value if argument is `None`.
@@ -249,7 +241,10 @@ impl<'a> ArgIter<'a> {
             (argument_name, argument)
         );
 
-        parse_memory_location(argument_name, argument)
+        MemoryLocation::try_parse(argument)
+            // `Ok(None)` -> `Err(...)`
+            .and_then(|opt| opt.ok_or(error::Value::MalformedValue {}))
+            .map_err(wrap_invalid_value(argument_name, argument))
     }
 
     /// Parse and consume next [`MemoryLocation`] argument.
@@ -278,60 +273,16 @@ impl<'a> ArgIter<'a> {
     }
 }
 
-impl<'a> TryParse<'a> for MemoryLocation<'a> {
-    fn try_parse(argument: &'a str) -> Result<Option<MemoryLocation<'a>>, error::Value> {
-        if let Some(address) = Integer::try_parse(argument)? {
-            let address = address.as_u16()?;
-            return Ok(Some(MemoryLocation::Address(address)));
-        };
-
-        if let Some(label) = Label::try_parse(argument)? {
-            return Ok(Some(MemoryLocation::Label(label)));
-        };
-
-        if let Some(offset) = parse_pc_offset(argument)? {
-            return Ok(Some(MemoryLocation::PCOffset(offset)));
-        };
-
-        Ok(None)
-    }
-}
-
-fn parse_memory_location<'a>(
+// TODO(refactor): Maybe make this a method of `error::Value`
+fn wrap_invalid_value<'a>(
     argument_name: &'static str,
     argument: &'a str,
-) -> Result<MemoryLocation<'a>, error::Argument> {
-    match MemoryLocation::try_parse(argument) {
-        Ok(Some(value)) => Ok(value),
-        Ok(None) => Err(error::Argument::InvalidValue {
-            argument_name,
-            string: argument.to_string(),
-            error: error::Value::MalformedValue {},
-        }),
-        Err(error) => Err(error::Argument::InvalidValue {
-            argument_name,
-            string: argument.to_string(),
-            error,
-        }),
+) -> impl Fn(error::Value) -> error::Argument + 'a {
+    move |error| error::Argument::InvalidValue {
+        argument_name,
+        string: argument.to_string(),
+        error,
     }
-}
-
-fn parse_pc_offset(string: &str) -> Result<Option<i16>, error::Value> {
-    if string.chars().next().is_none_or(|ch| ch != '^') {
-        return Ok(None);
-    }
-    let offset_str = &string['^'.len_utf8()..];
-
-    let offset = if offset_str.is_empty() {
-        0
-    } else {
-        match Integer::try_parse(offset_str)? {
-            Some(offset) => offset.as_i16()?,
-            None => return Err(error::Value::MalformedInteger {}),
-        }
-    };
-
-    Ok(Some(offset))
 }
 
 impl<'a> TryParse<'a> for Register {
@@ -368,6 +319,50 @@ impl<'a> TryParse<'a> for Register {
         }
 
         Ok(Some(register))
+    }
+}
+
+impl<'a> TryParse<'a> for MemoryLocation<'a> {
+    fn try_parse(argument: &'a str) -> Result<Option<MemoryLocation<'a>>, error::Value> {
+        // Ordered by approximate function speed
+        if let Some(offset) = PCOffset::try_parse(argument)? {
+            return Ok(Some(MemoryLocation::PCOffset(*offset)));
+        };
+        if let Some(label) = Label::try_parse(argument)? {
+            return Ok(Some(MemoryLocation::Label(label)));
+        };
+        if let Some(address) = Integer::try_parse(argument)? {
+            let address = address.as_u16()?;
+            return Ok(Some(MemoryLocation::Address(address)));
+        };
+        Ok(None)
+    }
+}
+
+struct PCOffset(i16);
+impl<'a> TryParse<'a> for PCOffset {
+    fn try_parse(string: &'a str) -> Result<Option<Self>, error::Value> {
+        if string.chars().next().is_none_or(|ch| ch != '^') {
+            return Ok(None);
+        }
+        let offset_str = &string['^'.len_utf8()..];
+
+        let offset = if offset_str.is_empty() {
+            0
+        } else {
+            match Integer::try_parse(offset_str)? {
+                Some(offset) => offset.as_i16()?,
+                None => return Err(error::Value::MalformedInteger {}),
+            }
+        };
+
+        Ok(Some(Self(offset)))
+    }
+}
+impl Deref for PCOffset {
+    type Target = i16;
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
