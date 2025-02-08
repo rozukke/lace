@@ -24,7 +24,7 @@ pub struct ArgIter<'a> {
 
     /// Amount of arguments requested (successfully or not).
     ///
-    /// Must only be incremented by [`Self::next_argument`].
+    /// Must only be incremented by [`Self::next_str`].
     arg_count: u8,
 }
 

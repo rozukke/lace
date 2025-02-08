@@ -74,12 +74,6 @@ impl NaiveType {
     }
 }
 
-impl fmt::Display for NaiveType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.as_str())
-    }
-}
-
 impl TryFrom<&str> for NaiveType {
     type Error = ();
 
@@ -98,5 +92,11 @@ impl TryFrom<&str> for NaiveType {
             return Ok(Self::Label);
         }
         Err(())
+    }
+}
+
+impl fmt::Display for NaiveType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
     }
 }

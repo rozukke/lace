@@ -12,7 +12,7 @@ pub mod debugger_colors {
     pub const ERROR: &str = "31";
 }
 
-/// Print to [`Output::Debugger`].
+/// Print to debugger output.
 #[macro_export]
 macro_rules! dprint {
     // `$fmt:expr` is required to allow `concat!` macro to be accepted
@@ -40,7 +40,7 @@ macro_rules! dprint {
     }};
 }
 
-/// Print to [`Output::Debugger`], with a newline.
+/// Print to debugger output, with a newline.
 #[macro_export]
 macro_rules! dprintln {
     ( $condition:expr $(,)? ) => {{
