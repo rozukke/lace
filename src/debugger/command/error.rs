@@ -183,3 +183,17 @@ impl fmt::Display for Value {
         Ok(())
     }
 }
+
+impl Argument {
+    /// Create [`Argument::InvalidValue`] from [`Value`].
+    pub fn invalid_value<'a>(
+        argument_name: &'static str,
+        argument: &'a str,
+    ) -> impl Fn(Value) -> Self + 'a {
+        move |error| Self::InvalidValue {
+            argument_name,
+            string: argument.to_string(),
+            error,
+        }
+    }
+}

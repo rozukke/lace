@@ -152,17 +152,17 @@ impl<'a> ArgIter<'a> {
             (argument_name, argument)
         );
 
-        let integer =
-            Integer::try_parse(argument).map_err(wrap_invalid_value(argument_name, argument))?;
+        let integer = Integer::try_parse(argument)
+            .map_err(error::Argument::invalid_value(argument_name, argument))?;
 
         if let Some(integer) = integer {
             let integer = integer
                 .as_u16_cast()
-                .map_err(wrap_invalid_value(argument_name, argument))?;
+                .map_err(error::Argument::invalid_value(argument_name, argument))?;
             return Ok(integer);
         };
 
-        Err(wrap_invalid_value(argument_name, argument)(
+        Err(error::Argument::invalid_value(argument_name, argument)(
             error::Value::MalformedValue {},
         ))
     }
@@ -212,8 +212,8 @@ impl<'a> ArgIter<'a> {
         // All current valid types are allowed here, and any invalid value will be handled before
         // the end of this function (as `MalformedValue`)
 
-        if let Some(register) =
-            Register::try_parse(argument).map_err(wrap_invalid_value(argument_name, argument))?
+        if let Some(register) = Register::try_parse(argument)
+            .map_err(error::Argument::invalid_value(argument_name, argument))?
         {
             return Ok(Location::Register(register));
         };
@@ -221,7 +221,7 @@ impl<'a> ArgIter<'a> {
         MemoryLocation::try_parse(argument)
             // `Ok(None)` -> `Err(...)`
             .and_then(|opt| opt.ok_or(error::Value::MalformedValue {}))
-            .map_err(wrap_invalid_value(argument_name, argument))
+            .map_err(error::Argument::invalid_value(argument_name, argument))
             .map(Location::Memory)
     }
 
@@ -244,7 +244,7 @@ impl<'a> ArgIter<'a> {
         MemoryLocation::try_parse(argument)
             // `Ok(None)` -> `Err(...)`
             .and_then(|opt| opt.ok_or(error::Value::MalformedValue {}))
-            .map_err(wrap_invalid_value(argument_name, argument))
+            .map_err(error::Argument::invalid_value(argument_name, argument))
     }
 
     /// Parse and consume next [`MemoryLocation`] argument.
@@ -270,18 +270,6 @@ impl<'a> ArgIter<'a> {
         argument_name: &'static str,
     ) -> Result<MemoryLocation<'a>, error::Argument> {
         self.next_memory_location_inner(argument_name, Ok(MemoryLocation::PCOffset(0)))
-    }
-}
-
-// TODO(refactor): Maybe make this a method of `error::Value`
-fn wrap_invalid_value<'a>(
-    argument_name: &'static str,
-    argument: &'a str,
-) -> impl Fn(error::Value) -> error::Argument + 'a {
-    move |error| error::Argument::InvalidValue {
-        argument_name,
-        string: argument.to_string(),
-        error,
     }
 }
 
