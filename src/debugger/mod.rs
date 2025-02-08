@@ -5,14 +5,14 @@ mod eval;
 use std::cmp::Ordering;
 use std::ops::Range;
 
-pub use self::breakpoint::{Breakpoint, Breakpoints};
-use self::command::read::{CommandSource, SourceRead};
-use self::command::{Command, Label, Location, MemoryLocation};
+use self::command::{Command, CommandSource, Label, Location, MemoryLocation};
 use crate::air::AsmLine;
 use crate::output::{Condition, Output};
 use crate::runtime::{RunState, HALT_ADDRESS, USER_MEMORY_END};
 use crate::symbol::with_symbol_table;
 use crate::{dprint, dprintln, DIAGNOSTIC_CONTEXT_LINES};
+
+pub use self::breakpoint::{Breakpoint, Breakpoints};
 
 // TODO(fix): `finish` (fibonacci.asm)
 
@@ -292,38 +292,11 @@ impl Debugger {
         }
 
         // Read and parse next command
-        // Inlined to avoid lifetime complications borrowing `self` entirely
-        let command = loop {
-            let line = match self.command_source.read() {
-                Some(line) => line.trim(),
-                None => break Command::Quit, // EOF
-            };
-
-            // Necessary, since `Command::try_from` assumes non-empty line
-            if line.is_empty() {
-                continue;
-            }
-
-            // Remove silly lifetime restriction
-            // SAFETY: Any reference which is returned from this function WILL be valid
-            // SAFETY: The buffer which owns this string is not freed until all debugger business
-            // has ended
-            // SAFETY: The buffer also will not be overwritten until command has entirely
-            // completed its execution. The fact that the buffer holds a line of multiple commands
-            // does not change this fact
-            let line = unsafe { &*(line as *const str) };
-
-            let command = match Command::try_from(line) {
-                Ok(command) => command,
-                Err(error) => {
-                    dprintln!(Always, Error, "{}", error);
-                    dprintln!(Sometimes, Error, "Type `help` for a list of commands.");
-                    continue;
-                }
-            };
-
-            break command;
-        };
+        let command = Command::read_from(&mut self.command_source, |error| {
+            dprintln!(Always, Error, "{}", error);
+            dprintln!(Sometimes, Error, "Type `help` for a list of commands.");
+        })
+        .unwrap_or(Command::Quit); // "quit" on EOF
 
         match command {
             Command::Quit => return Some(Action::StopDebugger),

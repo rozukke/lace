@@ -1,11 +1,14 @@
 pub mod error;
 mod parse;
-pub mod read;
+mod read;
 
 use std::fmt;
 
 use self::parse::ArgIter;
+use self::read::SourceRead as _;
 use crate::symbol::Register;
+
+pub use self::read::CommandSource;
 
 #[derive(Debug)]
 pub enum Command<'a> {
@@ -117,6 +120,37 @@ impl<'a> TryFrom<&'a str> for Command<'a> {
 }
 
 impl<'a> Command<'a> {
+    pub fn read_from<F>(source: &mut CommandSource, handle_error: F) -> Option<Self>
+    where
+        F: Fn(error::Command) -> (),
+    {
+        loop {
+            let line = source.read()?.trim();
+
+            // Necessary, since `Command::try_from` assumes non-empty line
+            if line.is_empty() {
+                continue;
+            }
+
+            // Remove silly lifetime restriction
+            // SAFETY: Any reference which is returned from this function WILL be valid
+            // SAFETY: The buffer which owns this string is not freed until all debugger business
+            // has ended
+            // SAFETY: The buffer also will not be overwritten until command has entirely
+            // completed its execution. The fact that the buffer holds a line of multiple commands
+            // does not change this fact
+            let line = unsafe { &*(line as *const str) };
+
+            match Command::try_from(line) {
+                Ok(command) => return Some(command),
+                Err(error) => {
+                    handle_error(error);
+                    continue;
+                }
+            }
+        }
+    }
+
     fn parse_arguments(name: CommandName, iter: &mut ArgIter<'a>) -> Result<Self, error::Argument> {
         let mut expected_args = 0;
 
