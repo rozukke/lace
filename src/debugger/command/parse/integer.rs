@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use super::{error, CharIter};
+use super::{error, CharIter, TryParse};
 
 type IntegerValue = i32;
 
@@ -21,6 +21,26 @@ pub enum Radix {
     Octal = 8,
     Decimal = 10,
     Hex = 16,
+}
+
+/// Helper struct for retaining syntax information when parsing integer prefix.
+struct Prefix {
+    /// Radix corresponding to prefix character.
+    radix: Radix,
+    /// Whether prefix character is preceeded by zeros.
+    leading_zeros: bool,
+    /// Whether prefix character is a symbol (i.e. "#").
+    non_alpha: bool,
+}
+
+/// Helper struct similar to `Option<Prefix>` but also handles "0" case.
+enum PrefixResult {
+    /// Normal integer with (explicit or implicit) prefix.
+    Integer(Prefix),
+    /// Special case to handle "0".
+    SingleZero,
+    /// This token is not an integer, but not necessary invalid (yet).
+    NonInteger,
 }
 
 impl Radix {
@@ -79,12 +99,10 @@ impl Integer {
 
 impl Deref for Integer {
     type Target = IntegerValue;
-
     fn deref(&self) -> &Self::Target {
         &self.value
     }
 }
-
 impl<T> From<T> for Integer
 where
     T: Into<IntegerValue>,
@@ -96,35 +114,51 @@ where
     }
 }
 
-/// Parse and consume the next integer argument.
-///
-/// Extremely liberal in accepted syntax.
-///
-/// Accepts:
-///  - Decimal (optional "#"), hex ("x"/"X"), octal ("o"/"O"), and binary ("b"/"B").
-///  - Optional single zero before non-decimal radix prefix. Eg. "0x4".
-///  - Leading zeros after prefix and sign. Eg. "0x0004", "#-03".
-///  - Sign character before xor after radix prefix. Eg. "-#2", "x+4".
-///
-/// Returns `Ok(None)` (not an integer) for:
-///  - Empty token.
-///  - Non-decimal radix prefix, with no zero before it, and non-digits after it. Eg. "xLabel", "o".
-///
-/// Returns `Err` (invalid integer and invalid token) for:
-///  - Invalid digits for the given radix.
-///  - Decimal radix prefix "#" with zeros before it. Eg. "0#2".
-///  - Decimal radix prefix "#" with no digits after it. Eg. "#".
-///  - Multiple sign characters (before or after prefix).
-///  - Missing sign character "-" or "+", if `require_sign == true`.
-///  - Multiple zeros before radix prefix. Eg. "00x4".
-///  - Absolute value out of bounds for `i32`. (Does *NOT* check if integer fits in specific bit size).
-pub fn parse_integer(string: &str, require_sign: bool) -> Result<Option<Integer>, error::Value> {
+impl<'a> TryParse<'a> for Integer {
+    /// Parse and consume the next integer argument.
+    ///
+    /// Extremely liberal in accepted syntax.
+    ///
+    /// Accepts:
+    ///  - Decimal (optional "#"), hex ("x"/"X"), octal ("o"/"O"), and binary ("b"/"B").
+    ///  - Optional single zero before non-decimal radix prefix. Eg. "0x4".
+    ///  - Leading zeros after prefix and sign. Eg. "0x0004", "#-03".
+    ///  - Sign character before xor after radix prefix. Eg. "-#2", "x+4".
+    ///
+    /// Returns `Ok(None)` (not an integer) for:
+    ///  - Empty token.
+    ///  - Non-decimal radix prefix, with no zero before it, and non-digits after it. Eg. "xLabel", "o".
+    ///
+    /// Returns `Err` (invalid integer and invalid token) for:
+    ///  - Invalid digits for the given radix.
+    ///  - Decimal radix prefix "#" with zeros before it. Eg. "0#2".
+    ///  - Decimal radix prefix "#" with no digits after it. Eg. "#".
+    ///  - Multiple sign characters (before or after prefix).
+    ///  - Multiple zeros before radix prefix. Eg. "00x4".
+    ///  - Absolute value out of bounds for `i32`. (Does *NOT* check if integer fits in specific bit size).
+    fn try_parse(string: &str) -> Result<Option<Self>, error::Value> {
+        parse_integer(string, false)
+    }
+}
+
+impl Integer {
+    /// Parse and consume the next integer argument, with mandatory pre-prefix sign character.
+    ///
+    /// See [`Integer::try_parse`] implementation for accepted syntax.
+    pub fn try_parse_signed(string: &str) -> Result<Option<Self>, error::Value> {
+        parse_integer(string, true)
+    }
+}
+
+fn parse_integer(string: &str, require_sign: bool) -> Result<Option<Integer>, error::Value> {
     // Useful for parsing label/pc offset
     if string.is_empty() {
         return Ok(None);
     }
 
     let mut chars: CharIter = string.chars().peekable();
+
+    // TODO(fix): Only check `require_sign` for pre-prefix sign character !!
 
     // Take sign BEFORE prefix
     let first_sign = take_sign(&mut chars);
@@ -216,26 +250,6 @@ fn take_sign(chars: &mut CharIter) -> Option<Sign> {
     };
     chars.next();
     Some(sign)
-}
-
-/// Helper struct for retaining syntax information when parsing integer prefix.
-struct Prefix {
-    /// Radix corresponding to prefix character.
-    radix: Radix,
-    /// Whether prefix character is preceeded by zeros.
-    leading_zeros: bool,
-    /// Whether prefix character is a symbol (i.e. "#").
-    non_alpha: bool,
-}
-
-/// Helper struct similar to `Option<Prefix>` but also handles "0" case.
-enum PrefixResult {
-    /// Normal integer with (explicit or implicit) prefix.
-    Integer(Prefix),
-    /// Special case to handle "0".
-    SingleZero,
-    /// This token is not an integer, but not necessary invalid (yet).
-    NonInteger,
 }
 
 fn take_prefix(chars: &mut CharIter) -> Result<PrefixResult, error::Value> {

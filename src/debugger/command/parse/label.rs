@@ -1,4 +1,4 @@
-use super::{error, integer, Label, TryParse};
+use super::{error, integer::Integer, Label, TryParse};
 
 /// Returns `true` if the given character can appear at the start of a label.
 pub fn can_start_with(ch: char) -> bool {
@@ -58,7 +58,7 @@ impl<'a> TryParse<'a> for Label<'a> {
         let offset = if offset_str.is_empty() {
             0
         } else {
-            match integer::parse_integer(offset_str, true)? {
+            match Integer::try_parse_signed(offset_str)? {
                 Some(offset) => offset.as_i16()?,
                 None => return Err(error::Value::MalformedLabel {}),
             }

@@ -3,7 +3,8 @@ mod label;
 mod naive;
 mod name;
 
-use self::integer::parse_integer;
+use integer::Integer;
+
 use super::error;
 use super::{CommandName, Label, Location, MemoryLocation};
 use crate::symbol::Register;
@@ -163,7 +164,7 @@ impl<'a> ArgIter<'a> {
         );
 
         let integer =
-            parse_integer(argument, false).map_err(wrap_invalid_value(argument_name, argument))?;
+            Integer::try_parse(argument).map_err(wrap_invalid_value(argument_name, argument))?;
 
         if let Some(integer) = integer {
             let integer = integer
@@ -279,7 +280,7 @@ impl<'a> ArgIter<'a> {
 
 impl<'a> TryParse<'a> for MemoryLocation<'a> {
     fn try_parse(argument: &'a str) -> Result<Option<MemoryLocation<'a>>, error::Value> {
-        if let Some(address) = parse_integer(argument, false)? {
+        if let Some(address) = Integer::try_parse(argument)? {
             let address = address.as_u16()?;
             return Ok(Some(MemoryLocation::Address(address)));
         };
@@ -324,7 +325,7 @@ fn parse_pc_offset(string: &str) -> Result<Option<i16>, error::Value> {
     let offset = if offset_str.is_empty() {
         0
     } else {
-        match parse_integer(offset_str, true)? {
+        match Integer::try_parse(offset_str)? {
             Some(offset) => offset.as_i16()?,
             None => return Err(error::Value::MalformedInteger {}),
         }
