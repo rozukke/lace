@@ -17,7 +17,7 @@ pub use self::naive::NaiveType;
 
 type CharIter<'a> = std::iter::Peekable<std::str::Chars<'a>>;
 
-pub struct ArgIter<'a> {
+pub struct Arguments<'a> {
     buffer: &'a str,
     /// Byte index.
     cursor: usize,
@@ -28,7 +28,7 @@ pub struct ArgIter<'a> {
     arg_count: u8,
 }
 
-impl<'a> From<&'a str> for ArgIter<'a> {
+impl<'a> From<&'a str> for Arguments<'a> {
     fn from(buffer: &'a str) -> Self {
         Self {
             buffer,
@@ -72,7 +72,7 @@ macro_rules! check_naive_type {
     }};
 }
 
-impl<'a> ArgIter<'a> {
+impl<'a> Arguments<'a> {
     // Do not `impl Iterator`. This method should be private
     fn next_str(&mut self) -> Option<&'a str> {
         let mut start = self.cursor;
@@ -373,7 +373,7 @@ mod tests {
     #[test]
     fn many_arguments_works() {
         let line = "  name  -54  r3 0x5812 Foo name2  Baz+0x04 4209";
-        let mut iter = ArgIter::from(line);
+        let mut iter = Arguments::from(line);
 
         let argument_name = "dummy";
         let expected_count = 99;
@@ -402,7 +402,7 @@ mod tests {
     macro_rules! expect_tokens {
         ( . $method:ident ($($args:tt)*), $input:expr, $($expected:tt)* ) => {{
             eprintln!("Test input: <{}>", $input);
-            let mut iter = ArgIter::from($input);
+            let mut iter = Arguments::from($input);
             let result = iter.$method($($args)*);
             expect_tokens!(@expected result, $($expected)*);
         }};

@@ -4,7 +4,7 @@ mod read;
 
 use std::fmt;
 
-use self::parse::ArgIter;
+use self::parse::Arguments;
 use self::read::SourceRead as _;
 use crate::symbol::Register;
 
@@ -107,7 +107,7 @@ impl<'a> TryFrom<&'a str> for Command<'a> {
 
     /// Assumes line is non-empty.
     fn try_from(line: &'a str) -> std::result::Result<Self, Self::Error> {
-        let mut iter = ArgIter::from(line);
+        let mut iter = Arguments::from(line);
 
         let command_name = iter.get_command_name()?;
         Command::parse_arguments(command_name, &mut iter).map_err(|error| {
@@ -151,7 +151,10 @@ impl<'a> Command<'a> {
         }
     }
 
-    fn parse_arguments(name: CommandName, iter: &mut ArgIter<'a>) -> Result<Self, error::Argument> {
+    fn parse_arguments(
+        name: CommandName,
+        iter: &mut Arguments<'a>,
+    ) -> Result<Self, error::Argument> {
         let mut expected_args = 0;
 
         let command = match name {

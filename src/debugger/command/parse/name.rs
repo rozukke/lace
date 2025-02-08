@@ -1,4 +1,4 @@
-use super::{error, ArgIter, CommandName};
+use super::{error, Arguments, CommandName};
 
 // TODO(feat): Add more aliases (such as undocumented typo aliases)
 #[rustfmt::skip]
@@ -57,7 +57,7 @@ fn name_matches(name: &str, candidates: CandidateList) -> bool {
     false
 }
 
-impl ArgIter<'_> {
+impl Arguments<'_> {
     /// Parse and consume command name.
     ///
     /// Considers multi-word command names (i.e. subcommands) as one name. Eg. `break add`.
