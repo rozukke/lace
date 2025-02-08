@@ -1,4 +1,13 @@
+use std::ops::Deref;
+
 use super::{error, CharIter};
+
+type IntegerValue = i32;
+
+#[derive(Debug)]
+pub struct Integer {
+    value: IntegerValue,
+}
 
 #[derive(Clone, Copy, Debug)]
 enum Sign {
@@ -41,26 +50,49 @@ impl Radix {
     }
 }
 
-/// Try to convert an `i32` into `i16`.
-pub fn int_as_i16(integer: i32) -> Result<i16, error::Value> {
-    integer
-        .try_into()
-        .map_err(|_| error::Value::IntegerTooLarge {
-            max: i16::MAX as u16,
-        })
+impl Integer {
+    /// Try to convert into `i16`.
+    pub fn as_i16(self) -> Result<i16, error::Value> {
+        (*self)
+            .try_into()
+            .map_err(|_| error::Value::IntegerTooLarge {
+                max: i16::MAX as u16,
+            })
+    }
+
+    /// Try to convert into `u16`.
+    pub fn as_u16(self) -> Result<u16, error::Value> {
+        (*self)
+            .try_into()
+            .map_err(|_| error::Value::IntegerTooLarge { max: u16::MAX })
+    }
+
+    /// Try to convert into `u16`, casting negative values.
+    pub fn as_u16_cast(self) -> Result<u16, error::Value> {
+        if *self < 0 {
+            Ok(self.as_i16()? as u16)
+        } else {
+            self.as_u16()
+        }
+    }
 }
-/// Try to convert an `i32` into `u16`.
-pub fn int_as_u16(integer: i32) -> Result<u16, error::Value> {
-    integer
-        .try_into()
-        .map_err(|_| error::Value::IntegerTooLarge { max: u16::MAX })
+
+impl Deref for Integer {
+    type Target = IntegerValue;
+
+    fn deref(&self) -> &Self::Target {
+        &self.value
+    }
 }
-/// Try to convert an `i32` into `u16`. Cast negative values.
-pub fn int_as_u16_cast(integer: i32) -> Result<u16, error::Value> {
-    if integer < 0 {
-        Ok(int_as_i16(integer)? as u16)
-    } else {
-        int_as_u16(integer)
+
+impl<T> From<T> for Integer
+where
+    T: Into<IntegerValue>,
+{
+    fn from(value: T) -> Self {
+        Self {
+            value: value.into(),
+        }
     }
 }
 
@@ -86,7 +118,7 @@ pub fn int_as_u16_cast(integer: i32) -> Result<u16, error::Value> {
 ///  - Missing sign character "-" or "+", if `require_sign == true`.
 ///  - Multiple zeros before radix prefix. Eg. "00x4".
 ///  - Absolute value out of bounds for `i32`. (Does *NOT* check if integer fits in specific bit size).
-pub fn parse_integer(string: &str, require_sign: bool) -> Result<Option<i32>, error::Value> {
+pub fn parse_integer(string: &str, require_sign: bool) -> Result<Option<Integer>, error::Value> {
     // Useful for parsing label/pc offset
     if string.is_empty() {
         return Ok(None);
@@ -101,7 +133,7 @@ pub fn parse_integer(string: &str, require_sign: bool) -> Result<Option<i32>, er
         PrefixResult::Integer(prefix) => prefix,
         // Bypass normal parsing
         // The string must be "0" so no concerns about trailing characters
-        PrefixResult::SingleZero => return Ok(Some(0)),
+        PrefixResult::SingleZero => return Ok(Some(0.into())),
 
         PrefixResult::NonInteger => {
             // Sign was already given, so it must be an invalid token
@@ -144,7 +176,7 @@ pub fn parse_integer(string: &str, require_sign: bool) -> Result<Option<i32>, er
 
     // Take digits until non-digit character
     // Note that this loop handles post-prefix leading zeros like any other digit
-    let mut integer: i32 = 0;
+    let mut integer: IntegerValue = 0;
     for ch in chars.by_ref() {
         // Invalid digit will always return `Err`
         // Valid non-integer tokens should trigger early return before this loop
@@ -153,14 +185,14 @@ pub fn parse_integer(string: &str, require_sign: bool) -> Result<Option<i32>, er
         };
 
         // Re-checked later on convert to smaller int types
-        if integer > i32::MAX / prefix.radix as i32 {
+        if integer > IntegerValue::MAX / prefix.radix as IntegerValue {
             return Err(error::Value::IntegerTooLarge {
                 max: i16::MAX as u16,
             });
         }
 
-        integer *= prefix.radix as i32;
-        integer += digit as i32;
+        integer *= prefix.radix as IntegerValue;
+        integer += digit as IntegerValue;
     }
 
     assert!(
@@ -170,10 +202,10 @@ pub fn parse_integer(string: &str, require_sign: bool) -> Result<Option<i32>, er
 
     // TODO(fix): I think there is an edge case here for overflow
     if let Some(sign) = sign {
-        integer *= sign as i32;
+        integer *= sign as IntegerValue;
     }
 
-    Ok(Some(integer))
+    Ok(Some(integer.into()))
 }
 
 fn take_sign(chars: &mut CharIter) -> Option<Sign> {

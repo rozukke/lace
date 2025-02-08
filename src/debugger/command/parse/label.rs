@@ -59,7 +59,7 @@ impl<'a> TryParse<'a> for Label<'a> {
             0
         } else {
             match integer::parse_integer(offset_str, true)? {
-                Some(offset) => integer::int_as_i16(offset)?,
+                Some(offset) => offset.as_i16()?,
                 None => return Err(error::Value::MalformedLabel {}),
             }
         };

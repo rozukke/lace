@@ -166,7 +166,8 @@ impl<'a> ArgIter<'a> {
             parse_integer(argument, false).map_err(wrap_invalid_value(argument_name, argument))?;
 
         if let Some(integer) = integer {
-            let integer = integer::int_as_u16_cast(integer)
+            let integer = integer
+                .as_u16_cast()
                 .map_err(wrap_invalid_value(argument_name, argument))?;
             return Ok(integer);
         };
@@ -279,7 +280,7 @@ impl<'a> ArgIter<'a> {
 impl<'a> TryParse<'a> for MemoryLocation<'a> {
     fn try_parse(argument: &'a str) -> Result<Option<MemoryLocation<'a>>, error::Value> {
         if let Some(address) = parse_integer(argument, false)? {
-            let address = integer::int_as_u16(address)?;
+            let address = address.as_u16()?;
             return Ok(Some(MemoryLocation::Address(address)));
         };
 
@@ -324,7 +325,7 @@ fn parse_pc_offset(string: &str) -> Result<Option<i16>, error::Value> {
         0
     } else {
         match parse_integer(offset_str, true)? {
-            Some(offset) => integer::int_as_i16(offset)?,
+            Some(offset) => offset.as_i16()?,
             None => return Err(error::Value::MalformedInteger {}),
         }
     };
