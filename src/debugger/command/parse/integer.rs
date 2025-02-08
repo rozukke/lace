@@ -158,10 +158,12 @@ fn parse_integer(string: &str, require_sign: bool) -> Result<Option<Integer>, er
 
     let mut chars: CharIter = string.chars().peekable();
 
-    // TODO(fix): Only check `require_sign` for pre-prefix sign character !!
-
     // Take sign BEFORE prefix
     let first_sign = take_sign(&mut chars);
+    // Missing sign character before prefix
+    if require_sign && first_sign.is_none() {
+        return Err(error::Value::MalformedInteger {});
+    }
 
     let prefix = match take_prefix(&mut chars)? {
         PrefixResult::Integer(prefix) => prefix,
@@ -183,14 +185,9 @@ fn parse_integer(string: &str, require_sign: bool) -> Result<Option<Integer>, er
 
     // Reconcile multiple sign characters
     let sign = match (first_sign, second_sign) {
-        (Some(sign), None) => Some(sign),
-        (None, Some(sign)) => Some(sign),
-        (None, None) => {
-            if require_sign {
-                return Err(error::Value::MalformedInteger {});
-            }
-            None
-        }
+        // Take either value
+        (None, None) => None,
+        (Some(sign), None) | (None, Some(sign)) => Some(sign),
         // Disallow multiple sign characters: "-x-...", "++...", etc
         (Some(_), Some(_)) => return Err(error::Value::MalformedInteger {}),
     };
