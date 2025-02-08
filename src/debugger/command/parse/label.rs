@@ -1,4 +1,4 @@
-use super::{error, integer, Label};
+use super::{error, integer, Label, TryParse};
 
 /// Returns `true` if the given character can appear at the start of a label.
 pub fn can_start_with(ch: char) -> bool {
@@ -39,29 +39,31 @@ impl<'a> ByteCounted<'a> {
     }
 }
 
-pub fn parse_label(string: &str) -> Result<Option<Label>, error::Value> {
-    let mut chars = ByteCounted::from(string.chars().peekable());
+impl<'a> TryParse<'a> for Label<'a> {
+    fn try_parse(string: &'a str) -> Result<Option<Self>, error::Value> {
+        let mut chars = ByteCounted::from(string.chars().peekable());
 
-    // Check first character can begin a label
-    if !chars.next().is_some_and(can_start_with) {
-        return Ok(None);
-    };
-    // Take characters until non-alphanumeric
-    while chars.peek().copied().is_some_and(can_contain) {
-        chars.next();
-    }
-
-    let length = chars.len();
-    let (name, offset_str) = string.split_at(length);
-
-    let offset = if offset_str.is_empty() {
-        0
-    } else {
-        match integer::parse_integer(offset_str, true)? {
-            Some(offset) => integer::int_as_i16(offset)?,
-            None => return Err(error::Value::MalformedLabel {}),
+        // Check first character can begin a label
+        if !chars.next().is_some_and(can_start_with) {
+            return Ok(None);
+        };
+        // Take characters until non-alphanumeric
+        while chars.peek().copied().is_some_and(can_contain) {
+            chars.next();
         }
-    };
 
-    Ok(Some(Label { name, offset }))
+        let length = chars.len();
+        let (name, offset_str) = string.split_at(length);
+
+        let offset = if offset_str.is_empty() {
+            0
+        } else {
+            match integer::parse_integer(offset_str, true)? {
+                Some(offset) => integer::int_as_i16(offset)?,
+                None => return Err(error::Value::MalformedLabel {}),
+            }
+        };
+
+        Ok(Some(Label { name, offset }))
+    }
 }

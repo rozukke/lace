@@ -37,6 +37,10 @@ impl<'a> From<&'a str> for ArgIter<'a> {
     }
 }
 
+trait TryParse<'a>: Sized {
+    fn try_parse(string: &'a str) -> Result<Option<Self>, error::Value>;
+}
+
 fn wrap_invalid_value<'a>(
     argument_name: &'static str,
     argument: &'a str,
@@ -220,7 +224,7 @@ impl<'a> ArgIter<'a> {
         // the end of this function (as `MalformedValue`)
 
         if let Some(register) =
-            parse_register(argument).map_err(wrap_invalid_value(argument_name, argument))?
+            Register::try_parse(argument).map_err(wrap_invalid_value(argument_name, argument))?
         {
             return Ok(Location::Register(register));
         };
@@ -272,36 +276,42 @@ impl<'a> ArgIter<'a> {
     }
 }
 
+impl<'a> TryParse<'a> for MemoryLocation<'a> {
+    fn try_parse(argument: &'a str) -> Result<Option<MemoryLocation<'a>>, error::Value> {
+        if let Some(address) = parse_integer(argument, false)? {
+            let address = integer::int_as_u16(address)?;
+            return Ok(Some(MemoryLocation::Address(address)));
+        };
+
+        if let Some(label) = Label::try_parse(argument)? {
+            return Ok(Some(MemoryLocation::Label(label)));
+        };
+
+        if let Some(offset) = parse_pc_offset(argument)? {
+            return Ok(Some(MemoryLocation::PCOffset(offset)));
+        };
+
+        Ok(None)
+    }
+}
+
 fn parse_memory_location<'a>(
     argument_name: &'static str,
     argument: &'a str,
 ) -> Result<MemoryLocation<'a>, error::Argument> {
-    // TODO(refactor): Create function to create `error::Argument::InvalidValue` from parts
-    if let Some(address) =
-        parse_integer(argument, false).map_err(wrap_invalid_value(argument_name, argument))?
-    {
-        let address =
-            integer::int_as_u16(address).map_err(wrap_invalid_value(argument_name, argument))?;
-        return Ok(MemoryLocation::Address(address));
-    };
-
-    if let Some(label) =
-        label::parse_label(argument).map_err(wrap_invalid_value(argument_name, argument))?
-    {
-        return Ok(MemoryLocation::Label(label));
-    };
-
-    if let Some(offset) =
-        parse_pc_offset(argument).map_err(wrap_invalid_value(argument_name, argument))?
-    {
-        return Ok(MemoryLocation::PCOffset(offset));
-    };
-
-    Err(error::Argument::InvalidValue {
-        argument_name,
-        string: argument.to_string(),
-        error: error::Value::MalformedValue {},
-    })
+    match MemoryLocation::try_parse(argument) {
+        Ok(Some(value)) => Ok(value),
+        Ok(None) => Err(error::Argument::InvalidValue {
+            argument_name,
+            string: argument.to_string(),
+            error: error::Value::MalformedValue {},
+        }),
+        Err(error) => Err(error::Argument::InvalidValue {
+            argument_name,
+            string: argument.to_string(),
+            error,
+        }),
+    }
 }
 
 fn parse_pc_offset(string: &str) -> Result<Option<i16>, error::Value> {
@@ -322,39 +332,41 @@ fn parse_pc_offset(string: &str) -> Result<Option<i16>, error::Value> {
     Ok(Some(offset))
 }
 
-fn parse_register(string: &str) -> Result<Option<Register>, error::Value> {
-    let mut chars = string.chars();
+impl<'a> TryParse<'a> for Register {
+    fn try_parse(string: &'a str) -> Result<Option<Self>, error::Value> {
+        let mut chars = string.chars();
 
-    match chars.next() {
-        Some('r' | 'R') => (),
-        _ => return Ok(None),
-    }
-
-    let Some(digit) = chars.next() else {
-        return Ok(None);
-    };
-    let register = match digit {
-        '0' => Register::R0,
-        '1' => Register::R1,
-        '2' => Register::R2,
-        '3' => Register::R3,
-        '4' => Register::R4,
-        '5' => Register::R5,
-        '6' => Register::R6,
-        '7' => Register::R7,
-        _ => return Ok(None),
-    };
-
-    if let Some(ch) = chars.next() {
-        // Possibly the start of a label
-        if label::can_contain(ch) {
-            return Ok(None);
-        } else {
-            return Err(error::Value::MalformedRegister {});
+        match chars.next() {
+            Some('r' | 'R') => (),
+            _ => return Ok(None),
         }
-    }
 
-    Ok(Some(register))
+        let Some(digit) = chars.next() else {
+            return Ok(None);
+        };
+        let register = match digit {
+            '0' => Register::R0,
+            '1' => Register::R1,
+            '2' => Register::R2,
+            '3' => Register::R3,
+            '4' => Register::R4,
+            '5' => Register::R5,
+            '6' => Register::R6,
+            '7' => Register::R7,
+            _ => return Ok(None),
+        };
+
+        if let Some(ch) = chars.next() {
+            // Possibly the start of a label
+            if label::can_contain(ch) {
+                return Ok(None);
+            } else {
+                return Err(error::Value::MalformedRegister {});
+            }
+        }
+
+        Ok(Some(register))
+    }
 }
 
 #[cfg(test)]
