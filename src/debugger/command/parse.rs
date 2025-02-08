@@ -1,132 +1,484 @@
-use std::fmt;
+use integer::parse_integer;
 
 use super::error;
 use super::{CommandName, Label, Location, MemoryLocation};
 use crate::symbol::Register;
 
+pub use naive::NaiveType;
+
 // TODO(doc): Update doc comments for parsing functions!!!
 
-// TODO(refactor): Move integer parsing to submodule
+// TODO(refactor): `.peek` -> `.next_if` where possible
 
-#[derive(Clone, Copy, Debug)]
-enum Sign {
-    Positive = 1,
-    Negative = -1,
+mod integer {
+    use super::{error, CharIter};
+
+    #[derive(Clone, Copy, Debug)]
+    enum Sign {
+        Positive = 1,
+        Negative = -1,
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    pub enum Radix {
+        Binary = 2,
+        Octal = 8,
+        Decimal = 10,
+        Hex = 16,
+    }
+
+    impl Radix {
+        /// Parse a single digit in a given radix.
+        pub fn parse_digit(&self, ch: char) -> Option<u8> {
+            Some(match self {
+                Self::Binary => match ch {
+                    '0' => 0,
+                    '1' => 1,
+                    _ => return None,
+                },
+                Self::Octal => match ch {
+                    '0'..='7' => ch as u8 - b'0',
+                    _ => return None,
+                },
+                Self::Decimal => match ch {
+                    '0'..='9' => ch as u8 - b'0',
+                    _ => return None,
+                },
+                Self::Hex => match ch {
+                    '0'..='9' => ch as u8 - b'0',
+                    'a'..='f' => ch as u8 - b'a' + 10,
+                    'A'..='F' => ch as u8 - b'A' + 10,
+                    _ => return None,
+                },
+            })
+        }
+    }
+
+    /// Try to convert an `i32` into `i16`.
+    pub fn int_as_i16(integer: i32) -> Result<i16, error::Value> {
+        integer
+            .try_into()
+            .map_err(|_| error::Value::IntegerTooLarge {
+                max: i16::MAX as u16,
+            })
+    }
+    /// Try to convert an `i32` into `u16`.
+    pub fn int_as_u16(integer: i32) -> Result<u16, error::Value> {
+        integer
+            .try_into()
+            .map_err(|_| error::Value::IntegerTooLarge { max: u16::MAX })
+    }
+    /// Try to convert an `i32` into `u16`. Cast negative values.
+    pub fn int_as_u16_cast(integer: i32) -> Result<u16, error::Value> {
+        if integer < 0 {
+            Ok(int_as_i16(integer)? as u16)
+        } else {
+            int_as_u16(integer)
+        }
+    }
+
+    /// Parse and consume the next integer argument.
+    ///
+    /// Extremely liberal in accepted syntax.
+    ///
+    /// Accepts:
+    ///  - Decimal (optional "#"), hex ("x"/"X"), octal ("o"/"O"), and binary ("b"/"B").
+    ///  - Optional single zero before non-decimal radix prefix. Eg. "0x4".
+    ///  - Leading zeros after prefix and sign. Eg. "0x0004", "#-03".
+    ///  - Sign character before xor after radix prefix. Eg. "-#2", "x+4".
+    ///
+    /// Returns `Ok(None)` (not an integer) for:
+    ///  - Empty token.
+    ///  - Non-decimal radix prefix, with no zero before it, and non-digits after it. Eg. "xLabel", "o".
+    ///
+    /// Returns `Err` (invalid integer and invalid token) for:
+    ///  - Invalid digits for the given radix.
+    ///  - Decimal radix prefix "#" with zeros before it. Eg. "0#2".
+    ///  - Decimal radix prefix "#" with no digits after it. Eg. "#".
+    ///  - Multiple sign characters (before or after prefix).
+    ///  - Missing sign character "-" or "+", if `require_sign == true`.
+    ///  - Multiple zeros before radix prefix. Eg. "00x4".
+    ///  - Absolute value out of bounds for `i32`. (Does *NOT* check if integer fits in specific bit size).
+    pub fn parse_integer(string: &str, require_sign: bool) -> Result<Option<i32>, error::Value> {
+        // Useful for parsing label/pc offset
+        if string.is_empty() {
+            return Ok(None);
+        }
+
+        let mut chars: CharIter = string.chars().peekable();
+
+        // Take sign BEFORE prefix
+        let first_sign = take_sign(&mut chars);
+
+        let prefix = match take_prefix(&mut chars)? {
+            PrefixResult::Integer(prefix) => prefix,
+            // Bypass normal parsing
+            // The string must be "0" so no concerns about trailing characters
+            PrefixResult::SingleZero => return Ok(Some(0)),
+
+            PrefixResult::NonInteger => {
+                // Sign was already given, so it must be an invalid token
+                if first_sign.is_some() {
+                    return Err(error::Value::MalformedInteger {});
+                }
+                return Ok(None);
+            }
+        };
+
+        // Take sign AFTER prefix
+        let second_sign = take_sign(&mut chars);
+
+        // Reconcile multiple sign characters
+        let sign = match (first_sign, second_sign) {
+            (Some(sign), None) => Some(sign),
+            (None, Some(sign)) => Some(sign),
+            (None, None) => {
+                if require_sign {
+                    return Err(error::Value::MalformedInteger {});
+                }
+                None
+            }
+            // Disallow multiple sign characters: "-x-...", "++...", etc
+            (Some(_), Some(_)) => return Err(error::Value::MalformedInteger {}),
+        };
+
+        // Check next character is digit
+        // Character must be checked against radix here to prevent valid non-integer tokens returning `Err`
+        if chars
+            .peek()
+            .is_none_or(|ch| prefix.radix.parse_digit(*ch).is_none())
+        {
+            // Sign, pre-prefix zeros, or non-alpha prefix ("#") were given, so it must be an invalid integer token
+            if sign.is_some() || prefix.leading_zeros || prefix.non_alpha {
+                return Err(error::Value::MalformedInteger {});
+            }
+            return Ok(None);
+        };
+
+        // Take digits until non-digit character
+        // Note that this loop handles post-prefix leading zeros like any other digit
+        let mut integer: i32 = 0;
+        for ch in chars.by_ref() {
+            // Invalid digit will always return `Err`
+            // Valid non-integer tokens should trigger early return before this loop
+            let Some(digit) = prefix.radix.parse_digit(ch) else {
+                return Err(error::Value::MalformedInteger {});
+            };
+
+            // Re-checked later on convert to smaller int types
+            if integer > i32::MAX / prefix.radix as i32 {
+                return Err(error::Value::IntegerTooLarge {
+                    max: i16::MAX as u16,
+                });
+            }
+
+            integer *= prefix.radix as i32;
+            integer += digit as i32;
+        }
+
+        assert!(
+            chars.next().is_none(),
+            "should have looped until end of argument, or early-returned `Err`",
+        );
+
+        // TODO(fix): I think there is an edge case here for overflow
+        if let Some(sign) = sign {
+            integer *= sign as i32;
+        }
+
+        Ok(Some(integer))
+    }
+
+    fn take_sign(chars: &mut CharIter) -> Option<Sign> {
+        let sign = match chars.peek() {
+            Some('+') => Sign::Positive,
+            Some('-') => Sign::Negative,
+            _ => return None,
+        };
+        chars.next();
+        Some(sign)
+    }
+
+    /// Helper struct for retaining syntax information when parsing integer prefix.
+    struct Prefix {
+        /// Radix corresponding to prefix character.
+        radix: Radix,
+        /// Whether prefix character is preceeded by zeros.
+        leading_zeros: bool,
+        /// Whether prefix character is a symbol (i.e. "#").
+        non_alpha: bool,
+    }
+
+    /// Helper struct similar to `Option<Prefix>` but also handles "0" case.
+    enum PrefixResult {
+        /// Normal integer with (explicit or implicit) prefix.
+        Integer(Prefix),
+        /// Special case to handle "0".
+        SingleZero,
+        /// This token is not an integer, but not necessary invalid (yet).
+        NonInteger,
+    }
+
+    fn take_prefix(chars: &mut CharIter) -> Result<PrefixResult, error::Value> {
+        // Only take ONE leading zero here
+        // Disallow "00x..." etc.
+        let leading_zeros = match chars.peek() {
+            Some('0') => {
+                chars.next();
+                true
+            }
+            _ => false,
+        };
+
+        // Take optional prefix
+        let mut consume_char = true;
+        let (radix, non_alpha) = match chars.peek() {
+            Some('b' | 'B') => (Radix::Binary, false),
+            Some('o' | 'O') => (Radix::Octal, false),
+            Some('x' | 'X') => (Radix::Hex, false),
+
+            Some('#') => {
+                // Disallow "0#..."
+                if leading_zeros {
+                    return Err(error::Value::MalformedInteger {});
+                }
+                (Radix::Decimal, true)
+            }
+
+            // No prefix
+            Some('0'..='9') => {
+                consume_char = false; // Leave initial digit, to be parsed by caller
+                (Radix::Decimal, false)
+            }
+
+            // Disallow "0-..." and "0+..."
+            // Disallow "--...", "-+...", etc
+            // Any legal pre-prefix sign character would have already been consumed
+            Some('-' | '+') => {
+                return Err(error::Value::MalformedInteger {});
+            }
+
+            // Special case for "0"
+            // Only a single "leading" zero (no sign or prefix)
+            None if leading_zeros => {
+                return Ok(PrefixResult::SingleZero);
+            }
+
+            _ => {
+                return Ok(PrefixResult::NonInteger);
+            }
+        };
+
+        if consume_char {
+            chars.next();
+        }
+
+        Ok(PrefixResult::Integer(Prefix {
+            radix,
+            leading_zeros,
+            non_alpha,
+        }))
+    }
 }
 
-#[derive(Clone, Copy, Debug)]
-enum Radix {
-    Binary = 2,
-    Octal = 8,
-    Decimal = 10,
-    Hex = 16,
-}
+mod name {
+    use super::{super::error, ArgIter, CommandName};
 
-impl Radix {
-    /// Parse a single digit in a given radix.
-    pub fn parse_digit(&self, ch: char) -> Option<u8> {
-        Some(match self {
-            Self::Binary => match ch {
-                '0' => 0,
-                '1' => 1,
-                _ => return None,
-            },
-            Self::Octal => match ch {
-                '0'..='7' => ch as u8 - b'0',
-                _ => return None,
-            },
-            Self::Decimal => match ch {
-                '0'..='9' => ch as u8 - b'0',
-                _ => return None,
-            },
-            Self::Hex => match ch {
-                '0'..='9' => ch as u8 - b'0',
-                'a'..='f' => ch as u8 - b'a' + 10,
-                'A'..='F' => ch as u8 - b'A' + 10,
-                _ => return None,
-            },
+    // TODO(feat): Add more aliases (such as undocumented typo aliases)
+    #[rustfmt::skip]
+    const COMMANDS: CommandNameList = &[
+        (CommandName::Help,        &["help", "--help", "h", "-h"]),
+        (CommandName::Continue,    &["continue", "cont", "c"]), // or 'proceed'
+        (CommandName::Finish,      &["finish", "fin", "f"]),
+        (CommandName::Exit,        &["exit"]),
+        (CommandName::Quit,        &["quit", "q"]),
+        (CommandName::Registers,   &["registers", "reg", "r"]),
+        (CommandName::Reset,       &["reset"]),
+        (CommandName::Step,        &["progress", "p"]), // or 'advance'
+        (CommandName::Next,        &["next", "n"]),
+        (CommandName::Get,         &["get", "g"]),
+        (CommandName::Set,         &["set", "s"]),
+        (CommandName::Jump,        &["jump", "j"]),
+        (CommandName::Source,      &["assembly", "asm", "a"]), // or 'source'
+        (CommandName::Eval,        &["eval", "e"]),
+        (CommandName::BreakList,   &["breaklist", "bl"]),
+        (CommandName::BreakAdd,    &["breakadd", "ba"]),
+        (CommandName::BreakRemove, &["breakremove", "br"]),
+    ];
+    const BREAK_COMMAND: CandidateList = &["break", "b"];
+    #[rustfmt::skip]
+    const BREAK_SUBCOMMANDS: CommandNameList = &[
+        (CommandName::BreakList,   &["list", "l"]),
+        (CommandName::BreakAdd,    &["add", "a"]),
+        (CommandName::BreakRemove, &["remove", "r"]),
+    ];
+
+    /// A [`CommandName`] with a list of name candidates.
+    type CommandNameList<'a> = &'a [(CommandName, CandidateList<'a>)];
+    /// List of single-word aliases for a command or subcommand.
+    type CandidateList<'a> = &'a [&'a str];
+
+    /// Returns the first [`CommandName`], which has a corresponding candidate which matches `name`
+    /// (case insensitive).
+    ///
+    /// Returns `None` if no match was found.
+    fn find_name_match(name: &str, commands: CommandNameList) -> Option<CommandName> {
+        for (command, candidates) in commands {
+            if name_matches(name, candidates) {
+                return Some(*command);
+            }
+        }
+        None
+    }
+
+    /// Returns `true` if `name` matchs any item of `candidates` (case insensitive).
+    fn name_matches(name: &str, candidates: CandidateList) -> bool {
+        for candidate in candidates {
+            if name.eq_ignore_ascii_case(candidate) {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn parse_command_name(args: &mut ArgIter) -> Result<CommandName, error::Command> {
+        let command_name = args.next_str();
+        // Command source should always return a string containing non-whitespace
+        // characters, so initial command name should always exist.
+        debug_assert!(command_name.is_some(), "missing command name");
+        let command_name = command_name.unwrap_or("");
+
+        if let Some(command) = find_name_match(command_name, COMMANDS) {
+            return Ok(command);
+        };
+
+        // This could be written a bit nicer. But it doesn't seem necessary.
+        if name_matches(command_name, BREAK_COMMAND) {
+            // Normalize name and get as `'static`
+            // Only used for errors
+            let command_name = BREAK_COMMAND[0]; // Array must be non-empty if this branch is being ran
+
+            let Some(subcommand_name) = args.next_str() else {
+                return Err(error::Command::MissingSubcommand { command_name });
+            };
+            let Some(command) = find_name_match(subcommand_name, BREAK_SUBCOMMANDS) else {
+                return Err(error::Command::InvalidSubcommand {
+                    command_name,
+                    subcommand_name: subcommand_name.to_string(),
+                });
+            };
+            return Ok(command);
+        }
+
+        Err(error::Command::InvalidCommand {
+            command_name: command_name.to_string(),
         })
     }
 }
 
-/// Try to convert an `i32` into `i16`.
-fn int_as_i16(integer: i32) -> Result<i16, error::Value> {
-    integer
-        .try_into()
-        .map_err(|_| error::Value::IntegerTooLarge {
-            max: i16::MAX as u16,
-        })
-}
-/// Try to convert an `i32` into `u16`.
-fn int_as_u16(integer: i32) -> Result<u16, error::Value> {
-    integer
-        .try_into()
-        .map_err(|_| error::Value::IntegerTooLarge { max: u16::MAX })
-}
-/// Try to convert an `i32` into `u16`. Cast negative values.
-fn int_as_u16_cast(integer: i32) -> Result<u16, error::Value> {
-    if integer < 0 {
-        Ok(int_as_i16(integer)? as u16)
-    } else {
-        int_as_u16(integer)
+mod naive {
+    use std::fmt;
+
+    use super::{integer::Radix, label_can_contain, label_can_start_with};
+
+    #[derive(Debug, PartialEq)]
+    pub enum NaiveType {
+        Integer,
+        Register,
+        Label,
+        PCOffset,
     }
-}
 
-// TODO(feat): Add more aliases (such as undocumented typo aliases)
-#[rustfmt::skip]
-const COMMANDS: CommandNameList = &[
-    (CommandName::Help,        &["help", "--help", "h", "-h"]),
-    (CommandName::Continue,    &["continue", "cont", "c"]), // or 'proceed'
-    (CommandName::Finish,      &["finish", "fin", "f"]),
-    (CommandName::Exit,        &["exit"]),
-    (CommandName::Quit,        &["quit", "q"]),
-    (CommandName::Registers,   &["registers", "reg", "r"]),
-    (CommandName::Reset,       &["reset"]),
-    (CommandName::Step,        &["progress", "p"]), // or 'advance'
-    (CommandName::Next,        &["next", "n"]),
-    (CommandName::Get,         &["get", "g"]),
-    (CommandName::Set,         &["set", "s"]),
-    (CommandName::Jump,        &["jump", "j"]),
-    (CommandName::Source,      &["assembly", "asm", "a"]), // or 'source'
-    (CommandName::Eval,        &["eval", "e"]),
-    (CommandName::BreakList,   &["breaklist", "bl"]),
-    (CommandName::BreakAdd,    &["breakadd", "ba"]),
-    (CommandName::BreakRemove, &["breakremove", "br"]),
-];
-const BREAK_COMMAND: CandidateList = &["break", "b"];
-#[rustfmt::skip]
-const BREAK_SUBCOMMANDS: CommandNameList = &[
-    (CommandName::BreakList,   &["list", "l"]),
-    (CommandName::BreakAdd,    &["add", "a"]),
-    (CommandName::BreakRemove, &["remove", "r"]),
-];
+    impl NaiveType {
+        pub fn as_str(&self) -> &'static str {
+            match self {
+                NaiveType::Integer => "integer",
+                NaiveType::Register => "register",
+                NaiveType::Label => "label",
+                NaiveType::PCOffset => "PC offset",
+            }
+        }
 
-/// A [`CommandName`] with a list of name candidates.
-type CommandNameList<'a> = &'a [(CommandName, CandidateList<'a>)];
-/// List of single-word aliases for a command or subcommand.
-type CandidateList<'a> = &'a [&'a str];
+        /// If string does not start with `[-+#0-9]`, then all characters need to be checked, to ensure
+        /// labels starting with `[bBoOxX]` don't get classified as integers.
+        ///
+        /// - `^[-+#0-9]`
+        /// - or `^[bB][-+]?[01]+$`
+        /// - or `^[oO][-+]?[0-7]+$`
+        /// - or `^[xX][-+]?[0-9a-fA-F]+$`
+        fn is_str_integer(string: &str) -> bool {
+            let mut chars = string.chars().peekable();
+            if chars
+                .peek()
+                .is_some_and(|ch| matches!(ch, '-' | '+' | '#' | '0'..='9'))
+            {
+                return true;
+            }
+            let radix = match chars.next() {
+                Some('b' | 'B') => Radix::Binary,
+                Some('o' | 'O') => Radix::Octal,
+                Some('x' | 'X') => Radix::Hex,
+                _ => return false,
+            };
+            if matches!(chars.peek(), Some('-' | '+')) {
+                chars.next();
+            }
+            if chars.peek().is_none() {
+                return false;
+            }
+            for ch in chars {
+                if radix.parse_digit(ch).is_none() {
+                    return false;
+                }
+            }
+            true
+        }
 
-/// Returns the first [`CommandName`], which has a corresponding candidate which matches `name`
-/// (case insensitive).
-///
-/// Returns `None` if no match was found.
-fn find_name_match(name: &str, commands: CommandNameList) -> Option<CommandName> {
-    for (command, candidates) in commands {
-        if name_matches(name, candidates) {
-            return Some(*command);
+        /// - `^[rR][0-7]$`
+        fn is_str_register(string: &str) -> bool {
+            let mut chars = string.chars();
+            chars.next().is_some_and(|ch| matches!(ch, 'r' | 'R'))
+                && chars.next().is_some_and(|ch| matches!(ch, '0'..='7'))
+                && !chars.next().is_some_and(label_can_contain)
+        }
+
+        /// - `^[a-zA-Z_]
+        fn is_str_label(string: &str) -> bool {
+            string.chars().next().is_some_and(label_can_start_with)
+        }
+
+        /// - `^\^`
+        fn is_str_pc_offset(string: &str) -> bool {
+            string.chars().next().is_some_and(|ch| ch == '^')
         }
     }
-    None
-}
 
-/// Returns `true` if `name` matchs any item of `candidates` (case insensitive).
-fn name_matches(name: &str, candidates: CandidateList) -> bool {
-    for candidate in candidates {
-        if name.eq_ignore_ascii_case(candidate) {
-            return true;
+    impl fmt::Display for NaiveType {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{}", self.as_str())
         }
     }
-    false
+
+    impl TryFrom<&str> for NaiveType {
+        type Error = ();
+
+        fn try_from(string: &str) -> Result<Self, Self::Error> {
+            // Ordered by approximate function speed
+            if Self::is_str_pc_offset(string) {
+                return Ok(Self::PCOffset);
+            }
+            if Self::is_str_register(string) {
+                return Ok(Self::Register);
+            }
+            if Self::is_str_integer(string) {
+                return Ok(Self::Integer);
+            }
+            if Self::is_str_label(string) {
+                return Ok(Self::Label);
+            }
+            Err(())
+        }
+    }
 }
 
 pub struct ArgIter<'a> {
@@ -238,37 +590,7 @@ impl<'a> ArgIter<'a> {
     ///
     /// Assumes line is non-empty.
     pub fn get_command_name(&mut self) -> Result<CommandName, error::Command> {
-        let command_name = self.next_str();
-        // Command source should always return a string containing non-whitespace
-        // characters, so initial command name should always exist.
-        debug_assert!(command_name.is_some(), "missing command name");
-        let command_name = command_name.unwrap_or("");
-
-        if let Some(command) = find_name_match(command_name, COMMANDS) {
-            return Ok(command);
-        };
-
-        // This could be written a bit nicer. But it doesn't seem necessary.
-        if name_matches(command_name, BREAK_COMMAND) {
-            // Normalize name and get as `'static`
-            // Only used for errors
-            let command_name = BREAK_COMMAND[0]; // Array must be non-empty if this branch is being ran
-
-            let Some(subcommand_name) = self.next_str() else {
-                return Err(error::Command::MissingSubcommand { command_name });
-            };
-            let Some(command) = find_name_match(subcommand_name, BREAK_SUBCOMMANDS) else {
-                return Err(error::Command::InvalidSubcommand {
-                    command_name,
-                    subcommand_name: subcommand_name.to_string(),
-                });
-            };
-            return Ok(command);
-        }
-
-        Err(error::Command::InvalidCommand {
-            command_name: command_name.to_string(),
-        })
+        name::parse_command_name(self)
     }
 
     /// Parse and consume next integer argument. Use default result value if argument is `None`.
@@ -291,8 +613,8 @@ impl<'a> ArgIter<'a> {
             parse_integer(argument, false).map_err(wrap_invalid_value(argument_name, argument))?;
 
         if let Some(integer) = integer {
-            let integer =
-                int_as_u16_cast(integer).map_err(wrap_invalid_value(argument_name, argument))?;
+            let integer = integer::int_as_u16_cast(integer)
+                .map_err(wrap_invalid_value(argument_name, argument))?;
             return Ok(integer);
         };
 
@@ -413,105 +735,6 @@ impl<'a> ArgIter<'a> {
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub enum NaiveType {
-    Integer,
-    Register,
-    Label,
-    PCOffset,
-}
-
-impl NaiveType {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            NaiveType::Integer => "integer",
-            NaiveType::Register => "register",
-            NaiveType::Label => "label",
-            NaiveType::PCOffset => "PC offset",
-        }
-    }
-
-    /// If string does not start with `[-+#0-9]`, then all characters need to be checked, to ensure
-    /// labels starting with `[bBoOxX]` don't get classified as integers.
-    ///
-    /// - `^[-+#0-9]`
-    /// - or `^[bB][-+]?[01]+$`
-    /// - or `^[oO][-+]?[0-7]+$`
-    /// - or `^[xX][-+]?[0-9a-fA-F]+$`
-    fn is_str_integer(string: &str) -> bool {
-        let mut chars = string.chars().peekable();
-        if chars
-            .peek()
-            .is_some_and(|ch| matches!(ch, '-' | '+' | '#' | '0'..='9'))
-        {
-            return true;
-        }
-        let radix = match chars.next() {
-            Some('b' | 'B') => Radix::Binary,
-            Some('o' | 'O') => Radix::Octal,
-            Some('x' | 'X') => Radix::Hex,
-            _ => return false,
-        };
-        if matches!(chars.peek(), Some('-' | '+')) {
-            chars.next();
-        }
-        if chars.peek().is_none() {
-            return false;
-        }
-        for ch in chars {
-            if radix.parse_digit(ch).is_none() {
-                return false;
-            }
-        }
-        true
-    }
-
-    /// - `^[rR][0-7]$`
-    fn is_str_register(string: &str) -> bool {
-        let mut chars = string.chars();
-        chars.next().is_some_and(|ch| matches!(ch, 'r' | 'R'))
-            && chars.next().is_some_and(|ch| matches!(ch, '0'..='7'))
-            && !chars.next().is_some_and(label_can_contain)
-    }
-
-    /// - `^[a-zA-Z_]
-    fn is_str_label(string: &str) -> bool {
-        string.chars().next().is_some_and(label_can_start_with)
-    }
-
-    /// - `^\^`
-    fn is_str_pc_offset(string: &str) -> bool {
-        string.chars().next().is_some_and(|ch| ch == '^')
-    }
-}
-
-impl fmt::Display for NaiveType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.as_str())
-    }
-}
-
-impl TryFrom<&str> for NaiveType {
-    type Error = ();
-
-    fn try_from(string: &str) -> Result<Self, Self::Error> {
-        // Ordered by approximate function speed
-        if Self::is_str_pc_offset(string) {
-            return Ok(Self::PCOffset);
-        }
-        if Self::is_str_register(string) {
-            return Ok(Self::Register);
-        }
-        if Self::is_str_integer(string) {
-            return Ok(Self::Integer);
-        }
-        if Self::is_str_label(string) {
-            return Ok(Self::Label);
-        }
-        Err(())
-    }
-}
-
 fn wrap_invalid_value<'a>(
     argument_name: &'static str,
     argument: &'a str,
@@ -531,7 +754,8 @@ fn parse_memory_location<'a>(
     if let Some(address) =
         parse_integer(argument, false).map_err(wrap_invalid_value(argument_name, argument))?
     {
-        let address = int_as_u16(address).map_err(wrap_invalid_value(argument_name, argument))?;
+        let address =
+            integer::int_as_u16(address).map_err(wrap_invalid_value(argument_name, argument))?;
         return Ok(MemoryLocation::Address(address));
     };
 
@@ -612,7 +836,7 @@ fn parse_label(string: &str) -> Result<Option<Label>, error::Value> {
         0
     } else {
         match parse_integer(offset_str, true)? {
-            Some(offset) => int_as_i16(offset)?,
+            Some(offset) => integer::int_as_i16(offset)?,
             None => return Err(error::Value::MalformedLabel {}),
         }
     };
@@ -630,7 +854,7 @@ fn parse_pc_offset(string: &str) -> Result<Option<i16>, error::Value> {
         0
     } else {
         match parse_integer(offset_str, true)? {
-            Some(offset) => int_as_i16(offset)?,
+            Some(offset) => integer::int_as_i16(offset)?,
             None => return Err(error::Value::MalformedInteger {}),
         }
     };
@@ -671,211 +895,6 @@ fn parse_register(string: &str) -> Result<Option<Register>, error::Value> {
     }
 
     Ok(Some(register))
-}
-
-// TODO(refactor): `.peek` -> `.next_if` where possible
-
-/// Parse and consume the next integer argument.
-///
-/// Extremely liberal in accepted syntax.
-///
-/// Accepts:
-///  - Decimal (optional "#"), hex ("x"/"X"), octal ("o"/"O"), and binary ("b"/"B").
-///  - Optional single zero before non-decimal radix prefix. Eg. "0x4".
-///  - Leading zeros after prefix and sign. Eg. "0x0004", "#-03".
-///  - Sign character before xor after radix prefix. Eg. "-#2", "x+4".
-///
-/// Returns `Ok(None)` (not an integer) for:
-///  - Empty token.
-///  - Non-decimal radix prefix, with no zero before it, and non-digits after it. Eg. "xLabel", "o".
-///
-/// Returns `Err` (invalid integer and invalid token) for:
-///  - Invalid digits for the given radix.
-///  - Decimal radix prefix "#" with zeros before it. Eg. "0#2".
-///  - Decimal radix prefix "#" with no digits after it. Eg. "#".
-///  - Multiple sign characters (before or after prefix).
-///  - Missing sign character "-" or "+", if `require_sign == true`.
-///  - Multiple zeros before radix prefix. Eg. "00x4".
-///  - Absolute value out of bounds for `i32`. (Does *NOT* check if integer fits in specific bit size).
-fn parse_integer(string: &str, require_sign: bool) -> Result<Option<i32>, error::Value> {
-    // Useful for parsing label/pc offset
-    if string.is_empty() {
-        return Ok(None);
-    }
-
-    let mut chars: CharIter = string.chars().peekable();
-
-    // Take sign BEFORE prefix
-    let first_sign = take_sign(&mut chars);
-
-    let prefix = match take_prefix(&mut chars)? {
-        PrefixResult::Integer(prefix) => prefix,
-        // Bypass normal parsing
-        // The string must be "0" so no concerns about trailing characters
-        PrefixResult::SingleZero => return Ok(Some(0)),
-
-        PrefixResult::NonInteger => {
-            // Sign was already given, so it must be an invalid token
-            if first_sign.is_some() {
-                return Err(error::Value::MalformedInteger {});
-            }
-            return Ok(None);
-        }
-    };
-
-    // Take sign AFTER prefix
-    let second_sign = take_sign(&mut chars);
-
-    // Reconcile multiple sign characters
-    let sign = match (first_sign, second_sign) {
-        (Some(sign), None) => Some(sign),
-        (None, Some(sign)) => Some(sign),
-        (None, None) => {
-            if require_sign {
-                return Err(error::Value::MalformedInteger {});
-            }
-            None
-        }
-        // Disallow multiple sign characters: "-x-...", "++...", etc
-        (Some(_), Some(_)) => return Err(error::Value::MalformedInteger {}),
-    };
-
-    // Check next character is digit
-    // Character must be checked against radix here to prevent valid non-integer tokens returning `Err`
-    if chars
-        .peek()
-        .is_none_or(|ch| prefix.radix.parse_digit(*ch).is_none())
-    {
-        // Sign, pre-prefix zeros, or non-alpha prefix ("#") were given, so it must be an invalid integer token
-        if sign.is_some() || prefix.leading_zeros || prefix.non_alpha {
-            return Err(error::Value::MalformedInteger {});
-        }
-        return Ok(None);
-    };
-
-    // Take digits until non-digit character
-    // Note that this loop handles post-prefix leading zeros like any other digit
-    let mut integer: i32 = 0;
-    for ch in chars.by_ref() {
-        // Invalid digit will always return `Err`
-        // Valid non-integer tokens should trigger early return before this loop
-        let Some(digit) = prefix.radix.parse_digit(ch) else {
-            return Err(error::Value::MalformedInteger {});
-        };
-
-        // Re-checked later on convert to smaller int types
-        if integer > i32::MAX / prefix.radix as i32 {
-            return Err(error::Value::IntegerTooLarge {
-                max: i16::MAX as u16,
-            });
-        }
-
-        integer *= prefix.radix as i32;
-        integer += digit as i32;
-    }
-
-    assert!(
-        chars.next().is_none(),
-        "should have looped until end of argument, or early-returned `Err`",
-    );
-
-    // TODO(fix): I think there is an edge case here for overflow
-    if let Some(sign) = sign {
-        integer *= sign as i32;
-    }
-
-    Ok(Some(integer))
-}
-
-fn take_sign(chars: &mut CharIter) -> Option<Sign> {
-    let sign = match chars.peek() {
-        Some('+') => Sign::Positive,
-        Some('-') => Sign::Negative,
-        _ => return None,
-    };
-    chars.next();
-    Some(sign)
-}
-
-/// Helper struct for retaining syntax information when parsing integer prefix.
-struct Prefix {
-    /// Radix corresponding to prefix character.
-    radix: Radix,
-    /// Whether prefix character is preceeded by zeros.
-    leading_zeros: bool,
-    /// Whether prefix character is a symbol (i.e. "#").
-    non_alpha: bool,
-}
-
-/// Helper struct similar to `Option<Prefix>` but also handles "0" case.
-enum PrefixResult {
-    /// Normal integer with (explicit or implicit) prefix.
-    Integer(Prefix),
-    /// Special case to handle "0".
-    SingleZero,
-    /// This token is not an integer, but not necessary invalid (yet).
-    NonInteger,
-}
-
-fn take_prefix(chars: &mut CharIter) -> Result<PrefixResult, error::Value> {
-    // Only take ONE leading zero here
-    // Disallow "00x..." etc.
-    let leading_zeros = match chars.peek() {
-        Some('0') => {
-            chars.next();
-            true
-        }
-        _ => false,
-    };
-
-    // Take optional prefix
-    let mut consume_char = true;
-    let (radix, non_alpha) = match chars.peek() {
-        Some('b' | 'B') => (Radix::Binary, false),
-        Some('o' | 'O') => (Radix::Octal, false),
-        Some('x' | 'X') => (Radix::Hex, false),
-
-        Some('#') => {
-            // Disallow "0#..."
-            if leading_zeros {
-                return Err(error::Value::MalformedInteger {});
-            }
-            (Radix::Decimal, true)
-        }
-
-        // No prefix
-        Some('0'..='9') => {
-            consume_char = false; // Leave initial digit, to be parsed by caller
-            (Radix::Decimal, false)
-        }
-
-        // Disallow "0-..." and "0+..."
-        // Disallow "--...", "-+...", etc
-        // Any legal pre-prefix sign character would have already been consumed
-        Some('-' | '+') => {
-            return Err(error::Value::MalformedInteger {});
-        }
-
-        // Special case for "0"
-        // Only a single "leading" zero (no sign or prefix)
-        None if leading_zeros => {
-            return Ok(PrefixResult::SingleZero);
-        }
-
-        _ => {
-            return Ok(PrefixResult::NonInteger);
-        }
-    };
-
-    if consume_char {
-        chars.next();
-    }
-
-    Ok(PrefixResult::Integer(Prefix {
-        radix,
-        leading_zeros,
-        non_alpha,
-    }))
 }
 
 #[cfg(test)]
