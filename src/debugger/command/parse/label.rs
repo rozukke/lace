@@ -1,4 +1,4 @@
-use super::{error, integer::Integer, Label, TryParse};
+use super::{error, integer::Integer, CharIter, Label, TryParse};
 
 /// Returns `true` if the given character can appear at the start of a label.
 pub fn can_start_with(ch: char) -> bool {
@@ -9,8 +9,6 @@ pub fn can_contain(ch: char) -> bool {
     matches!(ch, 'a'..='z' | 'A'..='Z' | '0'..='9' | '_')
 }
 
-type CharIter<'a> = std::iter::Peekable<std::str::Chars<'a>>;
-
 /// Track byte length of consumed characters.
 struct ByteCounted<'a> {
     inner: CharIter<'a>,
@@ -19,7 +17,6 @@ struct ByteCounted<'a> {
 
 impl Iterator for ByteCounted<'_> {
     type Item = char;
-
     fn next(&mut self) -> Option<Self::Item> {
         let ch = self.inner.next()?;
         self.len += ch.len_utf8();
@@ -56,7 +53,7 @@ impl<'a> TryParse<'a> for Label<'a> {
         let (name, offset_str) = string.split_at(length);
 
         let offset = if offset_str.is_empty() {
-            0
+            0 // Avoid triggering error when "" doesn't parse as an integer
         } else {
             match Integer::try_parse_signed(offset_str)? {
                 Some(offset) => offset.as_i16()?,
