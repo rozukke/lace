@@ -73,6 +73,13 @@ macro_rules! check_naive_type {
 }
 
 impl<'a> Arguments<'a> {
+    /// Amount of arguments requested (successfully or not).
+    ///
+    /// Does not include [`CommandName`] argument(s).
+    pub fn arg_count(&self) -> u8 {
+        self.arg_count
+    }
+
     // Do not `impl Iterator`. This method should be private
     /// Get next argument string, incrementing `arg_count`.
     ///
@@ -132,13 +139,6 @@ impl<'a> Arguments<'a> {
         self.buffer[start..].trim()
     }
 
-    /// Amount of arguments requested (successfully or not).
-    ///
-    /// Does not include [`CommandName`] argument(s).
-    pub fn arg_count(&self) -> u8 {
-        self.arg_count
-    }
-
     /// Returns an error if the command contains any arguments which haven't been consumed.
     pub fn expect_end(&mut self, expected: u8, actual: u8) -> Result<(), error::Argument> {
         if self.next_str().is_none() {
@@ -151,8 +151,37 @@ impl<'a> Arguments<'a> {
         }
     }
 
+    /// Parse and consume next integer argument.
+    pub fn next_integer(
+        &mut self,
+        argument_name: &'static str,
+        expected_count: u8,
+    ) -> Result<u16, error::Argument> {
+        let actual_count = self.arg_count();
+        self.next_integer_or(
+            argument_name,
+            Err(error::Argument::MissingArgument {
+                argument_name,
+                expected_count,
+                actual_count,
+            }),
+        )
+    }
+
+    /// Parse and consume next positive integer argument, defaulting to `1`.
+    ///
+    /// Non-positive values will also be converted to `1`.
+    pub fn next_positive_integer_or_default(
+        &mut self,
+        argument_name: &'static str,
+    ) -> Result<u16, error::Argument> {
+        self.next_integer_or(argument_name, Ok(1))
+            .map(|value| value.max(1)) // 0 -> 1
+    }
+
     /// Parse and consume next integer argument. Use default result value if argument is `None`.
-    fn next_integer_inner(
+    // Do not change `default` param to a function unless lazy evaluation is ACTUALLY desirable
+    fn next_integer_or(
         &mut self,
         argument_name: &'static str,
         default: Result<u16, error::Argument>,
@@ -180,34 +209,6 @@ impl<'a> Arguments<'a> {
         Err(error::Argument::invalid_value(argument_name, argument)(
             error::Value::MalformedValue {},
         ))
-    }
-
-    /// Parse and consume next integer argument.
-    pub fn next_integer(
-        &mut self,
-        argument_name: &'static str,
-        expected_count: u8,
-    ) -> Result<u16, error::Argument> {
-        let actual_count = self.arg_count();
-        self.next_integer_inner(
-            argument_name,
-            Err(error::Argument::MissingArgument {
-                argument_name,
-                expected_count,
-                actual_count,
-            }),
-        )
-    }
-
-    /// Parse and consume next positive integer argument, defaulting to `1`.
-    ///
-    /// Non-positive values will also be converted to `1`.
-    pub fn next_positive_integer_or_default(
-        &mut self,
-        argument_name: &'static str,
-    ) -> Result<u16, error::Argument> {
-        self.next_integer_inner(argument_name, Ok(1))
-            .map(|value| value.max(1)) // 0 -> 1
     }
 
     /// Parse and consume next [`Location`] argument: a register or [`MemoryLocation`].
@@ -242,8 +243,35 @@ impl<'a> Arguments<'a> {
             .map(Location::Memory)
     }
 
+    /// Parse and consume next [`MemoryLocation`] argument.
+    pub fn next_memory_location(
+        &mut self,
+        argument_name: &'static str,
+        expected_count: u8,
+    ) -> Result<MemoryLocation<'a>, error::Argument> {
+        let actual_count = self.arg_count();
+        self.next_memory_location_or(
+            argument_name,
+            Err(error::Argument::MissingArgument {
+                argument_name,
+                expected_count,
+                actual_count,
+            }),
+        )
+    }
+
+    /// Parse and consume next [`MemoryLocation`] argument, defaulting to program counter.
+    /// ([`MemoryLocation::PCOffset`]).
+    pub fn next_memory_location_or_default(
+        &mut self,
+        argument_name: &'static str,
+    ) -> Result<MemoryLocation<'a>, error::Argument> {
+        self.next_memory_location_or(argument_name, Ok(MemoryLocation::PCOffset(0)))
+    }
+
     /// Parse and consume next [`MemoryLocation`] argument. Use default result value if argument is `None`.
-    fn next_memory_location_inner(
+    // Do not change `default` param to a function unless lazy evaluation is ACTUALLY desirable
+    fn next_memory_location_or(
         &mut self,
         argument_name: &'static str,
         default: Result<MemoryLocation<'a>, error::Argument>,
@@ -262,32 +290,6 @@ impl<'a> Arguments<'a> {
             // `Ok(None)` -> `Err(...)`
             .and_then(|opt| opt.ok_or(error::Value::MalformedValue {}))
             .map_err(error::Argument::invalid_value(argument_name, argument))
-    }
-
-    /// Parse and consume next [`MemoryLocation`] argument.
-    pub fn next_memory_location(
-        &mut self,
-        argument_name: &'static str,
-        expected_count: u8,
-    ) -> Result<MemoryLocation<'a>, error::Argument> {
-        let actual_count = self.arg_count();
-        self.next_memory_location_inner(
-            argument_name,
-            Err(error::Argument::MissingArgument {
-                argument_name,
-                expected_count,
-                actual_count,
-            }),
-        )
-    }
-
-    /// Parse and consume next [`MemoryLocation`] argument, defaulting to program counter.
-    /// ([`MemoryLocation::PCOffset`]).
-    pub fn next_memory_location_or_default(
-        &mut self,
-        argument_name: &'static str,
-    ) -> Result<MemoryLocation<'a>, error::Argument> {
-        self.next_memory_location_inner(argument_name, Ok(MemoryLocation::PCOffset(0)))
     }
 }
 
