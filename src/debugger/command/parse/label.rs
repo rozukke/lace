@@ -9,34 +9,8 @@ pub fn can_contain(ch: char) -> bool {
     matches!(ch, 'a'..='z' | 'A'..='Z' | '0'..='9' | '_')
 }
 
-/// Track byte length of consumed characters.
-struct ByteCounted<'a> {
-    inner: CharIter<'a>,
-    len: usize,
-}
-
-impl Iterator for ByteCounted<'_> {
-    type Item = char;
-    fn next(&mut self) -> Option<Self::Item> {
-        let ch = self.inner.next()?;
-        self.len += ch.len_utf8();
-        Some(ch)
-    }
-}
-
-impl<'a> ByteCounted<'a> {
-    pub fn from(inner: CharIter<'a>) -> Self {
-        Self { inner, len: 0 }
-    }
-    pub fn len(&self) -> usize {
-        self.len
-    }
-    pub fn peek(&mut self) -> Option<&char> {
-        self.inner.peek()
-    }
-}
-
 impl<'a> TryParse<'a> for Label<'a> {
+    /// Parse argument string as a [`Label`].
     fn try_parse(string: &'a str) -> Result<Option<Self>, error::Value> {
         let mut chars = ByteCounted::from(string.chars().peekable());
 
@@ -62,5 +36,32 @@ impl<'a> TryParse<'a> for Label<'a> {
         };
 
         Ok(Some(Label { name, offset }))
+    }
+}
+
+/// Track byte length of consumed characters.
+struct ByteCounted<'a> {
+    inner: CharIter<'a>,
+    len: usize,
+}
+
+impl Iterator for ByteCounted<'_> {
+    type Item = char;
+    fn next(&mut self) -> Option<Self::Item> {
+        let ch = self.inner.next()?;
+        self.len += ch.len_utf8();
+        Some(ch)
+    }
+}
+
+impl<'a> ByteCounted<'a> {
+    pub fn from(inner: CharIter<'a>) -> Self {
+        Self { inner, len: 0 }
+    }
+    pub fn len(&self) -> usize {
+        self.len
+    }
+    pub fn peek(&mut self) -> Option<&char> {
+        self.inner.peek()
     }
 }

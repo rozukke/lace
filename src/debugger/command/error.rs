@@ -4,6 +4,9 @@ use std::fmt;
 use super::parse::NaiveType;
 use super::CommandName;
 
+// `String` fields could possibly be converted to `&str`, but the user must be punished for
+// entering bad commands
+
 /// Error parsing a command.
 #[derive(Debug, PartialEq)]
 pub enum Command {

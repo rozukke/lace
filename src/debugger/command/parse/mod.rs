@@ -11,12 +11,11 @@ use crate::symbol::Register;
 
 pub use self::naive::NaiveType;
 
-// TODO(doc): Update doc comments for parsing functions!!!
-
 // TODO(refactor): `.peek` -> `.next_if` where possible
 
 type CharIter<'a> = std::iter::Peekable<std::str::Chars<'a>>;
 
+/// Iterator over a command string which yields command-name or argument values.
 pub struct Arguments<'a> {
     buffer: &'a str,
     /// Byte index.
@@ -38,10 +37,21 @@ impl<'a> From<&'a str> for Arguments<'a> {
     }
 }
 
+/// Try to parse a single argument string as an argument value.
+///
+/// Not used to read [`CommandName`].
 trait TryParse<'a>: Sized {
+    /// Parse argument string as a specific type.
     fn try_parse(string: &'a str) -> Result<Option<Self>, error::Value>;
 }
 
+/// Preliminary type check to bypass normal value parsing if type is known to be mismatched.
+///
+/// Useful to avoid register values parsing as labels, when requesting a [`MemoryLocation`] (which
+/// does not accept registers, and so would otherwise parse "R0" as a label).
+///
+/// Please do not worry about performance: this method could be slightly faster or slower but it
+/// would be negligible.
 macro_rules! check_naive_type {
     ( $pattern:pat, $expected_type:expr, ($argument_name:expr, $argument:expr) ) => {{
         #[allow(unused_imports)]
@@ -80,20 +90,22 @@ impl<'a> Arguments<'a> {
         self.arg_count
     }
 
-    // Do not `impl Iterator`. This method should be private
     /// Get next argument string, incrementing `arg_count`.
     ///
-    /// Do not use for reading [`CommandName`].
+    /// Not used to read [`CommandName`].
+    //
+    // Do not `impl Iterator`. This method should be private
     fn next_str(&mut self) -> Option<&'a str> {
         let argument = self.next_str_name()?;
         self.arg_count += 1;
         Some(argument)
     }
 
-    // TODO(rename): next_str_name
     /// Get next argument string, WITHOUT incrementing `arg_count`.
     ///
-    /// Only use for reading [`CommandName`].
+    /// Only used to read [`CommandName`].
+    //
+    // TODO(rename): next_str_name
     fn next_str_name(&mut self) -> Option<&'a str> {
         let mut start = self.cursor;
         let mut length = 0;
@@ -128,30 +140,35 @@ impl<'a> Arguments<'a> {
         Some(argument)
     }
 
-    /// Consume the rest of the command as one string.
+    /// Take the rest of the command as one string.
     ///
     /// Leading/trailing whitespace is trimmed.
     ///
-    /// Used for `eval` command.
+    /// Only used for "eval" command currently, but could be used for future commands.
     pub fn collect_rest(&mut self) -> &'a str {
+        // Do not increment `arg_count`
         let start = self.cursor;
         self.cursor = self.buffer.len();
         self.buffer[start..].trim()
     }
 
-    /// Returns an error if the command contains any arguments which haven't been consumed.
-    pub fn expect_end(&mut self, expected: u8, actual: u8) -> Result<(), error::Argument> {
+    /// Returns an error if the command string has any arguments left.
+    pub fn expect_end(
+        &mut self,
+        expected_count: u8,
+        actual_count: u8,
+    ) -> Result<(), error::Argument> {
         if self.next_str().is_none() {
             Ok(())
         } else {
             Err(error::Argument::TooManyArguments {
-                expected_count: expected,
-                actual_count: actual,
+                expected_count,
+                actual_count,
             })
         }
     }
 
-    /// Parse and consume next integer argument.
+    /// Parse next argument as a `u16`.
     pub fn next_integer(
         &mut self,
         argument_name: &'static str,
@@ -168,9 +185,9 @@ impl<'a> Arguments<'a> {
         )
     }
 
-    /// Parse and consume next positive integer argument, defaulting to `1`.
+    /// Parse next argument as a positive `u16`, defaulting to `1` if no argument is given.
     ///
-    /// Non-positive values will also be converted to `1`.
+    /// Non-positive values will be converted to `1`.
     pub fn next_positive_integer_or_default(
         &mut self,
         argument_name: &'static str,
@@ -179,7 +196,8 @@ impl<'a> Arguments<'a> {
             .map(|value| value.max(1)) // 0 -> 1
     }
 
-    /// Parse and consume next integer argument. Use default result value if argument is `None`.
+    /// Parse next argument as a `u16`. Use default `Result` value if no argument is given.
+    //
     // Do not change `default` param to a function unless lazy evaluation is ACTUALLY desirable
     fn next_integer_or(
         &mut self,
@@ -211,7 +229,7 @@ impl<'a> Arguments<'a> {
         ))
     }
 
-    /// Parse and consume next [`Location`] argument: a register or [`MemoryLocation`].
+    /// Parse next argument as a [`Location`]: a [`Register`] or [`MemoryLocation`].
     pub fn next_location(
         &mut self,
         argument_name: &'static str,
@@ -226,9 +244,11 @@ impl<'a> Arguments<'a> {
             });
         };
 
-        // Don't perform a naive type check here
+        // Don't perform a preliminary type check here
         // All current valid types are allowed here, and any invalid value will be handled before
         // the end of this function (as `MalformedValue`)
+
+        // TODO(refactor): Can this be moved to `Location::try_parse` ?
 
         if let Some(register) = Register::try_parse(argument)
             .map_err(error::Argument::invalid_value(argument_name, argument))?
@@ -243,7 +263,7 @@ impl<'a> Arguments<'a> {
             .map(Location::Memory)
     }
 
-    /// Parse and consume next [`MemoryLocation`] argument.
+    /// Parse next argument as a [`MemoryLocation`].
     pub fn next_memory_location(
         &mut self,
         argument_name: &'static str,
@@ -260,8 +280,10 @@ impl<'a> Arguments<'a> {
         )
     }
 
-    /// Parse and consume next [`MemoryLocation`] argument, defaulting to program counter.
-    /// ([`MemoryLocation::PCOffset`]).
+    /// Parse next argument as a [`MemoryLocation`], defaulting to current value of program counter
+    /// if no argument is given.
+    ///
+    /// Program counter is returned as [`MemoryLocation::PCOffset`], so will always be correct.
     pub fn next_memory_location_or_default(
         &mut self,
         argument_name: &'static str,
@@ -269,7 +291,8 @@ impl<'a> Arguments<'a> {
         self.next_memory_location_or(argument_name, Ok(MemoryLocation::PCOffset(0)))
     }
 
-    /// Parse and consume next [`MemoryLocation`] argument. Use default result value if argument is `None`.
+    /// Parse next argument as a [`MemoryLocation`]. Use default `Result` value if no argument is
+    /// given.
     // Do not change `default` param to a function unless lazy evaluation is ACTUALLY desirable
     fn next_memory_location_or(
         &mut self,
@@ -294,6 +317,7 @@ impl<'a> Arguments<'a> {
 }
 
 impl<'a> TryParse<'a> for Register {
+    /// Parse argument string as a [`Register`].
     fn try_parse(string: &'a str) -> Result<Option<Self>, error::Value> {
         let mut chars = string.chars();
 
@@ -331,6 +355,7 @@ impl<'a> TryParse<'a> for Register {
 }
 
 impl<'a> TryParse<'a> for MemoryLocation<'a> {
+    /// Parse argument string as a [`MemoryLocation`].
     fn try_parse(argument: &'a str) -> Result<Option<MemoryLocation<'a>>, error::Value> {
         // Ordered by approximate function speed
         if let Some(offset) = PCOffset::try_parse(argument)? {
@@ -347,8 +372,10 @@ impl<'a> TryParse<'a> for MemoryLocation<'a> {
     }
 }
 
+/// Wrapper type to implement [`TryParse`] for program counter offset.
 struct PCOffset(i16);
 impl<'a> TryParse<'a> for PCOffset {
+    /// Parse argument string as a [`PCOffset`].
     fn try_parse(string: &'a str) -> Result<Option<Self>, error::Value> {
         if string.chars().next().is_none_or(|ch| ch != '^') {
             return Ok(None);

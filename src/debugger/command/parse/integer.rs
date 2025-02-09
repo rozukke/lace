@@ -2,19 +2,28 @@ use std::ops::Deref;
 
 use super::{error, CharIter, TryParse};
 
+/// Internal type of [`Integer`], before being converted to smaller type (`u16` or `i16`).
 type IntegerValue = i32;
 
+/// Wrapper type to implement [`TryParse`] for integer literal.
+///
+/// Internal type is larger than both `u16` and `i16`, to allow conversion to either type easily.
 #[derive(Debug)]
 pub struct Integer {
     value: IntegerValue,
 }
 
+/// Value of sign character.
+///
+/// Do not default to [`Sign::Positive`] for missing/implicit sign character; Instead use
+/// `Option<Sign>`
 #[derive(Clone, Copy, Debug)]
 enum Sign {
     Positive = 1,
     Negative = -1,
 }
 
+/// Radix (base) of integer, as determined by (optional) integer prefix:
 #[derive(Clone, Copy, Debug)]
 pub enum Radix {
     Binary = 2,
@@ -41,6 +50,84 @@ enum PrefixResult {
     SingleZero,
     /// This token is not an integer, but not necessary invalid (yet).
     NonInteger,
+}
+
+impl<'a> TryParse<'a> for Integer {
+    /// Parse argument string as an [`Integer`].
+    ///
+    /// Extremely liberal in accepted syntax.
+    ///
+    /// Accepts:
+    ///  - Decimal (optional "#"), hex ("x"/"X"), octal ("o"/"O"), and binary ("b"/"B").
+    ///  - Optional single zero before non-decimal radix prefix. Eg. "0x4".
+    ///  - Leading zeros after prefix and sign. Eg. "0x0004", "#-03".
+    ///  - Sign character before XOR after radix prefix. Eg. "-#2", "x+4".
+    ///
+    /// Returns `Ok(None)` (not an integer) for:
+    ///  - Empty token.
+    ///  - Non-decimal radix prefix, with no zero before it, and non-digits after it. Eg. "xLabel", "o".
+    ///
+    /// Returns `Err` (invalid integer and invalid token) for:
+    ///  - Invalid digits for the given radix.
+    ///  - Decimal radix prefix "#" with zeros before it. Eg. "0#2".
+    ///  - Decimal radix prefix "#" with no digits after it. Eg. "#".
+    ///  - Multiple sign characters (before or after prefix).
+    ///  - Multiple zeros before radix prefix. Eg. "00x4".
+    ///  - Absolute value out of bounds for `i32`. (Does *NOT* check if integer fits in specific bit size).
+    fn try_parse(string: &str) -> Result<Option<Self>, error::Value> {
+        parse_integer(string, false)
+    }
+}
+
+impl Integer {
+    /// Parse argument string as an [`Integer`], with mandatory pre-prefix sign character.
+    ///
+    /// See [`Integer::try_parse`] implementation for accepted syntax.
+    pub fn try_parse_signed(string: &str) -> Result<Option<Self>, error::Value> {
+        parse_integer(string, true)
+    }
+
+    /// Try to convert into `i16`.
+    pub fn as_i16(self) -> Result<i16, error::Value> {
+        (*self)
+            .try_into()
+            .map_err(|_| error::Value::IntegerTooLarge {
+                max: i16::MAX as u16,
+            })
+    }
+
+    /// Try to convert into `u16`.
+    pub fn as_u16(self) -> Result<u16, error::Value> {
+        (*self)
+            .try_into()
+            .map_err(|_| error::Value::IntegerTooLarge { max: u16::MAX })
+    }
+
+    /// Try to convert into `u16`, casting negative values.
+    pub fn as_u16_cast(self) -> Result<u16, error::Value> {
+        if *self < 0 {
+            Ok(self.as_i16()? as u16)
+        } else {
+            self.as_u16()
+        }
+    }
+}
+
+impl<T> From<T> for Integer
+where
+    T: Into<IntegerValue>,
+{
+    fn from(value: T) -> Self {
+        Self {
+            value: value.into(),
+        }
+    }
+}
+impl Deref for Integer {
+    type Target = IntegerValue;
+    fn deref(&self) -> &Self::Target {
+        &self.value
+    }
 }
 
 impl Radix {
@@ -70,86 +157,8 @@ impl Radix {
     }
 }
 
-impl Integer {
-    /// Try to convert into `i16`.
-    pub fn as_i16(self) -> Result<i16, error::Value> {
-        (*self)
-            .try_into()
-            .map_err(|_| error::Value::IntegerTooLarge {
-                max: i16::MAX as u16,
-            })
-    }
-
-    /// Try to convert into `u16`.
-    pub fn as_u16(self) -> Result<u16, error::Value> {
-        (*self)
-            .try_into()
-            .map_err(|_| error::Value::IntegerTooLarge { max: u16::MAX })
-    }
-
-    /// Try to convert into `u16`, casting negative values.
-    pub fn as_u16_cast(self) -> Result<u16, error::Value> {
-        if *self < 0 {
-            Ok(self.as_i16()? as u16)
-        } else {
-            self.as_u16()
-        }
-    }
-}
-
-impl Deref for Integer {
-    type Target = IntegerValue;
-    fn deref(&self) -> &Self::Target {
-        &self.value
-    }
-}
-impl<T> From<T> for Integer
-where
-    T: Into<IntegerValue>,
-{
-    fn from(value: T) -> Self {
-        Self {
-            value: value.into(),
-        }
-    }
-}
-
-impl<'a> TryParse<'a> for Integer {
-    /// Parse and consume the next integer argument.
-    ///
-    /// Extremely liberal in accepted syntax.
-    ///
-    /// Accepts:
-    ///  - Decimal (optional "#"), hex ("x"/"X"), octal ("o"/"O"), and binary ("b"/"B").
-    ///  - Optional single zero before non-decimal radix prefix. Eg. "0x4".
-    ///  - Leading zeros after prefix and sign. Eg. "0x0004", "#-03".
-    ///  - Sign character before xor after radix prefix. Eg. "-#2", "x+4".
-    ///
-    /// Returns `Ok(None)` (not an integer) for:
-    ///  - Empty token.
-    ///  - Non-decimal radix prefix, with no zero before it, and non-digits after it. Eg. "xLabel", "o".
-    ///
-    /// Returns `Err` (invalid integer and invalid token) for:
-    ///  - Invalid digits for the given radix.
-    ///  - Decimal radix prefix "#" with zeros before it. Eg. "0#2".
-    ///  - Decimal radix prefix "#" with no digits after it. Eg. "#".
-    ///  - Multiple sign characters (before or after prefix).
-    ///  - Multiple zeros before radix prefix. Eg. "00x4".
-    ///  - Absolute value out of bounds for `i32`. (Does *NOT* check if integer fits in specific bit size).
-    fn try_parse(string: &str) -> Result<Option<Self>, error::Value> {
-        parse_integer(string, false)
-    }
-}
-
-impl Integer {
-    /// Parse and consume the next integer argument, with mandatory pre-prefix sign character.
-    ///
-    /// See [`Integer::try_parse`] implementation for accepted syntax.
-    pub fn try_parse_signed(string: &str) -> Result<Option<Self>, error::Value> {
-        parse_integer(string, true)
-    }
-}
-
+// TODO(fix): `x1` parsing as label
+/// See [`Integer::try_parse`] implementation for accepted syntax.
 fn parse_integer(string: &str, require_sign: bool) -> Result<Option<Integer>, error::Value> {
     // Useful for parsing label/pc offset
     if string.is_empty() {
@@ -239,6 +248,7 @@ fn parse_integer(string: &str, require_sign: bool) -> Result<Option<Integer>, er
     Ok(Some(integer.into()))
 }
 
+/// If next character is `'` or `+`, then consume character and return corresponding [`Sign`].
 fn take_sign(chars: &mut CharIter) -> Option<Sign> {
     let sign = match chars.peek() {
         Some('+') => Sign::Positive,
@@ -249,6 +259,20 @@ fn take_sign(chars: &mut CharIter) -> Option<Sign> {
     Some(sign)
 }
 
+/// If the next characters are a valid radix, then consume characters and return information about
+/// prefix syntax.
+///
+/// Only the prefix is checked, so [`PrefixResult::Integer`] is returned for any label argument
+/// which begins with a valid integer prefix (eg. "xLabel"). This must be handled by the caller.
+///
+/// A single-character "0" argument is a special case which is returned as
+/// [`PrefixResult::SingleZero`]. This must be handled by the caller.
+///
+/// If the argument begins with a decimal digit (`[0-9]`), it is treated similar to if it began
+/// with the decimal prefix "#".
+///
+/// Prefix character, and any single pre-prefix leading zero, are consumed from the iterator. No
+/// other characters are consumed, even for arguments without a prefix character.
 fn take_prefix(chars: &mut CharIter) -> Result<PrefixResult, error::Value> {
     // Only take ONE leading zero here
     // Disallow "00x..." etc.
