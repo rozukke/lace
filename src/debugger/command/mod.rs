@@ -1,14 +1,14 @@
 pub mod error;
 mod parse;
-mod read;
+mod source;
 
 use std::fmt;
 
 use self::parse::Arguments;
-use self::read::SourceRead as _;
+use self::source::SourceRead as _;
 use crate::symbol::Register;
 
-pub use self::read::CommandSource;
+pub use self::source::CommandSource;
 
 #[derive(Debug)]
 pub enum Command<'a> {
