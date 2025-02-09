@@ -357,16 +357,19 @@ impl<'a> TryParse<'a> for Register {
 impl<'a> TryParse<'a> for MemoryLocation<'a> {
     /// Parse argument string as a [`MemoryLocation`].
     fn try_parse(argument: &'a str) -> Result<Option<MemoryLocation<'a>>, error::Value> {
-        // Ordered by approximate function speed
+        // Ideally order of these checks should match that of [`NaiveType::try_from`] (except for
+        // registers)
+        // Do not change order unless there is a good reason
         if let Some(offset) = PCOffset::try_parse(argument)? {
             return Ok(Some(MemoryLocation::PCOffset(*offset)));
         };
-        if let Some(label) = Label::try_parse(argument)? {
-            return Ok(Some(MemoryLocation::Label(label)));
-        };
+        // `Integer` must be checked before `Label` to handle prefixes without preceeding zero
         if let Some(address) = Integer::try_parse(argument)? {
             let address = address.as_u16()?;
             return Ok(Some(MemoryLocation::Address(address)));
+        };
+        if let Some(label) = Label::try_parse(argument)? {
+            return Ok(Some(MemoryLocation::Label(label)));
         };
         Ok(None)
     }

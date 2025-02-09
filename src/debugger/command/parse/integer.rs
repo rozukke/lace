@@ -157,7 +157,6 @@ impl Radix {
     }
 }
 
-// TODO(fix): `x1` parsing as label
 /// See [`Integer::try_parse`] implementation for accepted syntax.
 fn parse_integer(string: &str, require_sign: bool) -> Result<Option<Integer>, error::Value> {
     // Useful for parsing label/pc offset

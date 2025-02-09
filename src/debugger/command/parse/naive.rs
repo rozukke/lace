@@ -11,8 +11,7 @@ use super::{integer::Radix, label};
 /// Eg. `NaiveType::try_from("12a")` will return `Some(NaiveType::Integer)`, because a token
 /// starting with a decimal digit cannot be any other type.
 ///
-/// The following shows the patterns against which a string is checked in [`NaiveType::try_from`]
-/// (ordered by approximate function speed).
+/// The following shows the patterns against which a string is checked in [`NaiveType::try_from`].
 ///
 /// - [`NaiveType::PCOffset`]:
 ///   * `^\^`
@@ -42,19 +41,20 @@ pub enum NaiveType {
 impl TryFrom<&str> for NaiveType {
     type Error = ();
     fn try_from(string: &str) -> Result<Self, Self::Error> {
-        // Ordered by approximate function speed
         // Ensure that this order matches the documentation at the `NaiveType` definition
+        // Do not change order unless there is a good reason
         if Self::is_str_pc_offset(string) {
             return Ok(Self::PCOffset);
         }
         if Self::is_str_register(string) {
             return Ok(Self::Register);
         }
-        if Self::is_str_label(string) {
-            return Ok(Self::Label);
-        }
+        // `Integer` must be checked before `Label` to handle prefixes without preceeding zero
         if Self::is_str_integer(string) {
             return Ok(Self::Integer);
+        }
+        if Self::is_str_label(string) {
+            return Ok(Self::Label);
         }
         Err(())
     }
