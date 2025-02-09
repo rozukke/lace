@@ -4,8 +4,8 @@ use std::fmt;
 use super::parse::NaiveType;
 use super::CommandName;
 
-// `String` fields could possibly be converted to `&str`, but the user must be punished for
-// entering bad commands
+// `String` fields could possibly be converted to `&str`
+// ...but the user must be punished for entering bad commands
 
 /// Error parsing a command.
 #[derive(Debug, PartialEq)]
@@ -58,7 +58,6 @@ pub enum Value {
     },
     #[allow(clippy::enum_variant_names)]
     MalformedValue {},
-    // TODO(feat): Add subvariants
     MalformedInteger {},
     MalformedLabel {},
     MalformedRegister {},

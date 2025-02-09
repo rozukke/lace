@@ -102,23 +102,6 @@ pub struct Label<'a> {
     pub offset: i16,
 }
 
-impl<'a> TryFrom<&'a str> for Command<'a> {
-    type Error = error::Command;
-
-    /// Assumes line is non-empty.
-    fn try_from(line: &'a str) -> std::result::Result<Self, Self::Error> {
-        let mut iter = Arguments::from(line);
-
-        let command_name = iter.get_command_name()?;
-        Command::parse_arguments(command_name, &mut iter).map_err(|error| {
-            error::Command::InvalidArgument {
-                command_name,
-                error,
-            }
-        })
-    }
-}
-
 impl<'a> Command<'a> {
     pub fn read_from<F>(source: &mut CommandSource, handle_error: F) -> Option<Self>
     where
@@ -149,6 +132,20 @@ impl<'a> Command<'a> {
                 }
             }
         }
+    }
+
+    /// Assumes line is non-empty.
+    // Do not `impl TryFrom`. This method should be private
+    fn try_from(line: &'a str) -> std::result::Result<Self, error::Command> {
+        let mut iter = Arguments::from(line);
+
+        let command_name = iter.get_command_name()?;
+        Command::parse_arguments(command_name, &mut iter).map_err(|error| {
+            error::Command::InvalidArgument {
+                command_name,
+                error,
+            }
+        })
     }
 
     fn parse_arguments(

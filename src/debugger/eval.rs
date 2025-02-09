@@ -7,7 +7,8 @@ use crate::{dprintln, AsmParser};
 
 pub fn eval(state: &mut RunState, line: &str) {
     // Required to make temporarily 'static
-    // SAFETY: `line` is not used after being dropped (i.e. not returned or used in a greater scope)
+    // SAFETY: `line` is not used after being dropped (i.e. not returned or used in a greater
+    // scope)
     let line_static = unsafe { &*(line as *const str) };
     if let Err(err) = eval_inner(state, line_static) {
         eprintln!("{:?}", err);

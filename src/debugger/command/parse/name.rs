@@ -37,7 +37,10 @@ impl Arguments<'_> {
     ///
     /// Assumes line is non-empty.
     pub fn get_command_name(&mut self) -> Result<CommandName, error::Command> {
-        // TODO(fix): assert no other arguments were parsed/consumed yet
+        assert!(
+            self.cursor == 0,
+            "tried to parse command name from middle of buffer",
+        );
 
         let command_name = self.next_str_name();
         // Command source should always return a string containing non-whitespace
