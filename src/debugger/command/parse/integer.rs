@@ -9,6 +9,7 @@ type IntegerValue = i32;
 ///
 /// Internal type is larger than both `u16` and `i16`, to allow conversion to either type easily.
 #[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct Integer {
     value: IntegerValue,
 }

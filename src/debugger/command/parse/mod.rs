@@ -404,9 +404,9 @@ impl Deref for PCOffset {
     }
 }
 
+// TODO(refactor): Move tests to respective modules
 #[cfg(test)]
 mod tests {
-    use super::label::parse_label;
     use super::*;
 
     macro_rules! label {
@@ -418,6 +418,15 @@ mod tests {
         };
         (@offset $offset:expr) => { $offset };
         (@offset) => { 0 };
+    }
+
+    macro_rules! expect_match {
+        ( $result:expr, Err(_) $(,)? ) => {
+            assert!($result.is_err());
+        };
+        ( $result:expr, $expected:expr $(,)? ) => {
+            assert_eq!($result, $expected, stringify!($expected));
+        };
     }
 
     #[test]
@@ -514,9 +523,22 @@ mod tests {
 
     #[test]
     fn next_integer_token_works() {
-        macro_rules! expect_integer { ( $require_sign:expr, $($x:tt)* ) => {
-            expect_tokens!(parse_integer($require_sign), $($x)*);
-        }}
+        macro_rules! expect_integer {
+            ( false, $input:expr, $($expected:tt)* ) => {{
+                expect_match!(
+                    Integer::try_parse_signed($input)
+                        .map(|opt| opt.map(|integer| *integer)), // -> i32
+                    $($expected)*
+                );
+            }};
+            ( true, $input:expr, $($expected:tt)* ) => {{
+                expect_match!(
+                    Integer::try_parse($input)
+                        .map(|opt| opt.map(|integer| *integer)),
+                    $($expected)*
+                );
+            }};
+        }
 
         // These tests cover all edge cases which I can think of
         // Invalid or non-integers
@@ -773,9 +795,14 @@ mod tests {
 
     #[test]
     fn next_label_token_works() {
-        macro_rules! expect_label { ( $($x:tt)* ) => {
-            expect_tokens!(parse_label(), $($x)*);
-        }}
+        macro_rules! expect_label {
+            ( $input:expr, $($expected:tt)* ) => {{
+                expect_match!(
+                    Label::try_parse($input),
+                    $($expected)*
+                );
+            }};
+        }
 
         expect_label!("", Ok(None));
         expect_label!("0x1283", Ok(None));
