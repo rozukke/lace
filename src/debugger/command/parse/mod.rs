@@ -526,14 +526,14 @@ mod tests {
         macro_rules! expect_integer {
             ( false, $input:expr, $($expected:tt)* ) => {{
                 expect_match!(
-                    Integer::try_parse_signed($input)
+                    Integer::try_parse($input)
                         .map(|opt| opt.map(|integer| *integer)), // -> i32
                     $($expected)*
                 );
             }};
             ( true, $input:expr, $($expected:tt)* ) => {{
                 expect_match!(
-                    Integer::try_parse($input)
+                    Integer::try_parse_signed($input)
                         .map(|opt| opt.map(|integer| *integer)),
                     $($expected)*
                 );
@@ -655,10 +655,10 @@ mod tests {
         expect_integer!(true, "+#4", Ok(Some(4)));
         expect_integer!(true, "-#4284", Ok(Some(-4284)));
         expect_integer!(true, "-#004284", Ok(Some(-4284)));
-        expect_integer!(true, "#-4", Ok(Some(-4)));
-        expect_integer!(true, "#+4", Ok(Some(4)));
-        expect_integer!(true, "#-4284", Ok(Some(-4284)));
-        expect_integer!(true, "#-004284", Ok(Some(-4284)));
+        expect_integer!(true, "#-4", Err(_));
+        expect_integer!(true, "#+4", Err(_));
+        expect_integer!(true, "#-4284", Err(_));
+        expect_integer!(true, "#-004284", Err(_));
         expect_integer!(true, "4", Err(_));
         expect_integer!(true, "4284", Err(_));
         expect_integer!(true, "004284", Err(_));
@@ -708,14 +708,14 @@ mod tests {
         expect_integer!(true, "+0x4", Ok(Some(0x4)));
         expect_integer!(true, "-0x004", Ok(Some(-0x4)));
         expect_integer!(true, "-0x429", Ok(Some(-0x429)));
-        expect_integer!(true, "x-4", Ok(Some(-0x4)));
-        expect_integer!(true, "x-004", Ok(Some(-0x4)));
-        expect_integer!(true, "x+004", Ok(Some(0x4)));
-        expect_integer!(true, "x-429", Ok(Some(-0x429)));
         expect_integer!(true, "-0x4", Ok(Some(-0x4)));
         expect_integer!(true, "-0x004", Ok(Some(-0x4)));
         expect_integer!(true, "-0x429", Ok(Some(-0x429)));
         expect_integer!(true, "+0x429", Ok(Some(0x429)));
+        expect_integer!(true, "x-4", Err(_));
+        expect_integer!(true, "x-004", Err(_));
+        expect_integer!(true, "x+004", Err(_));
+        expect_integer!(true, "x-429", Err(_));
         expect_integer!(true, "x4", Err(_));
         expect_integer!(true, "x004", Err(_));
         expect_integer!(true, "x429", Err(_));
