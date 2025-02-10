@@ -7,7 +7,7 @@ use console::Key;
 use crate::output::debugger_colors;
 use crate::{dprint, dprintln, output::Output};
 
-// TODO(feat): UTF-8 support for all sources
+// TODO(feat): UTF-8 support for `Stdin`
 
 /// Read from argument first, if `Some`. Then read from stream.
 #[derive(Debug)]
@@ -180,7 +180,6 @@ impl Stdin {
     /// `None` indicates EOF.
     fn read_char(&mut self) -> Option<char> {
         let mut buffer = [0; 1];
-        // TODO(fix): Does not support UTF-8 !!!
         let bytes_read = self
             .stdin
             .read(&mut buffer)

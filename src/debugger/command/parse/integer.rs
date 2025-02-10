@@ -240,7 +240,7 @@ fn parse_integer(string: &str, require_sign: bool) -> Result<Option<Integer>, er
         "should have looped until end of argument, or early-returned `Err`",
     );
 
-    // TODO(fix): I think there is an edge case here for overflow
+    // This should not overflow because any positive i32 can be negated as a valid i32
     if let Some(sign) = sign {
         integer *= sign as IntegerValue;
     }
