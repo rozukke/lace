@@ -217,7 +217,7 @@ impl<'a> Command<'a> {
             }
 
             CommandName::Eval => {
-                let instruction = iter.collect_rest();
+                let instruction = iter.get_rest();
                 if instruction.is_empty() {
                     return Err(error::Argument::MissingArgumentList {
                         argument_name: "instruction",

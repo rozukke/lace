@@ -56,8 +56,8 @@ impl<'a> Arguments<'a> {
     /// Not used to read [`CommandName`].
     //
     // Do not `impl Iterator`. This method should be private
-    fn next_str(&mut self) -> Option<&'a str> {
-        let argument = self.next_str_name()?;
+    fn next_argument_str(&mut self) -> Option<&'a str> {
+        let argument = self.next_token_str()?;
         self.arg_count += 1;
         Some(argument)
     }
@@ -65,9 +65,7 @@ impl<'a> Arguments<'a> {
     /// Get next argument string, WITHOUT incrementing `arg_count`.
     ///
     /// Only used to read [`CommandName`].
-    //
-    // TODO(rename): next_str_name
-    fn next_str_name(&mut self) -> Option<&'a str> {
+    fn next_token_str(&mut self) -> Option<&'a str> {
         let mut start = self.cursor;
         let mut length = 0;
         let mut is_start = true;
@@ -106,9 +104,7 @@ impl<'a> Arguments<'a> {
     /// Leading/trailing whitespace is trimmed.
     ///
     /// Only used for "eval" command currently, but could be used for future commands.
-    //
-    // TODO(refactor): Rename to `get_rest`
-    pub fn collect_rest(&mut self) -> &'a str {
+    pub fn get_rest(&mut self) -> &'a str {
         // Do not increment `arg_count`
         let start = self.cursor;
         self.cursor = self.buffer.len();
@@ -121,7 +117,7 @@ impl<'a> Arguments<'a> {
         expected_count: u8,
         actual_count: u8,
     ) -> Result<(), error::Argument> {
-        if self.next_str().is_none() {
+        if self.next_argument_str().is_none() {
             Ok(())
         } else {
             Err(error::Argument::TooManyArguments {
@@ -167,7 +163,7 @@ impl<'a> Arguments<'a> {
         argument_name: &'static str,
         default: Result<u16, error::Argument>,
     ) -> Result<u16, error::Argument> {
-        let Some(argument) = self.next_str() else {
+        let Some(argument) = self.next_argument_str() else {
             return default;
         };
 
@@ -224,7 +220,7 @@ impl<'a> Arguments<'a> {
         argument_name: &'static str,
         default: Result<MemoryLocation<'a>, error::Argument>,
     ) -> Result<MemoryLocation<'a>, error::Argument> {
-        let Some(argument) = self.next_str() else {
+        let Some(argument) = self.next_argument_str() else {
             return default;
         };
 
@@ -248,7 +244,7 @@ impl<'a> Arguments<'a> {
         expected_count: u8,
     ) -> Result<Location<'a>, error::Argument> {
         let actual_count = self.arg_count();
-        let Some(argument) = self.next_str() else {
+        let Some(argument) = self.next_argument_str() else {
             return Err(error::Argument::MissingArgument {
                 argument_name,
                 expected_count,
@@ -414,7 +410,7 @@ mod tests {
         let argument_name = "dummy";
         let expected_count = 99;
 
-        assert_eq!(iter.next_str(), Some("name"));
+        assert_eq!(iter.next_argument_str(), Some("name"));
         assert_eq!(iter.next_integer(argument_name, 99), Ok(-54i16 as u16));
         assert_eq!(
             iter.next_location(argument_name, 99),
@@ -425,13 +421,13 @@ mod tests {
             iter.next_memory_location(argument_name, expected_count),
             Ok(MemoryLocation::Label(Label::new("Foo", 0))),
         );
-        assert_eq!(iter.next_str(), Some("name2"));
+        assert_eq!(iter.next_argument_str(), Some("name2"));
         assert_eq!(
             iter.next_memory_location(argument_name, expected_count),
             Ok(MemoryLocation::Label(Label::new("Baz", 0x04))),
         );
         assert_eq!(iter.next_integer(argument_name, expected_count), Ok(4209));
-        assert_eq!(iter.next_str(), None);
+        assert_eq!(iter.next_argument_str(), None);
         assert_eq!(iter.expect_end(expected_count, 100), Ok(()));
     }
 

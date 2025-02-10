@@ -42,7 +42,7 @@ impl Arguments<'_> {
             "tried to parse command name from middle of buffer",
         );
 
-        let command_name = self.next_str_name();
+        let command_name = self.next_token_str();
         // Command source should always return a string containing non-whitespace
         // characters, so initial command name should always exist.
         debug_assert!(command_name.is_some(), "missing command name");
@@ -59,7 +59,7 @@ impl Arguments<'_> {
             // Only used for errors
             let command_name = BREAK_COMMAND[0]; // Array must be non-empty if this branch is being ran
 
-            let Some(subcommand_name) = self.next_str_name() else {
+            let Some(subcommand_name) = self.next_token_str() else {
                 return Err(error::Command::MissingSubcommand { command_name });
             };
             let Some(command) = find_name_match(subcommand_name, BREAK_SUBCOMMANDS) else {
@@ -121,7 +121,7 @@ mod tests {
             let result = arguments.get_command_name().map_err(|_| ());
             assert_eq!(result, expected_result);
             if expected_result.is_ok() {
-                assert_eq!(arguments.collect_rest(), expected_rest);
+                assert_eq!(arguments.get_rest(), expected_rest);
             }
         }
 
