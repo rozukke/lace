@@ -6,9 +6,10 @@ mod name;
 use std::ops::Deref;
 
 use self::integer::Integer;
-pub use self::naive::NaiveType;
 use super::{error, CommandName, Label, Location, MemoryLocation};
 use crate::symbol::Register;
+
+pub use self::naive::NaiveType;
 
 // TODO(refactor): `.peek` -> `.next_if` where possible
 

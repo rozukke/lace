@@ -1,6 +1,6 @@
 use std::fmt;
 use std::fs::{self, File};
-use std::io::{self, BufRead, BufReader, IsTerminal, Read, Write};
+use std::io::{self, BufRead as _, BufReader, IsTerminal as _, Read as _, Write as _};
 
 use console::Key;
 
@@ -11,7 +11,7 @@ use crate::{dprint, dprintln, output::Output};
 
 /// Read from argument first, if `Some`. Then read from stream.
 #[derive(Debug)]
-pub struct CommandSource {
+pub struct CommandReader {
     argument: Option<Argument>,
     stream: Stream,
 }
@@ -81,13 +81,13 @@ fn echo_command(command: Option<&str>) {
 }
 
 /// A trait for objects which can yield a command, by iterating a string or reading a file.
-pub trait SourceRead {
+pub trait Read {
     /// `None` indicates EOF.
     /// Returned string slice MAY include leading or trailing whitespace.
     fn read(&mut self) -> Option<&str>;
 }
 
-impl CommandSource {
+impl CommandReader {
     pub fn from(argument: Option<String>) -> Self {
         Self {
             argument: argument.map(Argument::from),
@@ -96,7 +96,7 @@ impl CommandSource {
     }
 }
 
-impl SourceRead for CommandSource {
+impl Read for CommandReader {
     fn read(&mut self) -> Option<&str> {
         // Always try to read from argument first
         // If argument is `None`, or if read from argument returns `None`, then read from stream
@@ -120,7 +120,7 @@ impl Argument {
     }
 }
 
-impl SourceRead for Argument {
+impl Read for Argument {
     fn read(&mut self) -> Option<&str> {
         // EOF
         if self.cursor >= self.buffer.len() {
@@ -156,7 +156,7 @@ impl Stream {
     }
 }
 
-impl SourceRead for Stream {
+impl Read for Stream {
     fn read(&mut self) -> Option<&str> {
         match self {
             Self::Stdin(stdin) => {
@@ -191,7 +191,7 @@ impl Stdin {
     }
 }
 
-impl SourceRead for Stdin {
+impl Read for Stdin {
     fn read(&mut self) -> Option<&str> {
         self.buffer.clear();
 
@@ -428,7 +428,7 @@ impl Terminal {
     }
 }
 
-impl SourceRead for Terminal {
+impl Read for Terminal {
     fn read(&mut self) -> Option<&str> {
         // Reached end of line buffer: read new line
         if self.cursor == 0 {

@@ -6,7 +6,7 @@ mod eval;
 use std::cmp::Ordering;
 
 use self::asm::AsmSource;
-use self::command::{Command, CommandSource, Label, Location, MemoryLocation};
+use self::command::{Command, CommandReader, Label, Location, MemoryLocation};
 use crate::air::AsmLine;
 use crate::output::{Condition, Output};
 use crate::runtime::{RunState, HALT_ADDRESS, USER_MEMORY_END};
@@ -24,10 +24,11 @@ pub struct DebuggerOptions {
 pub struct Debugger {
     /// Must not be mutated.
     initial_state: RunState,
+    /// Must not be mutated.
     asm_source: AsmSource,
 
+    command_reader: CommandReader,
     status: Status,
-    command_source: CommandSource,
 
     breakpoints: Breakpoints,
     /// Used to allow breakpoint to be ignored if it just broke execution.
@@ -125,8 +126,8 @@ impl Debugger {
             initial_state,
             asm_source: AsmSource::from(orig, ast, src),
 
+            command_reader: CommandReader::from(opts.command),
             status: Status::default(),
-            command_source: CommandSource::from(opts.command),
 
             breakpoints: breakpoints.into(),
             current_breakpoint: None,
@@ -301,7 +302,7 @@ impl Debugger {
         }
 
         // Read and parse next command
-        let command = Command::read_from(&mut self.command_source, |error| {
+        let command = Command::read_from(&mut self.command_reader, |error| {
             dprintln!(Always, Error, "{}", error);
             dprintln!(Sometimes, Error, "Type `help` for a list of commands.");
         })

@@ -1,14 +1,14 @@
 pub mod error;
 mod parse;
-mod source;
+mod reader;
 
 use std::fmt;
 
 use self::parse::Arguments;
-use self::source::SourceRead as _;
+use self::reader::Read as _;
 use crate::symbol::Register;
 
-pub use self::source::CommandSource;
+pub use self::reader::CommandReader;
 
 #[derive(Debug)]
 pub enum Command<'a> {
@@ -110,7 +110,7 @@ impl<'a> Label<'a> {
 }
 
 impl<'a> Command<'a> {
-    pub fn read_from<F>(source: &mut CommandSource, handle_error: F) -> Option<Self>
+    pub fn read_from<F>(source: &mut CommandReader, handle_error: F) -> Option<Self>
     where
         F: Fn(error::Command) -> (),
     {
