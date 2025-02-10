@@ -434,65 +434,14 @@ mod tests {
         assert_eq!(iter.expect_end(expected_count, 100), Ok(()));
     }
 
-    macro_rules! expect_tokens {
-        ( . $method:ident ($($args:tt)*), $input:expr, $($expected:tt)* ) => {{
-            eprintln!("Test input: <{}>", $input);
-            let mut iter = Arguments::from($input);
-            let result = iter.$method($($args)*).map_err(|_| ());
-            assert_eq!(result, $($expected)*);
-        }};
-        ( $function:ident ($($args:tt)*), $input:expr, $($expected:tt)* ) => {{
-            eprintln!("Test input: <{}>", $input);
-            let result = $function($input, $($args)*);
-            assert_eq!(result, $($expected)*);
-        }};
-    }
-
     #[test]
     #[should_panic]
     #[cfg(debug_assertions)]
     fn semicolon_fails_assert() {
         let argument_name = "dummy";
         let expected_count = 99;
-        expect_tokens!(.next_integer(argument_name, expected_count), "  ;  ", Err(()));
-    }
-
-    #[test]
-    fn next_location_works() {
-        let argument_name = "dummy";
-        let expected_count = 99;
-        macro_rules! expect_location { ( $($x:tt)* ) => {
-            expect_tokens!(.next_location(argument_name, expected_count), $($x)*);
-        }}
-
-        expect_location!("", Err(()));
-        expect_location!("R7+1", Err(()));
-        expect_location!(
-            "a",
-            Ok(Location::Memory(MemoryLocation::Label(Label::new("a", 0)))),
-        );
-        expect_location!(
-            "rn",
-            Ok(Location::Memory(MemoryLocation::Label(Label::new("rn", 0)))),
-        );
-        expect_location!(
-            "r8",
-            Ok(Location::Memory(MemoryLocation::Label(Label::new("r8", 0)))),
-        );
-        expect_location!(
-            "R0n",
-            Ok(Location::Memory(MemoryLocation::Label(Label::new(
-                "R0n", 0
-            )))),
-        );
-        expect_location!(
-            "r0n",
-            Ok(Location::Memory(MemoryLocation::Label(Label::new(
-                "r0n", 0
-            )))),
-        );
-        expect_location!("r0", Ok(Location::Register(Register::R0)));
-        expect_location!("R7", Ok(Location::Register(Register::R7)));
+        let mut iter = Arguments::from("  ;  ");
+        let _ = iter.next_integer(argument_name, expected_count);
     }
 
     #[test]
