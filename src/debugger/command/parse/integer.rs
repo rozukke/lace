@@ -509,6 +509,8 @@ mod tests {
         expect_integer(false, "b2", Ok(None));
         expect_integer(false, "o8", Ok(None));
         expect_integer(false, "xg", Ok(None));
+        // TODO(fix)
+        // expect_integer(false, "xag", Ok(None));
         expect_integer(false, "b", Ok(None));
         expect_integer(false, "o", Ok(None));
         expect_integer(false, "x", Ok(None));

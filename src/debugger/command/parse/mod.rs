@@ -494,4 +494,106 @@ mod tests {
         expect_location!("r0", Ok(Location::Register(Register::R0)));
         expect_location!("R7", Ok(Location::Register(Register::R7)));
     }
+
+    // TODO(test)
+    // #[test]
+    // fn try_parse_location() {
+    // }
+
+    #[test]
+    fn try_parse_memory_location() {
+        fn expect_memory_location(input: &str, expected: Result<Option<MemoryLocation>, ()>) {
+            println!("{:?}", input);
+            let result = MemoryLocation::try_parse(input).map_err(|_| ());
+            assert_eq!(result, expected);
+        }
+
+        expect_memory_location("", Ok(None));
+        expect_memory_location("!@#", Ok(None));
+        expect_memory_location("!@#", Ok(None));
+
+        expect_memory_location("-0x1283", Err(()));
+        expect_memory_location("12312031283", Err(()));
+        expect_memory_location("^-", Err(()));
+        expect_memory_location("^a", Err(()));
+        expect_memory_location("ra$", Err(()));
+        expect_memory_location("a!", Err(()));
+        expect_memory_location("a--23", Err(()));
+        expect_memory_location("a-x-23", Err(()));
+
+        expect_memory_location("123", Ok(Some(MemoryLocation::Address(123))));
+        expect_memory_location("#1", Ok(Some(MemoryLocation::Address(1))));
+        expect_memory_location("0xdeAD", Ok(Some(MemoryLocation::Address(0xdead))));
+        expect_memory_location("+o17", Ok(Some(MemoryLocation::Address(0o17))));
+        expect_memory_location("xaf", Ok(Some(MemoryLocation::Address(0xaf))));
+
+        expect_memory_location("r0", Ok(Some(MemoryLocation::Label(Label::new("r0", 0)))));
+        expect_memory_location("r8", Ok(Some(MemoryLocation::Label(Label::new("r8", 0)))));
+        // expect_memory_location("xag", Ok(Some(MemoryLocation::Label(Label::new("xag", 0)))));
+        expect_memory_location(
+            "foo+1",
+            Ok(Some(MemoryLocation::Label(Label::new("foo", 1)))),
+        );
+        expect_memory_location(
+            "foo-0x01",
+            Ok(Some(MemoryLocation::Label(Label::new("foo", -1)))),
+        );
+
+        expect_memory_location("^", Ok(Some(MemoryLocation::PCOffset(0))));
+        expect_memory_location("^0x7ffF", Ok(Some(MemoryLocation::PCOffset(0x7fff))));
+        expect_memory_location("^+#19", Ok(Some(MemoryLocation::PCOffset(19))));
+    }
+
+    #[test]
+    fn try_parse_register() {
+        fn expect_register(input: &str, expected: Result<Option<Register>, ()>) {
+            println!("{:?}", input);
+            let result = Register::try_parse(input).map_err(|_| ());
+            assert_eq!(result, expected);
+        }
+
+        expect_register("", Ok(None));
+        expect_register("r8", Ok(None));
+        expect_register("r1a", Ok(None));
+        expect_register("R00", Ok(None));
+        expect_register("r1@", Err(()));
+        expect_register("R6...", Err(()));
+        expect_register("r0", Ok(Some(Register::R0)));
+        expect_register("r7", Ok(Some(Register::R7)));
+        expect_register("R7", Ok(Some(Register::R7)));
+    }
+
+    #[test]
+    fn try_parse_pc_offset() {
+        fn expect_pc_offset(input: &str, expected: Result<Option<i16>, ()>) {
+            println!("{:?}", input);
+            let result = match PCOffset::try_parse(input) {
+                Ok(opt) => Ok(opt.map(|integer| *integer)),
+                Err(_) => Err(()),
+            };
+            assert_eq!(result, expected);
+        }
+
+        expect_pc_offset("", Ok(None));
+        expect_pc_offset("0x1", Ok(None));
+        expect_pc_offset("xaa", Ok(None));
+        expect_pc_offset("!@#", Ok(None));
+
+        expect_pc_offset("^0x8000", Err(()));
+        expect_pc_offset("^-", Err(()));
+        expect_pc_offset("^+", Err(()));
+        expect_pc_offset("^#", Err(()));
+        expect_pc_offset("^abc", Err(()));
+        expect_pc_offset("^123abc", Err(()));
+        expect_pc_offset("^x", Err(()));
+        expect_pc_offset("^-x", Err(()));
+        expect_pc_offset("^+x", Err(()));
+        expect_pc_offset("^00x1", Err(()));
+
+        expect_pc_offset("^", Ok(Some(0)));
+        expect_pc_offset("^123", Ok(Some(123)));
+        expect_pc_offset("^0x7ffF", Ok(Some(0x7fff)));
+        expect_pc_offset("^-o123", Ok(Some(-0o123)));
+        expect_pc_offset("^+#19", Ok(Some(19)));
+    }
 }
