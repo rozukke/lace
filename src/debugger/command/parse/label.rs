@@ -71,43 +71,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn try_parse() {
-        macro_rules! expect_label {
-            ( $input:expr, $($expected:tt)* ) => {{
-                assert_eq!(
-                    Label::try_parse($input).map_err(|_| ()),
-                    $($expected)*
-                );
-            }};
-        }
-
-        expect_label!("", Ok(None));
-        expect_label!("0x1283", Ok(None));
-        expect_label!("!@*)#", Ok(None));
-        expect_label!("0Foo", Ok(None));
-        expect_label!("Foo!", Err(()));
-        expect_label!("F", Ok(Some(Label::new("F", 0))));
-        expect_label!("Foo", Ok(Some(Label::new("Foo", 0))));
-        expect_label!("_Foo", Ok(Some(Label::new("_Foo", 0))));
-        expect_label!("F_oo12", Ok(Some(Label::new("F_oo12", 0))));
-        expect_label!("Foo12_", Ok(Some(Label::new("Foo12_", 0))));
-        expect_label!("Foo+0", Ok(Some(Label::new("Foo", 0))));
-        expect_label!("Foo-0", Ok(Some(Label::new("Foo", 0))));
-        expect_label!("Foo+4", Ok(Some(Label::new("Foo", 4))));
-        expect_label!("Foo-43", Ok(Some(Label::new("Foo", -43))));
-        expect_label!("Foo+", Err(()));
-        expect_label!("Foo-", Err(()));
-        expect_label!("Foo", Ok(Some(Label::new("Foo", 0))));
-        expect_label!("Foo+4", Ok(Some(Label::new("Foo", 4))));
-        expect_label!("Foo+", Err(()));
-        expect_label!("Foo-", Err(()));
-        expect_label!("Foo+0x034", Ok(Some(Label::new("Foo", 0x34))));
-        expect_label!("Foo-0o4", Ok(Some(Label::new("Foo", -4))));
-        expect_label!("Foo-#24", Ok(Some(Label::new("Foo", -24))));
-        expect_label!("Foo+#024", Ok(Some(Label::new("Foo", 24))));
-    }
-
-    #[test]
     fn byte_counted() {
         let mut chars = ByteCounted::from("abc🍋🍎f".chars().peekable());
         assert_eq!(chars.len(), 0);
@@ -133,5 +96,39 @@ mod tests {
         assert_eq!(chars.len(), 12);
         assert_eq!(chars.next(), None);
         assert_eq!(chars.len(), 12);
+    }
+
+    #[test]
+    fn try_parse() {
+        fn expect_label(input: &str, expected: Result<Option<Label>, ()>) {
+            println!("{:?}", input);
+            let result = Label::try_parse(input).map_err(|_| ());
+            assert_eq!(result, expected);
+        }
+
+        expect_label("", Ok(None));
+        expect_label("0x1283", Ok(None));
+        expect_label("!@*)#", Ok(None));
+        expect_label("0Foo", Ok(None));
+        expect_label("Foo!", Err(()));
+        expect_label("F", Ok(Some(Label::new("F", 0))));
+        expect_label("Foo", Ok(Some(Label::new("Foo", 0))));
+        expect_label("_Foo", Ok(Some(Label::new("_Foo", 0))));
+        expect_label("F_oo12", Ok(Some(Label::new("F_oo12", 0))));
+        expect_label("Foo12_", Ok(Some(Label::new("Foo12_", 0))));
+        expect_label("Foo+0", Ok(Some(Label::new("Foo", 0))));
+        expect_label("Foo-0", Ok(Some(Label::new("Foo", 0))));
+        expect_label("Foo+4", Ok(Some(Label::new("Foo", 4))));
+        expect_label("Foo-43", Ok(Some(Label::new("Foo", -43))));
+        expect_label("Foo+", Err(()));
+        expect_label("Foo-", Err(()));
+        expect_label("Foo", Ok(Some(Label::new("Foo", 0))));
+        expect_label("Foo+4", Ok(Some(Label::new("Foo", 4))));
+        expect_label("Foo+", Err(()));
+        expect_label("Foo-", Err(()));
+        expect_label("Foo+0x034", Ok(Some(Label::new("Foo", 0x34))));
+        expect_label("Foo-0o4", Ok(Some(Label::new("Foo", -4))));
+        expect_label("Foo-#24", Ok(Some(Label::new("Foo", -24))));
+        expect_label("Foo+#024", Ok(Some(Label::new("Foo", 24))));
     }
 }
