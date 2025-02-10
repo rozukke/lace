@@ -20,17 +20,31 @@ fn eval_inner(state: &mut RunState, line: &'static str) -> Result<()> {
     // Parse
     let stmt = AsmParser::new_simple(line)?.parse_simple()?;
 
-    // Don't allow any branch instructions
-    // Since CC is set to 0b000 at start, this could lead to confusion when `BR` instructions are
-    // not executed
-    if let AirStmt::Branch { .. } = stmt {
-        dprintln!(
-            Always,
-            Error,
-            "Evaluation of `BR*` instructions is not supported."
-        );
-        dprintln!(Sometimes, Error, "Consider using `jump` command instead.");
-        return Ok(());
+    match stmt {
+        // Don't allow any branch instructions
+        // Since CC is set to 0b000 at start, this could lead to confusion when `BR` instructions are
+        // not executed
+        AirStmt::Branch { .. } => {
+            dprintln!(
+                Always,
+                Error,
+                "Evaluation of `BR*` instructions is not supported."
+            );
+            dprintln!(Sometimes, Error, "Consider using `jump` command instead.");
+            return Ok(());
+        }
+
+        // Don't allow `HALT` instruction
+        AirStmt::Trap { trap_vect: 0x25 } => {
+            dprintln!(
+                Always,
+                Error,
+                "Evaluation of `HALT` trap instruction is not supported."
+            );
+            return Ok(());
+        }
+
+        _ => (),
     }
 
     // Check labels
