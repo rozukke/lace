@@ -495,10 +495,84 @@ mod tests {
         expect_location!("R7", Ok(Location::Register(Register::R7)));
     }
 
-    // TODO(test)
-    // #[test]
-    // fn try_parse_location() {
-    // }
+    #[test]
+    fn try_parse_location() {
+        fn expect_location(input: &str, expected: Result<Option<Location>, ()>) {
+            println!("{:?}", input);
+            let result = Location::try_parse(input).map_err(|_| ());
+            assert_eq!(result, expected);
+        }
+
+        expect_location("", Ok(None));
+        expect_location("!@#", Ok(None));
+        expect_location("!@#", Ok(None));
+
+        expect_location("-0x1283", Err(()));
+        expect_location("12312031283", Err(()));
+        expect_location("^-", Err(()));
+        expect_location("^a", Err(()));
+        expect_location("ra$", Err(()));
+        expect_location("a!", Err(()));
+        expect_location("a--23", Err(()));
+        expect_location("a-x-23", Err(()));
+
+        expect_location("r0", Ok(Some(Location::Register(Register::R0))));
+        expect_location("R6", Ok(Some(Location::Register(Register::R6))));
+        expect_location("R7", Ok(Some(Location::Register(Register::R7))));
+
+        expect_location(
+            "123",
+            Ok(Some(Location::Memory(MemoryLocation::Address(123)))),
+        );
+        expect_location("#1", Ok(Some(Location::Memory(MemoryLocation::Address(1)))));
+        expect_location(
+            "0xdeAD",
+            Ok(Some(Location::Memory(MemoryLocation::Address(0xdead)))),
+        );
+        expect_location(
+            "+o17",
+            Ok(Some(Location::Memory(MemoryLocation::Address(0o17)))),
+        );
+        expect_location(
+            "xaf",
+            Ok(Some(Location::Memory(MemoryLocation::Address(0xaf)))),
+        );
+
+        expect_location(
+            "r8",
+            Ok(Some(Location::Memory(MemoryLocation::Label(Label::new(
+                "r8", 0,
+            ))))),
+        );
+        expect_location(
+            "xag",
+            Ok(Some(Location::Memory(MemoryLocation::Label(Label::new(
+                "xag", 0,
+            ))))),
+        );
+        expect_location(
+            "foo+1",
+            Ok(Some(Location::Memory(MemoryLocation::Label(Label::new(
+                "foo", 1,
+            ))))),
+        );
+        expect_location(
+            "foo-0x01",
+            Ok(Some(Location::Memory(MemoryLocation::Label(Label::new(
+                "foo", -1,
+            ))))),
+        );
+
+        expect_location("^", Ok(Some(Location::Memory(MemoryLocation::PCOffset(0)))));
+        expect_location(
+            "^0x7ffF",
+            Ok(Some(Location::Memory(MemoryLocation::PCOffset(0x7fff)))),
+        );
+        expect_location(
+            "^+#19",
+            Ok(Some(Location::Memory(MemoryLocation::PCOffset(19)))),
+        );
+    }
 
     #[test]
     fn try_parse_memory_location() {
@@ -527,7 +601,9 @@ mod tests {
         expect_memory_location("+o17", Ok(Some(MemoryLocation::Address(0o17))));
         expect_memory_location("xaf", Ok(Some(MemoryLocation::Address(0xaf))));
 
+        // Caller is responsible for avoiding registers parsing as labels
         expect_memory_location("r0", Ok(Some(MemoryLocation::Label(Label::new("r0", 0)))));
+
         expect_memory_location("r8", Ok(Some(MemoryLocation::Label(Label::new("r8", 0)))));
         expect_memory_location("xag", Ok(Some(MemoryLocation::Label(Label::new("xag", 0)))));
         expect_memory_location(
