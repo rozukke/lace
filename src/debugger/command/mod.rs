@@ -102,6 +102,13 @@ pub struct Label<'a> {
     pub offset: i16,
 }
 
+#[cfg(test)]
+impl<'a> Label<'a> {
+    pub fn new(name: &'a str, offset: i16) -> Self {
+        Self { name, offset }
+    }
+}
+
 impl<'a> Command<'a> {
     pub fn read_from<F>(source: &mut CommandSource, handle_error: F) -> Option<Self>
     where
