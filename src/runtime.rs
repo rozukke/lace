@@ -157,9 +157,9 @@ impl RunEnvironment {
 
                 // If still stuck on HALT
                 // Never *execute* HALT while debugger is active
-                // Wait for pc to change, such as `reset`, `exit`, or `quit`
+                // Wait for pc to change, such as "reset", "exit", or "quit"
                 if SignificantInstr::try_from(self.state.mem[self.state.pc as usize])
-                    == Ok(SignificantInstr::TrapHalt)
+                    == Ok(SignificantInstr::Halt)
                 {
                     continue;
                 }
@@ -168,7 +168,7 @@ impl RunEnvironment {
                     continue;
                 }
                 // From this point, next instruction will always be executed
-                // (Unless debugger is `quit`, making this counter irrelevant anyway)
+                // (Unless debugger is "quit", making this counter irrelevant anyway)
                 debugger.increment_instruction_count();
             }
 

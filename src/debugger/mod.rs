@@ -14,8 +14,6 @@ use crate::{dprint, dprintln, DIAGNOSTIC_CONTEXT_LINES};
 
 pub use self::breakpoint::{Breakpoint, Breakpoints};
 
-// TODO(fix): `finish` (fibonacci.asm)
-
 /// Leave this as a struct, in case more options are added in the future. Plus it is more explicit.
 #[derive(Debug)]
 pub struct DebuggerOptions {
@@ -34,7 +32,7 @@ pub struct Debugger {
     /// Used to allow breakpoint to be ignored if it just broke execution.
     ///
     /// Compare this with a `HALT` instruction, which is NEVER ignored with basic commands
-    /// (`progress`, `next`, `continue`, `finish`).
+    /// ("progress", "next", "continue", "finish").
     current_breakpoint: Option<u16>,
 
     /// Amount of instructions executed since last command.
@@ -45,7 +43,7 @@ pub struct Debugger {
 
 /// Reference to assembly source code.
 ///
-/// Used by `assembly` and `break list` commands.
+/// Used by "assembly" and "break list" commands.
 struct AsmSource {
     orig: u16,
     ast: Vec<AsmLine>,
@@ -62,8 +60,8 @@ enum Status {
     ///
     /// Stop execution early if breakpoint or `HALT` is reached.
     ///
-    /// Subroutines are not treated specially; `JSR|JSRR|CALL` and `RET` instructions are treated
-    /// as any other instruction is.
+    /// Subroutines are not treated specially; `JSR|JSRR|CALL` and `RET`|`RETS` instructions are
+    /// treated as any other instruction is.
     Step { count: u16 },
     /// Execute the next instruction, or the whole subroutine if next instruction is
     /// `JSR|JSRR|CALL`.
@@ -74,7 +72,7 @@ enum Status {
     Next { return_addr: u16 },
     /// Execute all instructions until breakpoint or `HALT` is reached.
     Continue,
-    /// Execute all instructions until `RET` instruction, breakpoint, or `HALT` is reached.
+    /// Execute all instructions until `RET`|`RETS` instruction, breakpoint, or `HALT` is reached.
     ///
     /// Used to 'finish' a subroutine.
     Finish,
@@ -91,16 +89,18 @@ pub enum Action {
     ExitProgram,
 }
 
-/// An instruction, which is relevant to the debugger, specifically the `finish` and `continue`
+/// An instruction, which is relevant to the debugger, specifically the "finish" and "continue"
 /// commands.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum SignificantInstr {
-    /// Return from a subroutine.
-    /// Used by `finish`.
-    Ret,
-    /// Halt.
-    /// Used by `continue` and `finish`.
-    TrapHalt,
+    /// Return from a subroutine. `RET` or `RETS`.
+    ///
+    /// Used by "finish".
+    Return,
+    /// Halt. `TRAP 0x25`.
+    ///
+    /// Used by "continue" and "finish".
+    Halt,
 }
 
 impl TryFrom<u16> for SignificantInstr {
@@ -109,9 +109,11 @@ impl TryFrom<u16> for SignificantInstr {
         let opcode = instr >> 12;
         match opcode {
             // `RET` is `JMP R7`
-            0xC if (instr >> 6) & 0b111 == 7 => Ok(SignificantInstr::Ret),
+            0xC if (instr >> 6) & 0b111 == 7 => Ok(SignificantInstr::Return),
+            // `RETS` is `0xD(stack) 0b10 ...`
+            0xD if (instr >> 10) & 0b11 == 0b10 => Ok(SignificantInstr::Return),
             // `HALT` is `TRAP 0x25`
-            0xF if instr & 0xFF == 0x25 => Ok(SignificantInstr::TrapHalt),
+            0xF if instr & 0xFF == 0x25 => Ok(SignificantInstr::Halt),
             _ => Err(()),
         }
     }
@@ -191,7 +193,7 @@ impl Debugger {
 
                 Status::Next { return_addr } => {
                     if state.pc() == *return_addr {
-                        // If subroutine was excecuted (for `JSR|JSRR|CALL` + `RET`)
+                        // If subroutine was excecuted (for `JSR|JSRR|CALL` + `RET`|`RETS`)
                         // As opposed to a single instruction
                         if self.instruction_count > 1 {
                             dprintln!(
@@ -211,14 +213,15 @@ impl Debugger {
                 }
 
                 Status::Finish => {
-                    if instr == Some(SignificantInstr::Ret) {
+                    if instr == Some(SignificantInstr::Return) {
                         dprintln!(
                             Always,
                             Warning,
                             "Reached end of subroutine. Pausing execution."
                         );
-                        // Execute `RET` before prompting command again
-                        self.status = Status::Step { count: 0 };
+                        // Program counter has already been incremented
+                        // So immediately break execution now
+                        self.status = Status::WaitForAction;
                     }
                     return Action::Proceed;
                 }
@@ -228,8 +231,9 @@ impl Debugger {
 
     /// An 'interrupt' here is a breakpoint or `HALT` trap.
     fn check_interrupts(&mut self, pc: u16, instr: Option<SignificantInstr>) {
-        // Always break from `continue|finish|progress|next` on a breakpoint or `HALT`
-        // Breaking on `RET` (for `finish`), and at end of `progress` and `next` is handled later
+        // Always break from "continue|finish|progress|next" on a breakpoint or `HALT`
+        // Breaking on `RET`/`RETS` (for "finish"), and at end of "progress" and "next" is handled
+        // later
 
         // Remember if previous cycle paused on the same breakpoint
         // If so, don't break now
@@ -257,7 +261,7 @@ impl Debugger {
         }
 
         // Always break on `HALT` (unlike breakpoints)
-        if instr == Some(SignificantInstr::TrapHalt) {
+        if instr == Some(SignificantInstr::Halt) {
             dprintln!(Always, Warning, "Reached HALT. Pausing execution.");
             self.status = Status::WaitForAction;
             return;
@@ -591,6 +595,7 @@ impl Debugger {
     }
 }
 
+// TODO(refactor): Move to proper module
 impl AsmSource {
     /// Show lines surrounding instruction/directive corresponding to `address`.
     pub fn show_line_context(&self, address: u16) -> Option<&AsmLine> {
