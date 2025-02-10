@@ -285,13 +285,7 @@ fn take_sign(chars: &mut CharIter) -> Option<Sign> {
 fn take_prefix(chars: &mut CharIter) -> Result<PrefixResult, error::Value> {
     // Only take ONE leading zero here
     // Disallow "00x..." etc.
-    let leading_zeros = match chars.peek() {
-        Some('0') => {
-            chars.next();
-            true
-        }
-        _ => false,
-    };
+    let leading_zeros = chars.next_if_eq(&'0').is_some();
 
     // Take optional prefix
     let mut consume_char = true;

@@ -61,6 +61,7 @@ impl<'a> ByteCounted<'a> {
     pub fn len(&self) -> usize {
         self.len
     }
+    /// See [`std::iter::Peekable::peek`]
     pub fn peek(&mut self) -> Option<&char> {
         self.inner.peek()
     }

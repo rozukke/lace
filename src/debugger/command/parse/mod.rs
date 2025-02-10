@@ -11,8 +11,6 @@ use crate::symbol::Register;
 
 pub use self::naive::NaiveType;
 
-// TODO(refactor): `.peek` -> `.next_if` where possible
-
 type CharIter<'a> = std::iter::Peekable<std::str::Chars<'a>>;
 
 /// Iterator over a command string which yields command-name or argument values.

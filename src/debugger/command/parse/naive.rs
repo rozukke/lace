@@ -79,9 +79,7 @@ impl NaiveType {
             Some('x' | 'X') => Radix::Hex,
             _ => return false,
         };
-        if matches!(chars.peek(), Some('-' | '+')) {
-            chars.next();
-        }
+        chars.next_if(|ch| matches!(ch, '-' | '+'));
         if chars.peek().is_none() {
             return false;
         }
