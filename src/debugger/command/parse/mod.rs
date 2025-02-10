@@ -438,20 +438,14 @@ mod tests {
         ( . $method:ident ($($args:tt)*), $input:expr, $($expected:tt)* ) => {{
             eprintln!("Test input: <{}>", $input);
             let mut iter = Arguments::from($input);
-            let result = iter.$method($($args)*);
-            expect_tokens!(@expected result, $($expected)*);
+            let result = iter.$method($($args)*).map_err(|_| ());
+            assert_eq!(result, $($expected)*);
         }};
         ( $function:ident ($($args:tt)*), $input:expr, $($expected:tt)* ) => {{
             eprintln!("Test input: <{}>", $input);
             let result = $function($input, $($args)*);
-            expect_tokens!(@expected result, $($expected)*);
+            assert_eq!(result, $($expected)*);
         }};
-        (@expected $result:expr, Err(_) $(,)?) => {
-            assert!($result.is_err());
-        };
-        (@expected $result:expr, $expected:expr $(,)?) => {
-            assert_eq!($result, $expected, stringify!($expected));
-        };
     }
 
     #[test]
@@ -460,7 +454,7 @@ mod tests {
     fn semicolon_fails_assert() {
         let argument_name = "dummy";
         let expected_count = 99;
-        expect_tokens!(.next_integer(argument_name, expected_count), "  ;  ", Err(_));
+        expect_tokens!(.next_integer(argument_name, expected_count), "  ;  ", Err(()));
     }
 
     #[test]
@@ -471,8 +465,8 @@ mod tests {
             expect_tokens!(.next_location(argument_name, expected_count), $($x)*);
         }}
 
-        expect_location!("", Err(_));
-        expect_location!("R7+1", Err(_));
+        expect_location!("", Err(()));
+        expect_location!("R7+1", Err(()));
         expect_location!(
             "a",
             Ok(Location::Memory(MemoryLocation::Label(Label::new("a", 0)))),

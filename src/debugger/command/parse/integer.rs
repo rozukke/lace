@@ -25,7 +25,8 @@ enum Sign {
 }
 
 /// Radix (base) of integer, as determined by (optional) integer prefix:
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub enum Radix {
     Binary = 2,
     Octal = 8,
@@ -34,6 +35,7 @@ pub enum Radix {
 }
 
 /// Helper struct for retaining syntax information when parsing integer prefix.
+#[cfg_attr(test, derive(Debug, PartialEq))]
 struct Prefix {
     /// Radix corresponding to prefix character.
     radix: Radix,
@@ -44,6 +46,7 @@ struct Prefix {
 }
 
 /// Helper struct similar to `Option<Prefix>` but also handles "0" case.
+#[cfg_attr(test, derive(Debug, PartialEq))]
 enum PrefixResult {
     /// Normal integer with (explicit or implicit) prefix.
     Integer(Prefix),
@@ -339,14 +342,147 @@ mod tests {
     use super::*;
 
     #[test]
-    fn it_works() {
+    fn take_prefix() {
+        fn expect_prefix(
+            input: &str,
+            expected_rest: &str,
+            expected_result: Result<PrefixResult, ()>,
+        ) {
+            let mut chars = input.chars().peekable();
+            let result = super::take_prefix(&mut chars).map_err(|_| ());
+            println!("{:?}", input);
+            assert_eq!(result, expected_result);
+            if expected_result.is_ok() {
+                assert!(chars.eq(expected_rest.chars()));
+            }
+        }
+
+        expect_prefix("0#", "", Err(()));
+        expect_prefix("0#01", "", Err(()));
+        expect_prefix("-1", "", Err(()));
+        expect_prefix("0-", "", Err(()));
+        expect_prefix("0+1", "", Err(()));
+
+        expect_prefix("", "", Ok(PrefixResult::NonInteger));
+        expect_prefix("a", "a", Ok(PrefixResult::NonInteger));
+        expect_prefix("ax", "ax", Ok(PrefixResult::NonInteger));
+        expect_prefix("boo", "boo", Ok(PrefixResult::NonInteger));
+        expect_prefix("!@#", "!@#", Ok(PrefixResult::NonInteger));
+
+        expect_prefix("0", "", Ok(PrefixResult::SingleZero));
+
+        expect_prefix(
+            "00",
+            "0",
+            Ok(PrefixResult::Integer(Prefix {
+                radix: Radix::Decimal,
+                leading_zeros: true,
+                non_alpha: false,
+            })),
+        );
+        expect_prefix(
+            "123",
+            "123",
+            Ok(PrefixResult::Integer(Prefix {
+                radix: Radix::Decimal,
+                leading_zeros: false,
+                non_alpha: false,
+            })),
+        );
+        expect_prefix(
+            "0123",
+            "123",
+            Ok(PrefixResult::Integer(Prefix {
+                radix: Radix::Decimal,
+                leading_zeros: true,
+                non_alpha: false,
+            })),
+        );
+        expect_prefix(
+            "00#01",
+            "0#01",
+            Ok(PrefixResult::Integer(Prefix {
+                radix: Radix::Decimal,
+                leading_zeros: true,
+                non_alpha: false,
+            })),
+        );
+        expect_prefix(
+            "#abc",
+            "abc",
+            Ok(PrefixResult::Integer(Prefix {
+                radix: Radix::Decimal,
+                leading_zeros: false,
+                non_alpha: true,
+            })),
+        );
+        expect_prefix(
+            "x",
+            "",
+            Ok(PrefixResult::Integer(Prefix {
+                radix: Radix::Hex,
+                leading_zeros: false,
+                non_alpha: false,
+            })),
+        );
+        expect_prefix(
+            "0x",
+            "",
+            Ok(PrefixResult::Integer(Prefix {
+                radix: Radix::Hex,
+                leading_zeros: true,
+                non_alpha: false,
+            })),
+        );
+        expect_prefix(
+            "0x12",
+            "12",
+            Ok(PrefixResult::Integer(Prefix {
+                radix: Radix::Hex,
+                leading_zeros: true,
+                non_alpha: false,
+            })),
+        );
+        expect_prefix(
+            "xaaa",
+            "aaa",
+            Ok(PrefixResult::Integer(Prefix {
+                radix: Radix::Hex,
+                leading_zeros: false,
+                non_alpha: false,
+            })),
+        );
+        expect_prefix(
+            "ooo",
+            "ooo",
+            Ok(PrefixResult::Integer(Prefix {
+                radix: Radix::Octal,
+                leading_zeros: false,
+                non_alpha: false,
+            })),
+        );
+        expect_prefix(
+            "0b0101",
+            "0101",
+            Ok(PrefixResult::Integer(Prefix {
+                radix: Radix::Binary,
+                leading_zeros: true,
+                non_alpha: false,
+            })),
+        );
+    }
+
+    #[test]
+    fn try_parse() {
         macro_rules! expect_integer {
             ( $method:tt, $input:expr, $($expected:tt)* ) => {{
-                assert!(matches!(
-                    expect_integer!(@method $method)($input)
-                        .map(|opt| opt.map(|integer| *integer)),
+                let result = expect_integer!(@method $method)($input)
+                        .map(|opt| opt.map(|integer| *integer))
+                        .map_err(|_| ());
+                assert_eq!(
+                    result,
                     $($expected)*
-                ));
+                );
             }};
             (@method false) => {{ Integer::try_parse }};
             (@method true)  => {{ Integer::try_parse_signed }};
@@ -366,70 +502,70 @@ mod tests {
         expect_integer!(false, "b", Ok(None));
         expect_integer!(false, "o", Ok(None));
         expect_integer!(false, "x", Ok(None));
-        expect_integer!(false, "-", Err(_)); // Invalid integers
-        expect_integer!(false, "+", Err(_));
-        expect_integer!(false, "#", Err(_));
-        expect_integer!(false, "#-", Err(_));
-        expect_integer!(false, "-#", Err(_));
-        expect_integer!(false, "-#-", Err(_));
-        expect_integer!(false, "-#-24", Err(_));
-        expect_integer!(false, "0#0", Err(_));
-        expect_integer!(false, "0#24", Err(_));
-        expect_integer!(false, "-0#24", Err(_));
-        expect_integer!(false, "0#-24", Err(_));
-        expect_integer!(false, "-0#-24", Err(_));
-        expect_integer!(false, "x-", Err(_));
-        expect_integer!(false, "-x", Err(_));
-        expect_integer!(false, "-x-", Err(_));
-        expect_integer!(false, "-x-24", Err(_));
-        expect_integer!(false, "0x", Err(_));
-        expect_integer!(false, "0x-", Err(_));
-        expect_integer!(false, "-0x", Err(_));
-        expect_integer!(false, "-0x-", Err(_));
-        expect_integer!(false, "-0x-24", Err(_));
-        expect_integer!(false, "0-x24", Err(_));
-        expect_integer!(false, "00x4", Err(_));
-        expect_integer!(false, "##", Err(_)); // Invalid digit for decimal base
-        expect_integer!(false, "-##", Err(_));
-        expect_integer!(false, "#b", Err(_));
-        expect_integer!(false, "#-b", Err(_));
-        expect_integer!(false, "-#b", Err(_));
-        expect_integer!(false, "0b2", Err(_)); // Invalid digit for base
-        expect_integer!(false, "0o8", Err(_));
-        expect_integer!(false, "0xg", Err(_));
-        expect_integer!(false, "-b2", Err(_));
-        expect_integer!(false, "-o8", Err(_));
-        expect_integer!(false, "-xg", Err(_));
-        expect_integer!(false, "b-2", Err(_));
-        expect_integer!(false, "o-8", Err(_));
-        expect_integer!(false, "x-g", Err(_));
-        expect_integer!(false, "--4", Err(_)); // Multiple sign characters
-        expect_integer!(false, "-+4", Err(_));
-        expect_integer!(false, "++4", Err(_));
-        expect_integer!(false, "+-4", Err(_));
-        expect_integer!(false, "#--4", Err(_));
-        expect_integer!(false, "#-+4", Err(_));
-        expect_integer!(false, "#++4", Err(_));
-        expect_integer!(false, "#+-4", Err(_));
-        expect_integer!(false, "-#-4", Err(_));
-        expect_integer!(false, "-#+4", Err(_));
-        expect_integer!(false, "+#+4", Err(_));
-        expect_integer!(false, "+#-4", Err(_));
-        expect_integer!(false, "--#4", Err(_));
-        expect_integer!(false, "-+#4", Err(_));
-        expect_integer!(false, "++#4", Err(_));
-        expect_integer!(false, "+-#4", Err(_));
-        expect_integer!(true, "--4", Err(_));
-        expect_integer!(true, "#--4", Err(_));
-        expect_integer!(true, "+#-4", Err(_));
-        expect_integer!(true, "+-#4", Err(_));
-        expect_integer!(true, "#4", Err(_)); // Missing sign character
-        expect_integer!(true, "x4", Err(_));
+        expect_integer!(false, "-", Err(())); // Invalid integers
+        expect_integer!(false, "+", Err(()));
+        expect_integer!(false, "#", Err(()));
+        expect_integer!(false, "#-", Err(()));
+        expect_integer!(false, "-#", Err(()));
+        expect_integer!(false, "-#-", Err(()));
+        expect_integer!(false, "-#-24", Err(()));
+        expect_integer!(false, "0#0", Err(()));
+        expect_integer!(false, "0#24", Err(()));
+        expect_integer!(false, "-0#24", Err(()));
+        expect_integer!(false, "0#-24", Err(()));
+        expect_integer!(false, "-0#-24", Err(()));
+        expect_integer!(false, "x-", Err(()));
+        expect_integer!(false, "-x", Err(()));
+        expect_integer!(false, "-x-", Err(()));
+        expect_integer!(false, "-x-24", Err(()));
+        expect_integer!(false, "0x", Err(()));
+        expect_integer!(false, "0x-", Err(()));
+        expect_integer!(false, "-0x", Err(()));
+        expect_integer!(false, "-0x-", Err(()));
+        expect_integer!(false, "-0x-24", Err(()));
+        expect_integer!(false, "0-x24", Err(()));
+        expect_integer!(false, "00x4", Err(()));
+        expect_integer!(false, "##", Err(())); // Invalid digit for decimal base
+        expect_integer!(false, "-##", Err(()));
+        expect_integer!(false, "#b", Err(()));
+        expect_integer!(false, "#-b", Err(()));
+        expect_integer!(false, "-#b", Err(()));
+        expect_integer!(false, "0b2", Err(())); // Invalid digit for base
+        expect_integer!(false, "0o8", Err(()));
+        expect_integer!(false, "0xg", Err(()));
+        expect_integer!(false, "-b2", Err(()));
+        expect_integer!(false, "-o8", Err(()));
+        expect_integer!(false, "-xg", Err(()));
+        expect_integer!(false, "b-2", Err(()));
+        expect_integer!(false, "o-8", Err(()));
+        expect_integer!(false, "x-g", Err(()));
+        expect_integer!(false, "--4", Err(())); // Multiple sign characters
+        expect_integer!(false, "-+4", Err(()));
+        expect_integer!(false, "++4", Err(()));
+        expect_integer!(false, "+-4", Err(()));
+        expect_integer!(false, "#--4", Err(()));
+        expect_integer!(false, "#-+4", Err(()));
+        expect_integer!(false, "#++4", Err(()));
+        expect_integer!(false, "#+-4", Err(()));
+        expect_integer!(false, "-#-4", Err(()));
+        expect_integer!(false, "-#+4", Err(()));
+        expect_integer!(false, "+#+4", Err(()));
+        expect_integer!(false, "+#-4", Err(()));
+        expect_integer!(false, "--#4", Err(()));
+        expect_integer!(false, "-+#4", Err(()));
+        expect_integer!(false, "++#4", Err(()));
+        expect_integer!(false, "+-#4", Err(()));
+        expect_integer!(true, "--4", Err(()));
+        expect_integer!(true, "#--4", Err(()));
+        expect_integer!(true, "+#-4", Err(()));
+        expect_integer!(true, "+-#4", Err(()));
+        expect_integer!(true, "#4", Err(())); // Missing sign character
+        expect_integer!(true, "x4", Err(()));
         // Simple bounds check (it is not supposed to be super accurate)
-        expect_integer!(false, "x80000000", Err(_));
+        expect_integer!(false, "x80000000", Err(()));
         expect_integer!(false, "x7fffffff", Ok(Some(0x7fffffff)));
         expect_integer!(false, "x-7fffffff", Ok(Some(-0x7fffffff)));
-        expect_integer!(false, "x-80000000", Err(_));
+        expect_integer!(false, "x-80000000", Err(()));
         // Decimal
         expect_integer!(false, "0", Ok(Some(0)));
         expect_integer!(false, "00", Ok(Some(0)));
@@ -468,17 +604,17 @@ mod tests {
         expect_integer!(true, "+#4", Ok(Some(4)));
         expect_integer!(true, "-#4284", Ok(Some(-4284)));
         expect_integer!(true, "-#004284", Ok(Some(-4284)));
-        expect_integer!(true, "#-4", Err(_));
-        expect_integer!(true, "#+4", Err(_));
-        expect_integer!(true, "#-4284", Err(_));
-        expect_integer!(true, "#-004284", Err(_));
-        expect_integer!(true, "4", Err(_));
-        expect_integer!(true, "4284", Err(_));
-        expect_integer!(true, "004284", Err(_));
-        expect_integer!(true, "#4", Err(_));
-        expect_integer!(true, "#4284", Err(_));
-        expect_integer!(true, "#004284", Err(_));
-        expect_integer!(true, "#4", Err(_));
+        expect_integer!(true, "#-4", Err(()));
+        expect_integer!(true, "#+4", Err(()));
+        expect_integer!(true, "#-4284", Err(()));
+        expect_integer!(true, "#-004284", Err(()));
+        expect_integer!(true, "4", Err(()));
+        expect_integer!(true, "4284", Err(()));
+        expect_integer!(true, "004284", Err(()));
+        expect_integer!(true, "#4", Err(()));
+        expect_integer!(true, "#4284", Err(()));
+        expect_integer!(true, "#004284", Err(()));
+        expect_integer!(true, "#4", Err(()));
         // Hex
         expect_integer!(false, "x0", Ok(Some(0x0)));
         expect_integer!(false, "x00", Ok(Some(0x0)));
@@ -525,23 +661,23 @@ mod tests {
         expect_integer!(true, "-0x004", Ok(Some(-0x4)));
         expect_integer!(true, "-0x429", Ok(Some(-0x429)));
         expect_integer!(true, "+0x429", Ok(Some(0x429)));
-        expect_integer!(true, "x-4", Err(_));
-        expect_integer!(true, "x-004", Err(_));
-        expect_integer!(true, "x+004", Err(_));
-        expect_integer!(true, "x-429", Err(_));
-        expect_integer!(true, "x4", Err(_));
-        expect_integer!(true, "x004", Err(_));
-        expect_integer!(true, "x429", Err(_));
-        expect_integer!(true, "0x4", Err(_));
-        expect_integer!(true, "0x004", Err(_));
-        expect_integer!(true, "0x429", Err(_));
-        expect_integer!(true, "x4", Err(_));
-        expect_integer!(true, "x004", Err(_));
-        expect_integer!(true, "x429", Err(_));
-        expect_integer!(true, "0x4", Err(_));
-        expect_integer!(true, "0x004", Err(_));
-        expect_integer!(true, "0x429", Err(_));
-        expect_integer!(true, "0x429", Err(_));
+        expect_integer!(true, "x-4", Err(()));
+        expect_integer!(true, "x-004", Err(()));
+        expect_integer!(true, "x+004", Err(()));
+        expect_integer!(true, "x-429", Err(()));
+        expect_integer!(true, "x4", Err(()));
+        expect_integer!(true, "x004", Err(()));
+        expect_integer!(true, "x429", Err(()));
+        expect_integer!(true, "0x4", Err(()));
+        expect_integer!(true, "0x004", Err(()));
+        expect_integer!(true, "0x429", Err(()));
+        expect_integer!(true, "x4", Err(()));
+        expect_integer!(true, "x004", Err(()));
+        expect_integer!(true, "x429", Err(()));
+        expect_integer!(true, "0x4", Err(()));
+        expect_integer!(true, "0x004", Err(()));
+        expect_integer!(true, "0x429", Err(()));
+        expect_integer!(true, "0x429", Err(()));
         // Octal (0o427==0x117)
         expect_integer!(false, "o0", Ok(Some(0x0)));
         expect_integer!(false, "o00", Ok(Some(0x0)));
