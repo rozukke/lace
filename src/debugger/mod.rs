@@ -1,16 +1,17 @@
+mod asm;
 mod breakpoint;
 mod command;
 mod eval;
 
 use std::cmp::Ordering;
-use std::ops::Range;
 
+use self::asm::AsmSource;
 use self::command::{Command, CommandSource, Label, Location, MemoryLocation};
 use crate::air::AsmLine;
 use crate::output::{Condition, Output};
 use crate::runtime::{RunState, HALT_ADDRESS, USER_MEMORY_END};
 use crate::symbol::with_symbol_table;
-use crate::{dprint, dprintln, DIAGNOSTIC_CONTEXT_LINES};
+use crate::{dprint, dprintln};
 
 pub use self::breakpoint::{Breakpoint, Breakpoints};
 
@@ -39,15 +40,6 @@ pub struct Debugger {
     instruction_count: u32,
     /// Whether PC should be displayed on next command prompt.
     should_echo_pc: bool,
-}
-
-/// Reference to assembly source code.
-///
-/// Used by "assembly" and "break list" commands.
-struct AsmSource {
-    orig: u16,
-    ast: Vec<AsmLine>,
-    src: &'static str,
 }
 
 /// The current status of the debugger execution loop.
@@ -131,7 +123,7 @@ impl Debugger {
         let orig = initial_state.pc();
         Self {
             initial_state,
-            asm_source: AsmSource { orig, ast, src },
+            asm_source: AsmSource::from(orig, ast, src),
 
             status: Status::default(),
             command_source: CommandSource::from(opts.command),
@@ -142,6 +134,19 @@ impl Debugger {
             instruction_count: 0,
             should_echo_pc: true,
         }
+    }
+
+    pub(super) fn orig(&self) -> u16 {
+        debug_assert_eq!(
+            self.asm_source.orig(),
+            self.initial_state.pc(),
+            "orig values do not match between assembly and initial state",
+        );
+        self.asm_source.orig()
+    }
+
+    pub(super) fn increment_instruction_count(&mut self) {
+        self.instruction_count += 1;
     }
 
     /// Read and execute user commands, until an [`Action`] is raised.
@@ -527,7 +532,7 @@ impl Debugger {
 
     /// Returns `None` if `label` is out of bounds or an invalid label.
     fn resolve_label_address(&self, label: &Label) -> Option<u16> {
-        let address = Self::resolve_label_name_address(label.name)?;
+        let address = resolve_label_name_address(label.name)?;
 
         let Some(address) = self.add_address_offset(address + self.orig(), label.offset) else {
             dprintln!(
@@ -548,28 +553,6 @@ impl Debugger {
         Some(address)
     }
 
-    /// Returns `None` if `label` is an invalid label.
-    ///
-    /// Label names are case-sensitive.
-    /// Print a warning if the given name only has a case-insensitive match.
-    fn resolve_label_name_address(label: &str) -> Option<u16> {
-        with_symbol_table(|sym| {
-            if let Some(addr) = sym.get(label) {
-                // Account for PC being incremented before instruction is executed
-                return Some(addr + 1);
-            }
-            dprintln!(Always, Error, "Label not found named `{}`.", label);
-            // Check for case-*insensitive* match
-            for key in sym.keys() {
-                if key.eq_ignore_ascii_case(label) {
-                    dprintln!(Sometimes, Warning, "Hint: Similar label named `{}`", key);
-                    break;
-                }
-            }
-            None
-        })
-    }
-
     /// Returns `None` if `pc + offset` is out of bounds.
     fn add_address_offset(&self, address: u16, offset: i16) -> Option<u16> {
         let address = (address as i16).checked_add(offset)?;
@@ -580,135 +563,26 @@ impl Debugger {
             None
         }
     }
-
-    pub(super) fn orig(&self) -> u16 {
-        debug_assert_eq!(
-            self.asm_source.orig,
-            self.initial_state.pc(),
-            "orig values do not match",
-        );
-        self.asm_source.orig
-    }
-
-    pub(super) fn increment_instruction_count(&mut self) {
-        self.instruction_count += 1;
-    }
 }
 
-// TODO(refactor): Move to proper module
-impl AsmSource {
-    /// Show lines surrounding instruction/directive corresponding to `address`.
-    pub fn show_line_context(&self, address: u16) -> Option<&AsmLine> {
-        let stmt = self.get_source_statement(address)?;
-        let report = miette::miette!(
-            severity = miette::Severity::Advice,
-            labels = vec![miette::LabeledSpan::at(
-                stmt.span,
-                format!("Next instruction, at address 0x{:04x}", address),
-            )],
-            "",
-        )
-        .with_source_code(self.src);
-        eprintln!("{:?}", report);
-        Some(stmt)
-    }
-
-    /// Show instruction/directive corresponding to `address`, with no context.
-    pub fn show_single_line(&self, address: u16) {
-        let Some(stmt) = self.get_source_statement(address) else {
-            return;
-        };
-        let range: Range<usize> = stmt.span.into();
-        let line = &self.src[range];
-        dprintln!(Always, Normal, "{}", line);
-    }
-
-    /// Get [`AsmLine`] corresponding to `address`.
-    ///
-    /// Used to access source code span.
-    fn get_source_statement(&self, address: u16) -> Option<&AsmLine> {
-        if address < self.orig || (address - self.orig) as usize >= self.ast.len() {
-            dprintln!(
-                Always,
-                Error,
-                "Address 0x{:04x} does not correspond to an instruction",
-                address
-            );
-            return None;
-        };
-        let stmt = self
-            .ast
-            .get((address - self.orig) as usize)
-            .expect("index was checked to be within bounds above");
-        Some(stmt)
-    }
-
-    /// Get memory addresses of first and last line shown in source context.
-    fn get_context_range(&self, orig: u16, stmt: &AsmLine) -> (u16, u16) {
-        let stmt_start = stmt.span.offs();
-        let stmt_end = stmt.span.end();
-
-        // Please note that this code demands trust, not comprehension
-
-        // Split source into characters before and after span
-        // Neither string contains characters in the span, but may contain characters in the same
-        // line as the instruction
-        let source_above = &self.src[..stmt_start];
-        let source_below = &self.src[stmt_end..];
-
-        /// Count characters in an iterator, within a maximum amount of lines.
-        fn count_chars_in_lines<I>(iter: I) -> usize
-        where
-            I: Iterator<Item = char>,
-        {
-            let mut count = 0;
-            // Counts 0..=DIAGNOSTIC_CONTEXT_LINES
-            // Note inclusive range, to account for characters in current line, outside of
-            // instruction span
-            let mut line = 0;
-            // Previous attempts to restructure/invert this loop have been unproductive
-            for ch in iter {
-                if ch == '\n' {
-                    line += 1;
-                    if line > DIAGNOSTIC_CONTEXT_LINES {
-                        break;
-                    }
-                }
-                count += 1;
-            }
-            count
+/// Returns `None` if `label` is an invalid label.
+///
+/// Label names are case-sensitive.
+/// Print a warning if the given name only has a case-insensitive match.
+fn resolve_label_name_address(label: &str) -> Option<u16> {
+    with_symbol_table(|sym| {
+        if let Some(addr) = sym.get(label) {
+            // Account for PC being incremented before instruction is executed
+            return Some(addr + 1);
         }
-
-        let start = stmt_start - count_chars_in_lines(source_above.chars().rev());
-        let end = stmt_end + count_chars_in_lines(source_below.chars());
-
-        // Ugly -- but what else can be done...
-        // Please do not try to abstract this pair of expressions; it won't lead to anything good
-
-        // Get address of earliest statement, whose span is (at least partially) within `start..`
-        let start_addr = {
-            let mut line = stmt.line;
-            for stmt in self.ast.iter().rev() {
-                if stmt.span.end() < start {
-                    break;
-                }
-                line = stmt.line;
+        dprintln!(Always, Error, "Label not found named `{}`.", label);
+        // Check for case-*insensitive* match
+        for key in sym.keys() {
+            if key.eq_ignore_ascii_case(label) {
+                dprintln!(Sometimes, Warning, "Hint: Similar label named `{}`", key);
+                break;
             }
-            // -1 applied to addresses, to account for the `line` field counting from 1, not 0
-            line + orig - 1
-        };
-        // Get address of latest statement, whose span is (at least partially) within `..end`
-        let end_addr = {
-            let mut line = stmt.line;
-            for stmt in self.ast.iter() {
-                if stmt.span.offs() >= end {
-                    break;
-                }
-                line = stmt.line;
-            }
-            line + orig - 1
-        };
-
-        (start_addr, end_addr)
-    }
+        }
+        None
+    })
 }
