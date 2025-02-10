@@ -106,6 +106,8 @@ impl<'a> Arguments<'a> {
     /// Leading/trailing whitespace is trimmed.
     ///
     /// Only used for "eval" command currently, but could be used for future commands.
+    //
+    // TODO(refactor): Rename to `get_rest`
     pub fn collect_rest(&mut self) -> &'a str {
         // Do not increment `arg_count`
         let start = self.cursor;

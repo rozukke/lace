@@ -104,3 +104,48 @@ fn name_matches(name: &str, candidates: CandidateList) -> bool {
     }
     false
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn get_command_name() {
+        fn expect_command_name(
+            input: &str,
+            expected_rest: &str,
+            expected_result: Result<CommandName, ()>,
+        ) {
+            println!("{:?}", input);
+            let mut arguments = Arguments::from(input);
+            let result = arguments.get_command_name().map_err(|_| ());
+            assert_eq!(result, expected_result);
+            if expected_result.is_ok() {
+                assert_eq!(arguments.collect_rest(), expected_rest);
+            }
+        }
+
+        expect_command_name(" ts  ", "", Err(()));
+        expect_command_name("break  ", "", Err(()));
+        expect_command_name("break ts", "", Err(()));
+
+        expect_command_name("help", "", Ok(CommandName::Help));
+        expect_command_name("h", "", Ok(CommandName::Help));
+        expect_command_name(" help me! ", "me!", Ok(CommandName::Help));
+        expect_command_name(
+            "break   list somethign",
+            "somethign",
+            Ok(CommandName::BreakList),
+        );
+        expect_command_name("b l", "", Ok(CommandName::BreakList));
+        expect_command_name("    bl ts", "ts", Ok(CommandName::BreakList));
+    }
+
+    #[test]
+    #[should_panic]
+    fn another_command_name_panics() {
+        let mut arguments = Arguments::from("help help");
+        let _ = arguments.get_command_name();
+        let _ = arguments.get_command_name();
+    }
+}
