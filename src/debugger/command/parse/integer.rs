@@ -25,24 +25,13 @@ enum Sign {
 }
 
 /// Radix (base) of integer, as determined by (optional) integer prefix:
-#[derive(Clone, Copy)]
-#[cfg_attr(test, derive(Debug, PartialEq))]
+#[derive(Clone, Copy, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub enum Radix {
     Binary = 2,
     Octal = 8,
     Decimal = 10,
     Hex = 16,
-}
-
-/// Helper struct for retaining syntax information when parsing integer prefix.
-#[cfg_attr(test, derive(Debug, PartialEq))]
-struct Prefix {
-    /// Radix corresponding to prefix character.
-    radix: Radix,
-    /// Whether prefix character is preceeded by zeros.
-    leading_zeros: bool,
-    /// Whether prefix character is a symbol (i.e. "#").
-    non_alpha: bool,
 }
 
 /// Helper struct similar to `Option<Prefix>` but also handles "0" case.
@@ -54,6 +43,17 @@ enum PrefixResult {
     SingleZero,
     /// This token is not an integer, but not necessary invalid (yet).
     NonInteger,
+}
+
+/// Helper struct for retaining syntax information when parsing integer prefix.
+#[cfg_attr(test, derive(Debug, PartialEq))]
+struct Prefix {
+    /// Radix corresponding to prefix character.
+    ///
+    /// `None` indicates no *explicit* radix character; Should be unwrapped as `Radix::Decimal`.
+    radix: Option<Radix>,
+    /// Whether prefix character is preceeded by zeros.
+    leading_zeros: bool,
 }
 
 impl<'a> TryParse<'a> for Integer {
@@ -204,14 +204,17 @@ fn parse_integer(string: &str, require_sign: bool) -> Result<Option<Integer>, er
         (Some(_), Some(_)) => return Err(error::Value::MalformedInteger {}),
     };
 
+    let radix = prefix.radix.unwrap_or(Radix::Decimal);
+    let non_alpha = prefix.radix == Some(Radix::Decimal); // Explicit `#` character
+
     // Check next character is digit
     // Character must be checked against radix here to prevent valid non-integer tokens returning `Err`
     if chars
         .peek()
-        .is_none_or(|ch| prefix.radix.parse_digit(*ch).is_none())
+        .is_none_or(|ch| radix.parse_digit(*ch).is_none())
     {
         // Sign, pre-prefix zeros, or non-alpha prefix ("#") were given, so it must be an invalid integer token
-        if sign.is_some() || prefix.leading_zeros || prefix.non_alpha {
+        if sign.is_some() || prefix.leading_zeros || non_alpha {
             return Err(error::Value::MalformedInteger {});
         }
         return Ok(None);
@@ -223,18 +226,18 @@ fn parse_integer(string: &str, require_sign: bool) -> Result<Option<Integer>, er
     for ch in chars.by_ref() {
         // Invalid digit will always return `Err`
         // Valid non-integer tokens should trigger early return before this loop
-        let Some(digit) = prefix.radix.parse_digit(ch) else {
+        let Some(digit) = radix.parse_digit(ch) else {
             return Err(error::Value::MalformedInteger {});
         };
 
         // Re-checked later on convert to smaller int types
-        if integer > IntegerValue::MAX / prefix.radix as IntegerValue {
+        if integer > IntegerValue::MAX / radix as IntegerValue {
             return Err(error::Value::IntegerTooLarge {
                 max: i16::MAX as u16,
             });
         }
 
-        integer *= prefix.radix as IntegerValue;
+        integer *= radix as IntegerValue;
         integer += digit as IntegerValue;
     }
 
@@ -289,23 +292,23 @@ fn take_prefix(chars: &mut CharIter) -> Result<PrefixResult, error::Value> {
 
     // Take optional prefix
     let mut consume_char = true;
-    let (radix, non_alpha) = match chars.peek() {
-        Some('b' | 'B') => (Radix::Binary, false),
-        Some('o' | 'O') => (Radix::Octal, false),
-        Some('x' | 'X') => (Radix::Hex, false),
+    let radix = match chars.peek() {
+        Some('b' | 'B') => Some(Radix::Binary),
+        Some('o' | 'O') => Some(Radix::Octal),
+        Some('x' | 'X') => Some(Radix::Hex),
 
         Some('#') => {
             // Disallow "0#..."
             if leading_zeros {
                 return Err(error::Value::MalformedInteger {});
             }
-            (Radix::Decimal, true)
+            Some(Radix::Decimal)
         }
 
         // No prefix
         Some('0'..='9') => {
             consume_char = false; // Leave initial digit, to be parsed by caller
-            (Radix::Decimal, false)
+            None
         }
 
         // Disallow "0-..." and "0+..."
@@ -333,7 +336,6 @@ fn take_prefix(chars: &mut CharIter) -> Result<PrefixResult, error::Value> {
     Ok(PrefixResult::Integer(Prefix {
         radix,
         leading_zeros,
-        non_alpha,
     }))
 }
 
@@ -366,7 +368,7 @@ mod tests {
         expect_prefix("", "", Ok(PrefixResult::NonInteger));
         expect_prefix("a", "a", Ok(PrefixResult::NonInteger));
         expect_prefix("ax", "ax", Ok(PrefixResult::NonInteger));
-        expect_prefix("boo", "boo", Ok(PrefixResult::NonInteger));
+        expect_prefix("no", "no", Ok(PrefixResult::NonInteger));
         expect_prefix("!@#", "!@#", Ok(PrefixResult::NonInteger));
 
         expect_prefix("0", "", Ok(PrefixResult::SingleZero));
@@ -375,99 +377,88 @@ mod tests {
             "00",
             "0",
             Ok(PrefixResult::Integer(Prefix {
-                radix: Radix::Decimal,
+                radix: None,
                 leading_zeros: true,
-                non_alpha: false,
             })),
         );
         expect_prefix(
             "123",
             "123",
             Ok(PrefixResult::Integer(Prefix {
-                radix: Radix::Decimal,
+                radix: None,
                 leading_zeros: false,
-                non_alpha: false,
             })),
         );
         expect_prefix(
             "0123",
             "123",
             Ok(PrefixResult::Integer(Prefix {
-                radix: Radix::Decimal,
+                radix: None,
                 leading_zeros: true,
-                non_alpha: false,
             })),
         );
         expect_prefix(
             "00#01",
             "0#01",
             Ok(PrefixResult::Integer(Prefix {
-                radix: Radix::Decimal,
+                radix: None,
                 leading_zeros: true,
-                non_alpha: false,
             })),
         );
         expect_prefix(
             "#abc",
             "abc",
             Ok(PrefixResult::Integer(Prefix {
-                radix: Radix::Decimal,
+                radix: Some(Radix::Decimal),
                 leading_zeros: false,
-                non_alpha: true,
             })),
         );
         expect_prefix(
             "x",
             "",
             Ok(PrefixResult::Integer(Prefix {
-                radix: Radix::Hex,
+                radix: Some(Radix::Hex),
                 leading_zeros: false,
-                non_alpha: false,
             })),
         );
         expect_prefix(
             "0x",
             "",
             Ok(PrefixResult::Integer(Prefix {
-                radix: Radix::Hex,
+                radix: Some(Radix::Hex),
                 leading_zeros: true,
-                non_alpha: false,
             })),
         );
         expect_prefix(
             "0x12",
             "12",
             Ok(PrefixResult::Integer(Prefix {
-                radix: Radix::Hex,
+                radix: Some(Radix::Hex),
                 leading_zeros: true,
-                non_alpha: false,
             })),
         );
         expect_prefix(
             "xaaa",
             "aaa",
             Ok(PrefixResult::Integer(Prefix {
-                radix: Radix::Hex,
+                radix: Some(Radix::Hex),
                 leading_zeros: false,
-                non_alpha: false,
             })),
         );
         expect_prefix(
             "ooo",
-            "ooo",
+            "oo",
             Ok(PrefixResult::Integer(Prefix {
-                radix: Radix::Octal,
+                radix: Some(Radix::Octal),
                 leading_zeros: false,
-                non_alpha: false,
             })),
         );
         expect_prefix(
             "0b0101",
             "0101",
             Ok(PrefixResult::Integer(Prefix {
-                radix: Radix::Binary,
+                radix: Some(Radix::Binary),
                 leading_zeros: true,
-                non_alpha: false,
             })),
         );
     }
