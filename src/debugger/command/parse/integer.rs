@@ -205,30 +205,32 @@ fn parse_integer(string: &str, require_sign: bool) -> Result<Option<Integer>, er
         (Some(_), Some(_)) => return Err(error::Value::MalformedInteger {}),
     };
 
-    let radix = prefix.radix.unwrap_or(Radix::Decimal);
-    let non_alpha = prefix.radix == Some(Radix::Decimal); // Explicit `#` character
-
-    // Check next character is digit
-    // Character must be checked against radix here to prevent valid non-integer tokens returning `Err`
-    if chars
-        .peek()
-        .is_none_or(|ch| radix.parse_digit(*ch).is_none())
-    {
-        // Sign, pre-prefix zeros, or non-alpha prefix ("#") were given, so it must be an invalid integer token
+    let end_of_integer_result = || -> Result<Option<Integer>, error::Value> {
+        // If sign, pre-prefix zeros, or non-alpha prefix ("#") were given, it must be an invalid
+        // integer token (as opposed to a possibly-valid non-integer token)
+        let non_alpha = prefix.radix == Some(Radix::Decimal);
         if sign.is_some() || prefix.leading_zeros || non_alpha {
-            return Err(error::Value::MalformedInteger {});
+            Err(error::Value::MalformedInteger {})
+        } else {
+            Ok(None)
         }
-        return Ok(None);
     };
+
+    // Check if anything follows prefix (also covers "" case)
+    // Otherwise loop would be skipped and value assumed to be `0`
+    if chars.peek().is_none() {
+        return end_of_integer_result();
+    }
+
+    // Use decimal if no radix was explicitly given
+    let radix = prefix.radix.unwrap_or(Radix::Decimal);
 
     // Take digits until non-digit character
     // Note that this loop handles post-prefix leading zeros like any other digit
     let mut integer: IntegerValue = 0;
     for ch in chars.by_ref() {
-        // Invalid digit will always return `Err`
-        // Valid non-integer tokens should trigger early return before this loop
         let Some(digit) = radix.parse_digit(ch) else {
-            return Err(error::Value::MalformedInteger {});
+            return end_of_integer_result();
         };
 
         // Re-checked later on convert to smaller int types
@@ -509,8 +511,9 @@ mod tests {
         expect_integer(false, "b2", Ok(None));
         expect_integer(false, "o8", Ok(None));
         expect_integer(false, "xg", Ok(None));
-        // TODO(fix)
-        // expect_integer(false, "xag", Ok(None));
+        expect_integer(false, "x1g", Ok(None));
+        expect_integer(false, "xag", Ok(None));
+        expect_integer(false, "O18", Ok(None));
         expect_integer(false, "b", Ok(None));
         expect_integer(false, "o", Ok(None));
         expect_integer(false, "x", Ok(None));

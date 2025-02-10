@@ -529,7 +529,7 @@ mod tests {
 
         expect_memory_location("r0", Ok(Some(MemoryLocation::Label(Label::new("r0", 0)))));
         expect_memory_location("r8", Ok(Some(MemoryLocation::Label(Label::new("r8", 0)))));
-        // expect_memory_location("xag", Ok(Some(MemoryLocation::Label(Label::new("xag", 0)))));
+        expect_memory_location("xag", Ok(Some(MemoryLocation::Label(Label::new("xag", 0)))));
         expect_memory_location(
             "foo+1",
             Ok(Some(MemoryLocation::Label(Label::new("foo", 1)))),
