@@ -43,10 +43,8 @@ impl Arguments<'_> {
         );
 
         let command_name = self.next_token_str();
-        // Command source should always return a string containing non-whitespace
-        // characters, so initial command name should always exist.
-        debug_assert!(command_name.is_some(), "missing command name");
-        let command_name = command_name.unwrap_or("");
+        // Command source should always return a string containing non-whitespace characters
+        let command_name = command_name.expect("missing command name");
 
         if let Some(command) = find_name_match(command_name, COMMANDS) {
             return Ok(command);

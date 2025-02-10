@@ -11,8 +11,10 @@ use crate::symbol::Register;
 pub use self::reader::CommandReader;
 
 #[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum Command<'a> {
     Help,
+    // TODO(rename): `Progress`
     Step { count: u16 },
     Next,
     Continue,
@@ -27,6 +29,7 @@ pub enum Command<'a> {
     Jump { location: MemoryLocation<'a> },
     Registers,
     Reset,
+    // TODO(rename): `Assembly`
     Source { location: MemoryLocation<'a> },
     // This can be `String` bc it will be allocated later regardless to get a &'static str
     // Unless parsing code is changed, and can accept a non-static string
@@ -235,5 +238,75 @@ impl<'a> Command<'a> {
         iter.expect_end(expected_args, iter.arg_count() + 1)?;
 
         Ok(command)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn try_from() {
+        fn expect_command(input: &str, expected: Result<Command, ()>) {
+            println!("{:?}", input);
+            let result = Command::try_from(input).map_err(|_| ());
+            assert_eq!(result, expected);
+        }
+
+        expect_command("ts", Err(()));
+        expect_command("break", Err(()));
+        expect_command("break ts", Err(()));
+        expect_command("progress r0", Err(()));
+        expect_command("get r0 r0", Err(()));
+        expect_command("set r0", Err(()));
+        expect_command("p x19248", Err(()));
+        expect_command("p Q@)#", Err(()));
+
+        expect_command("help", Ok(Command::Help));
+        expect_command("  help   me!  ", Ok(Command::Help));
+        expect_command("progress", Ok(Command::Step { count: 1 }));
+        expect_command("p 0", Ok(Command::Step { count: 1 }));
+        expect_command("progress   #012", Ok(Command::Step { count: 12 }));
+        expect_command(
+            "set   #012 0x123",
+            Ok(Command::Set {
+                location: Location::Memory(MemoryLocation::Address(12)),
+                value: 0x123,
+            }),
+        );
+        expect_command(
+            "get r6",
+            Ok(Command::Get {
+                location: Location::Register(Register::R6),
+            }),
+        );
+        expect_command("registers", Ok(Command::Registers));
+        expect_command(
+            "assembly  HW+4",
+            Ok(Command::Source {
+                location: MemoryLocation::Label(Label {
+                    name: "HW",
+                    offset: 4,
+                }),
+            }),
+        );
+        expect_command(
+            "a",
+            Ok(Command::Source {
+                location: MemoryLocation::PCOffset(0),
+            }),
+        );
+        expect_command(
+            " eval  something  instruction  ",
+            Ok(Command::Eval {
+                instruction: "something  instruction",
+            }),
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn empty_command_panics() {
+        let _ = Command::try_from("");
     }
 }
