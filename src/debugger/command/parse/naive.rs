@@ -124,3 +124,48 @@ impl fmt::Display for NaiveType {
         write!(f, "{}", self.as_str())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn try_from() {
+        fn expect_naive_type(input: &str, expected: Option<NaiveType>) {
+            println!("{:?}", input);
+            let result = NaiveType::try_from(input).ok();
+            assert_eq!(result, expected);
+        }
+
+        expect_naive_type("", None);
+        expect_naive_type("!@#", None);
+        expect_naive_type("!@#", None);
+
+        expect_naive_type("r0", Some(NaiveType::Register));
+        expect_naive_type("R6", Some(NaiveType::Register));
+        expect_naive_type("R7", Some(NaiveType::Register));
+
+        expect_naive_type("123", Some(NaiveType::Integer));
+        expect_naive_type("#1", Some(NaiveType::Integer));
+        expect_naive_type("0xdeAD", Some(NaiveType::Integer));
+        expect_naive_type("+o17", Some(NaiveType::Integer));
+        expect_naive_type("xaf", Some(NaiveType::Integer));
+        expect_naive_type("-0x1283", Some(NaiveType::Integer));
+        expect_naive_type("12312031283", Some(NaiveType::Integer));
+
+        expect_naive_type("r8", Some(NaiveType::Label));
+        expect_naive_type("xag", Some(NaiveType::Label));
+        expect_naive_type("foo+1", Some(NaiveType::Label));
+        expect_naive_type("foo-0x01", Some(NaiveType::Label));
+        expect_naive_type("ra$", Some(NaiveType::Label));
+        expect_naive_type("a!", Some(NaiveType::Label));
+        expect_naive_type("a--23", Some(NaiveType::Label));
+        expect_naive_type("a-x-23", Some(NaiveType::Label));
+
+        expect_naive_type("^-", Some(NaiveType::PCOffset));
+        expect_naive_type("^a", Some(NaiveType::PCOffset));
+        expect_naive_type("^", Some(NaiveType::PCOffset));
+        expect_naive_type("^0x7ffF", Some(NaiveType::PCOffset));
+        expect_naive_type("^+#19", Some(NaiveType::PCOffset));
+    }
+}
