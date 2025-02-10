@@ -135,6 +135,7 @@ impl<'a> Command<'a> {
     }
 
     /// Assumes line is non-empty.
+    //
     // Do not `impl TryFrom`. This method should be private
     fn try_from(line: &'a str) -> std::result::Result<Self, error::Command> {
         let mut iter = Arguments::from(line);

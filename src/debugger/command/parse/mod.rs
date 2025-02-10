@@ -44,43 +44,6 @@ trait TryParse<'a>: Sized {
     fn try_parse(string: &'a str) -> Result<Option<Self>, error::Value>;
 }
 
-/// Preliminary type check to bypass normal value parsing if type is known to be mismatched.
-///
-/// Useful to avoid register values parsing as labels, when requesting a [`MemoryLocation`] (which
-/// does not accept registers, and so would otherwise parse "R0" as a label).
-///
-/// Please do not worry about performance: this method could be slightly faster or slower but it
-/// would be negligible.
-macro_rules! check_naive_type {
-    ( $pattern:pat, $expected_type:expr, ($argument_name:expr, $argument:expr) ) => {{
-        #[allow(unused_imports)]
-        use NaiveType::*;
-
-        match NaiveType::try_from($argument) {
-            // Types match
-            Ok($pattern) => (),
-
-            // Could not discern type
-            // Either an invalid type (which should be handled after a genuine parse attempt for
-            // each type, as `MalformedValue`), or a bug in the naive check (which the user can
-            // easily ignore)
-            Err(()) => (),
-
-            Ok(__naive_type) => {
-                return Err(error::Argument::InvalidValue {
-                    argument_name: $argument_name,
-                    string: $argument.to_string(),
-
-                    error: error::Value::MismatchedType {
-                        expected_type: $expected_type,
-                        actual_type: __naive_type,
-                    },
-                });
-            }
-        };
-    }};
-}
-
 impl<'a> Arguments<'a> {
     /// Amount of arguments requested (successfully or not).
     ///
@@ -207,11 +170,7 @@ impl<'a> Arguments<'a> {
             return default;
         };
 
-        check_naive_type!(
-            Integer,
-            "integer, label, register, or PC offset",
-            (argument_name, argument)
-        );
+        Self::check_naive_type(&[NaiveType::Integer], "integer", argument_name, argument)?;
 
         let integer = Integer::try_parse(argument)
             .map_err(error::Argument::invalid_value(argument_name, argument))?;
@@ -226,40 +185,6 @@ impl<'a> Arguments<'a> {
         Err(error::Argument::invalid_value(argument_name, argument)(
             error::Value::MalformedValue {},
         ))
-    }
-
-    /// Parse next argument as a [`Location`]: a [`Register`] or [`MemoryLocation`].
-    pub fn next_location(
-        &mut self,
-        argument_name: &'static str,
-        expected_count: u8,
-    ) -> Result<Location<'a>, error::Argument> {
-        let actual_count = self.arg_count();
-        let Some(argument) = self.next_str() else {
-            return Err(error::Argument::MissingArgument {
-                argument_name,
-                expected_count,
-                actual_count,
-            });
-        };
-
-        // Don't perform a preliminary type check here
-        // All current valid types are allowed here, and any invalid value will be handled before
-        // the end of this function (as `MalformedValue`)
-
-        // TODO(refactor): Can this be moved to `Location::try_parse` ?
-
-        if let Some(register) = Register::try_parse(argument)
-            .map_err(error::Argument::invalid_value(argument_name, argument))?
-        {
-            return Ok(Location::Register(register));
-        };
-
-        MemoryLocation::try_parse(argument)
-            // `Ok(None)` -> `Err(...)`
-            .and_then(|opt| opt.ok_or(error::Value::MalformedValue {}))
-            .map_err(error::Argument::invalid_value(argument_name, argument))
-            .map(Location::Memory)
     }
 
     /// Parse next argument as a [`MemoryLocation`].
@@ -302,16 +227,110 @@ impl<'a> Arguments<'a> {
             return default;
         };
 
-        check_naive_type!(
-            Integer | Label | PCOffset,
-            "integer, label, or PC offset",
-            (argument_name, argument)
-        );
+        Self::check_naive_type(
+            &[NaiveType::Integer, NaiveType::Label, NaiveType::PCOffset],
+            "integer, label, register, or PC offset",
+            argument_name,
+            argument,
+        )?;
 
         MemoryLocation::try_parse(argument)
             // `Ok(None)` -> `Err(...)`
             .and_then(|opt| opt.ok_or(error::Value::MalformedValue {}))
             .map_err(error::Argument::invalid_value(argument_name, argument))
+    }
+
+    /// Parse next argument as a [`Location`]: a [`Register`] or [`MemoryLocation`].
+    pub fn next_location(
+        &mut self,
+        argument_name: &'static str,
+        expected_count: u8,
+    ) -> Result<Location<'a>, error::Argument> {
+        let actual_count = self.arg_count();
+        let Some(argument) = self.next_str() else {
+            return Err(error::Argument::MissingArgument {
+                argument_name,
+                expected_count,
+                actual_count,
+            });
+        };
+
+        // Don't perform a preliminary type check here
+        // All current valid types are allowed here, and any invalid value will be handled before
+        // the end of this function (as `MalformedValue`)
+
+        Location::try_parse(argument)
+            // `Ok(None)` -> `Err(...)`
+            .and_then(|opt| opt.ok_or(error::Value::MalformedValue {}))
+            .map_err(error::Argument::invalid_value(argument_name, argument))
+    }
+
+    /// Preliminary type check to bypass normal value parsing if type is known to be mismatched.
+    ///
+    /// Useful to avoid register values parsing as labels, when requesting a [`MemoryLocation`]
+    /// (which does not accept registers, and so would otherwise parse "R0" as a label).
+    ///
+    /// Please do not worry about performance: this method could be slightly faster or slower but
+    /// it would be negligible.
+    fn check_naive_type(
+        accepted_types: &[NaiveType],
+        expected_type: &'static str,
+        argument_name: &'static str,
+        argument: &str,
+    ) -> Result<(), error::Argument> {
+        let Ok(actual_type) = NaiveType::try_from(argument) else {
+            // Could not discern type:
+            // Either an invalid type (which should be handled after a genuine parse attempt for
+            // each type, as `MalformedValue`), or a bug in the naive check (which the user can
+            // easily ignore)
+            return Ok(());
+        };
+
+        if accepted_types.contains(&actual_type) {
+            return Ok(());
+        }
+
+        Err(error::Argument::InvalidValue {
+            argument_name,
+            string: argument.to_string(),
+
+            error: error::Value::MismatchedType {
+                expected_type,
+                actual_type,
+            },
+        })
+    }
+}
+
+impl<'a> TryParse<'a> for MemoryLocation<'a> {
+    /// Parse argument string as a [`MemoryLocation`].
+    fn try_parse(argument: &'a str) -> Result<Option<MemoryLocation<'a>>, error::Value> {
+        // Ideally order of these checks should match that of [`NaiveType::try_from`] (except for
+        // registers)
+        // Do not change order unless there is a good reason
+        if let Some(offset) = PCOffset::try_parse(argument)? {
+            return Ok(Some(MemoryLocation::PCOffset(*offset)));
+        };
+        // `Integer` must be checked before `Label` to handle prefixes without preceeding zero
+        if let Some(address) = Integer::try_parse(argument)? {
+            let address = address.as_u16()?;
+            return Ok(Some(MemoryLocation::Address(address)));
+        };
+        if let Some(label) = Label::try_parse(argument)? {
+            return Ok(Some(MemoryLocation::Label(label)));
+        };
+        Ok(None)
+    }
+}
+
+impl<'a> TryParse<'a> for Location<'a> {
+    /// Parse argument string as a [`Location`].
+    fn try_parse(string: &'a str) -> Result<Option<Self>, error::Value> {
+        // Try to parse as register, otherwise try as `MemoryLocation`
+        if let Some(register) = Register::try_parse(string)? {
+            return Ok(Some(Location::Register(register)));
+        };
+        Ok(MemoryLocation::try_parse(string)?.map(Location::Memory))
     }
 }
 
@@ -350,27 +369,6 @@ impl<'a> TryParse<'a> for Register {
         }
 
         Ok(Some(register))
-    }
-}
-
-impl<'a> TryParse<'a> for MemoryLocation<'a> {
-    /// Parse argument string as a [`MemoryLocation`].
-    fn try_parse(argument: &'a str) -> Result<Option<MemoryLocation<'a>>, error::Value> {
-        // Ideally order of these checks should match that of [`NaiveType::try_from`] (except for
-        // registers)
-        // Do not change order unless there is a good reason
-        if let Some(offset) = PCOffset::try_parse(argument)? {
-            return Ok(Some(MemoryLocation::PCOffset(*offset)));
-        };
-        // `Integer` must be checked before `Label` to handle prefixes without preceeding zero
-        if let Some(address) = Integer::try_parse(argument)? {
-            let address = address.as_u16()?;
-            return Ok(Some(MemoryLocation::Address(address)));
-        };
-        if let Some(label) = Label::try_parse(argument)? {
-            return Ok(Some(MemoryLocation::Label(label)));
-        };
-        Ok(None)
     }
 }
 
