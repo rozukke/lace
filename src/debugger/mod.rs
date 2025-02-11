@@ -357,6 +357,7 @@ impl Debugger {
                 }
                 Location::Memory(location) => {
                     let address = self.resolve_location_address(state, &location)?;
+                    // Allow non-userspace addresses (it can't hurt)
                     dprintln!(Sometimes, Info, "Memory at address 0x{:04x}:", address);
                     Output::Debugger(Condition::Always, Default::default())
                         .print_integer(state.mem(address));
@@ -377,6 +378,7 @@ impl Debugger {
                 // TODO(feat): Check address is in userspace
                 Location::Memory(location) => {
                     let address = self.resolve_location_address(state, &location)?;
+                    self.expect_userspace_address(address)?;
                     *state.mem_mut(address) = value;
                     dprintln!(
                         Sometimes,
@@ -395,16 +397,7 @@ impl Debugger {
 
             Command::Jump { location } => {
                 let address = self.resolve_location_address(state, &location)?;
-                if !(self.orig()..USER_MEMORY_END).contains(&address) {
-                    dprintln!(
-                        Always,
-                        Error,
-                        "Address is not in user address space. Must be in range [0x{:04x}, 0x{:04x}).",
-                        self.orig(),
-                        USER_MEMORY_END,
-                    );
-                    return None;
-                }
+                self.expect_userspace_address(address)?;
                 *state.pc_mut() = address;
                 self.should_echo_pc = true;
                 dprintln!(
@@ -428,6 +421,7 @@ impl Debugger {
 
             Command::BreakAdd { location } => {
                 let address = self.resolve_location_address(state, &location)?;
+                self.expect_userspace_address(address)?;
                 if self.breakpoints.insert(Breakpoint {
                     address,
                     is_predefined: false,
@@ -445,6 +439,7 @@ impl Debugger {
 
             Command::BreakRemove { location } => {
                 let address = self.resolve_location_address(state, &location)?;
+                self.expect_userspace_address(address)?;
                 if self.breakpoints.remove(address) {
                     dprintln!(
                         Sometimes,
@@ -560,6 +555,20 @@ impl Debugger {
         } else {
             None
         }
+    }
+
+    fn expect_userspace_address(&self, address: u16) -> Option<()> {
+        if (self.orig()..USER_MEMORY_END).contains(&address) {
+            return Some(());
+        }
+        dprintln!(
+            Always,
+            Error,
+            "Address is not in user address space. Must be in range [0x{:04x}, 0x{:04x}).",
+            self.orig(),
+            USER_MEMORY_END,
+        );
+        None
     }
 }
 

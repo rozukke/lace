@@ -2,6 +2,8 @@ use std::ops::Deref;
 
 use super::{error, CharIter, TryParse};
 
+// TODO(fix): "2f" is an invalid integer and invalid token
+
 /// Internal type of [`Integer`], before being converted to smaller type (`u16` or `i16`).
 type IntegerValue = i32;
 
