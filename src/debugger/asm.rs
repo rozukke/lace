@@ -72,8 +72,6 @@ impl AsmSource {
         let stmt_start = stmt.span.offs();
         let stmt_end = stmt.span.end();
 
-        // Please note that this code demands trust, not comprehension
-
         // Split source into characters before and after span
         // Neither string contains characters in the span, but may contain characters in the same
         // line as the instruction
@@ -135,4 +133,84 @@ where
         count += 1;
     }
     count
+}
+
+#[cfg(test)]
+mod tests {
+
+    #[test]
+    fn count_chars_in_lines() {
+        let src = "main:
+        ld r0 n
+        call fib
+        reg
+        halt
+; variables
+n:      .fill #23
+
+; n in r0, result in r1
+fib:
+        push r2
+        ; accumulator
+        and r1 r1 #0 ; target
+        ; workspace
+        and r2 r2 #0
+
+        push r0
+        call fib_inner
+        pop r0
+
+        pop r2
+        rets
+
+fib_inner:
+        ; access stack variable
+        ldr r0 r7 #1
+        and r2 r2 #0
+        add r2 r0 #-1
+        brnz fib_post
+
+        add r0 r0 #-1
+        push r0
+        call fib_inner
+        pop r0";
+
+        let target = "and r1 r1 #0";
+
+        let before_target = "        halt
+; variables
+n:      .fill #23
+
+; n in r0, result in r1
+fib:
+        push r2
+        ; accumulator
+        ";
+        let after_target = " ; target
+        ; workspace
+        and r2 r2 #0
+
+        push r0
+        call fib_inner
+        pop r0
+
+        pop r2";
+
+        let stmt_start = src.find(target).expect("target line not found in source");
+        let stmt_end = stmt_start + target.len();
+
+        assert_eq!(&src[stmt_start..stmt_end], target);
+
+        let source_above = &src[..stmt_start];
+        let source_below = &src[stmt_end..];
+
+        assert!(source_above.ends_with(before_target));
+        assert!(source_below.starts_with(after_target));
+
+        let start = stmt_start - super::count_chars_in_lines(source_above.chars().rev());
+        let end = stmt_end + super::count_chars_in_lines(source_below.chars());
+
+        assert_eq!(start, stmt_start - before_target.len());
+        assert_eq!(end, stmt_end + after_target.len());
+    }
 }
