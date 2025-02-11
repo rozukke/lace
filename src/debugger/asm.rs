@@ -68,6 +68,8 @@ impl AsmSource {
     }
 
     /// Get memory addresses of first and last line shown in source context.
+    //
+    // TODO(refactor): Remove `orig` param ?
     pub fn get_context_range(&self, orig: u16, stmt: &AsmLine) -> (u16, u16) {
         let stmt_start = stmt.span.offs();
         let stmt_end = stmt.span.end();
@@ -137,9 +139,85 @@ where
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::air::{AirStmt, AsmLine, ImmediateOrReg};
+    use crate::symbol::{Register, Span, SrcOffset};
+    use crate::Air;
+
+    #[test]
+    fn get_context_lines() {
+        assert_eq!(
+            DIAGNOSTIC_CONTEXT_LINES, 8,
+            "value of `DIAGNOSTIC_CONTEXT_LINES` has changed. tests need rewriting."
+        );
+
+        let src = "main:
+        ld r0 n
+        call fib
+        reg
+        halt
+; variables
+n:      .fill #23
+
+; n in r0, result in r1
+fib:
+        push r2
+        ; accumulator
+        and r1 r1 #0 ; target
+        ; workspace
+        and r2 r2 #0
+
+        push r0
+        call fib_inner
+        pop r0
+
+        pop r2
+        rets
+
+fib_inner:
+        ; access stack variable
+        ldr r0 r7 #1
+        and r2 r2 #0
+        add r2 r0 #-1
+        brnz fib_post
+
+        add r0 r0 #-1
+        push r0
+        call fib_inner
+        pop r0";
+
+        let target = "and r1 r1 #0";
+
+        let stmt_start = src.find(target).expect("target line not found in source");
+
+        let stmt = AsmLine {
+            line: 13,
+            span: Span::new(SrcOffset(stmt_start), target.len()),
+            stmt: AirStmt::And {
+                dest: Register::R1,
+                src_reg: Register::R1,
+                src_reg_imm: ImmediateOrReg::Imm5(0),
+            },
+        };
+
+        let orig = 0x3000;
+        let ast = Air::new(src).ast;
+
+        let asm_source = AsmSource::from(orig, ast.clone(), src);
+
+        let (start, end) = asm_source.get_context_range(orig, &stmt);
+
+        assert_eq!(start, orig + 3);
+        assert_eq!(end, orig + 11);
+    }
 
     #[test]
     fn count_chars_in_lines() {
+        assert_eq!(
+            DIAGNOSTIC_CONTEXT_LINES, 8,
+            "value of `DIAGNOSTIC_CONTEXT_LINES` has changed. tests need rewriting."
+        );
+
         let src = "main:
         ld r0 n
         call fib
