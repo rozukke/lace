@@ -68,9 +68,7 @@ impl AsmSource {
     }
 
     /// Get memory addresses of first and last line shown in source context.
-    //
-    // TODO(refactor): Remove `orig` param ?
-    pub fn get_context_range(&self, orig: u16, stmt: &AsmLine) -> (u16, u16) {
+    pub fn get_context_range(&self, stmt: &AsmLine) -> (u16, u16) {
         let stmt_start = stmt.span.offs();
         let stmt_end = stmt.span.end();
 
@@ -96,7 +94,7 @@ impl AsmSource {
                 line = stmt.line;
             }
             // -1 applied to addresses, to account for the `line` field counting from 1, not 0
-            line + orig - 1
+            line + self.orig - 1
         };
         // Get address of latest statement, whose span is (at least partially) within `..end`
         let end_addr = {
@@ -107,7 +105,7 @@ impl AsmSource {
                 }
                 line = stmt.line;
             }
-            line + orig - 1
+            line + self.orig - 1
         };
 
         (start_addr, end_addr)
@@ -212,7 +210,7 @@ fib_inner:
 
         let asm_source = AsmSource::from(orig, ast.clone(), src);
 
-        let (start, end) = asm_source.get_context_range(orig, &stmt);
+        let (start, end) = asm_source.get_context_range(&stmt);
 
         assert_eq!(start, orig + 3);
         assert_eq!(end, orig + 11);

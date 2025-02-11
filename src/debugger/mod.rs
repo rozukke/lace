@@ -500,7 +500,7 @@ impl Debugger {
             return;
         };
 
-        let (start, end) = self.asm_source.get_context_range(self.orig(), stmt);
+        let (start, end) = self.asm_source.get_context_range(stmt);
         if !state.memory_equals(&self.initial_state, start, end) {
             dprintln!(
                 Sometimes,
