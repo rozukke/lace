@@ -1,7 +1,7 @@
 use std::ops::Range;
 
 use crate::air::AsmLine;
-use crate::{dprintln, DIAGNOSTIC_CONTEXT_LINES};
+use crate::{dprint, dprintln, DIAGNOSTIC_CONTEXT_LINES};
 
 /// Reference to assembly source code.
 ///
@@ -44,7 +44,7 @@ impl AsmSource {
         };
         let range: Range<usize> = stmt.span.into();
         let line = &self.src[range];
-        dprintln!(Always, Normal, "{}", line);
+        dprint!(Always, Normal, "{}", line);
     }
 
     /// Get [`AsmLine`] corresponding to `address`.

@@ -462,24 +462,47 @@ impl Debugger {
                     dprintln!(Sometimes, Info, "No breakpoints exist.");
                 } else {
                     dprintln!(Sometimes, Info, "Breakpoints:");
+
+                    const LEFT_WIDTH: usize = 8;
+                    const RIGHT_WIDTH: usize = 40;
+
+                    fn draw_line(
+                        char_line: char,
+                        char_left: char,
+                        char_middle: char,
+                        char_right: char,
+                    ) {
+                        dprint!(Always, Normal, "{}", char_left);
+                        for _ in 0..LEFT_WIDTH {
+                            dprint!(Always, Normal, "{}", char_line);
+                        }
+                        dprint!(Always, Normal, "{}", char_middle);
+                        for _ in 0..RIGHT_WIDTH {
+                            dprint!(Always, Normal, "{}", char_line);
+                        }
+                        dprintln!(Always, Normal, "{}", char_right);
+                    }
+
+                    draw_line('─', '┌', '┬', '┐');
+
                     for (i, breakpoint) in self.breakpoints.iter().enumerate() {
                         if Output::is_minimal() {
                             dprintln!(Always, Info, "0x{:04x}", breakpoint.address);
                             continue;
                         }
-                        dprint!(
-                            Always,
-                            Info,
-                            "\x1b[2m{}\x1b[0m 0x{:04x}  \x1b[2m──\x1b[0m  ",
-                            if i + 1 == self.breakpoints.len() {
-                                "╰─"
-                            } else {
-                                "├─"
-                            },
-                            breakpoint.address
-                        );
+
+                        if i > 0 {
+                            draw_line('─', '├', '┼', '┤');
+                        }
+
+                        dprint!(Always, Normal, "│ ");
+                        dprint!(Always, Normal, "0x{:04x}", breakpoint.address);
+                        dprint!(Always, Normal, " │ ");
                         self.asm_source.show_single_line(breakpoint.address);
+                        dprintln!(Always, Normal, " │");
                     }
+
+                    draw_line('─', '└', '┴', '┘');
                 }
             }
         }
@@ -493,6 +516,7 @@ impl Debugger {
     fn show_assembly_source(&self, state: &RunState, address: u16) {
         if Output::is_minimal() {
             self.asm_source.show_single_line(address);
+            dprintln!(Always);
             return;
         }
 
