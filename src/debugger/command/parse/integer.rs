@@ -286,8 +286,6 @@ fn take_prefix(chars: &mut CharIter) -> Result<PrefixResult, error::Value> {
     // Disallow "00x..." etc.
     let leading_zeros = chars.next_if_eq(&'0').is_some();
 
-    println!("AWOIDJOADW");
-
     // Take optional prefix
     let mut consume_char = true;
     let radix = match chars.peek() {
