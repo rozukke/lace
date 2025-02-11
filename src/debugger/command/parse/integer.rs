@@ -2,8 +2,6 @@ use std::ops::Deref;
 
 use super::{error, CharIter, TryParse};
 
-// TODO(fix): "2f" is an invalid integer and invalid token
-
 /// Internal type of [`Integer`], before being converted to smaller type (`u16` or `i16`).
 type IntegerValue = i32;
 
@@ -53,8 +51,8 @@ enum PrefixResult {
 struct Prefix {
     /// Radix corresponding to prefix character.
     ///
-    /// `None` indicates no *explicit* radix character; Should be unwrapped as `Radix::Decimal`.
-    radix: Option<Radix>,
+    /// If no explicit radix prefix was given, use `Radix::Decimal`.
+    radix: Radix,
     /// Whether prefix character is preceeded by zeros.
     leading_zeros: bool,
 }
@@ -208,10 +206,12 @@ fn parse_integer(string: &str, require_sign: bool) -> Result<Option<Integer>, er
     };
 
     let end_of_integer_result = || -> Result<Option<Integer>, error::Value> {
-        // If sign, pre-prefix zeros, or non-alpha prefix ("#") were given, it must be an invalid
-        // integer token (as opposed to a possibly-valid non-integer token)
-        let non_alpha = prefix.radix == Some(Radix::Decimal);
-        if sign.is_some() || prefix.leading_zeros || non_alpha {
+        // Any of these conditions indicate an invalid integer token (as opposed to a
+        // possibly-valid non-integer token)
+        // A sign character, a leading decimal digit, or an explicit decimal prefix '#'
+        // Note that a leading decimal digit (`^[0-9`) will lead to a pre-prefix zero, or an
+        // implicit decimal radix
+        if sign.is_some() || prefix.leading_zeros || prefix.radix == Radix::Decimal {
             Err(error::Value::MalformedInteger {})
         } else {
             Ok(None)
@@ -224,25 +224,22 @@ fn parse_integer(string: &str, require_sign: bool) -> Result<Option<Integer>, er
         return end_of_integer_result();
     }
 
-    // Use decimal if no radix was explicitly given
-    let radix = prefix.radix.unwrap_or(Radix::Decimal);
-
     // Take digits until non-digit character
     // Note that this loop handles post-prefix leading zeros like any other digit
     let mut integer: IntegerValue = 0;
     for ch in chars.by_ref() {
-        let Some(digit) = radix.parse_digit(ch) else {
+        let Some(digit) = prefix.radix.parse_digit(ch) else {
             return end_of_integer_result();
         };
 
         // Re-checked later on convert to smaller int types
-        if integer > IntegerValue::MAX / radix as IntegerValue {
+        if integer > IntegerValue::MAX / prefix.radix as IntegerValue {
             return Err(error::Value::IntegerTooLarge {
                 max: i16::MAX as u16,
             });
         }
 
-        integer *= radix as IntegerValue;
+        integer *= prefix.radix as IntegerValue;
         integer += digit as IntegerValue;
     }
 
@@ -289,25 +286,27 @@ fn take_prefix(chars: &mut CharIter) -> Result<PrefixResult, error::Value> {
     // Disallow "00x..." etc.
     let leading_zeros = chars.next_if_eq(&'0').is_some();
 
+    println!("AWOIDJOADW");
+
     // Take optional prefix
     let mut consume_char = true;
     let radix = match chars.peek() {
-        Some('b' | 'B') => Some(Radix::Binary),
-        Some('o' | 'O') => Some(Radix::Octal),
-        Some('x' | 'X') => Some(Radix::Hex),
+        Some('b' | 'B') => Radix::Binary,
+        Some('o' | 'O') => Radix::Octal,
+        Some('x' | 'X') => Radix::Hex,
 
         Some('#') => {
             // Disallow "0#..."
             if leading_zeros {
                 return Err(error::Value::MalformedInteger {});
             }
-            Some(Radix::Decimal)
+            Radix::Decimal
         }
 
         // No prefix
         Some('0'..='9') => {
             consume_char = false; // Leave initial digit, to be parsed by caller
-            None
+            Radix::Decimal
         }
 
         // Disallow "0-..." and "0+..."
@@ -324,7 +323,13 @@ fn take_prefix(chars: &mut CharIter) -> Result<PrefixResult, error::Value> {
         }
 
         _ => {
-            return Ok(PrefixResult::NonInteger);
+            // `^[0-9]` always indicates an integer. If the next character does not, then it must
+            // be an invalid token
+            return if leading_zeros {
+                Err(error::Value::MalformedInteger {})
+            } else {
+                Ok(PrefixResult::NonInteger)
+            };
         }
     };
 
@@ -394,7 +399,7 @@ mod tests {
             "00",
             "0",
             Ok(PrefixResult::Integer(Prefix {
-                radix: None,
+                radix: Radix::Decimal,
                 leading_zeros: true,
             })),
         );
@@ -402,7 +407,7 @@ mod tests {
             "123",
             "123",
             Ok(PrefixResult::Integer(Prefix {
-                radix: None,
+                radix: Radix::Decimal,
                 leading_zeros: false,
             })),
         );
@@ -410,7 +415,7 @@ mod tests {
             "0123",
             "123",
             Ok(PrefixResult::Integer(Prefix {
-                radix: None,
+                radix: Radix::Decimal,
                 leading_zeros: true,
             })),
         );
@@ -418,7 +423,7 @@ mod tests {
             "00#01",
             "0#01",
             Ok(PrefixResult::Integer(Prefix {
-                radix: None,
+                radix: Radix::Decimal,
                 leading_zeros: true,
             })),
         );
@@ -426,7 +431,7 @@ mod tests {
             "#abc",
             "abc",
             Ok(PrefixResult::Integer(Prefix {
-                radix: Some(Radix::Decimal),
+                radix: Radix::Decimal,
                 leading_zeros: false,
             })),
         );
@@ -434,7 +439,7 @@ mod tests {
             "x",
             "",
             Ok(PrefixResult::Integer(Prefix {
-                radix: Some(Radix::Hex),
+                radix: Radix::Hex,
                 leading_zeros: false,
             })),
         );
@@ -442,7 +447,7 @@ mod tests {
             "0x",
             "",
             Ok(PrefixResult::Integer(Prefix {
-                radix: Some(Radix::Hex),
+                radix: Radix::Hex,
                 leading_zeros: true,
             })),
         );
@@ -450,7 +455,7 @@ mod tests {
             "0x12",
             "12",
             Ok(PrefixResult::Integer(Prefix {
-                radix: Some(Radix::Hex),
+                radix: Radix::Hex,
                 leading_zeros: true,
             })),
         );
@@ -458,7 +463,7 @@ mod tests {
             "xaaa",
             "aaa",
             Ok(PrefixResult::Integer(Prefix {
-                radix: Some(Radix::Hex),
+                radix: Radix::Hex,
                 leading_zeros: false,
             })),
         );
@@ -466,7 +471,7 @@ mod tests {
             "ooo",
             "oo",
             Ok(PrefixResult::Integer(Prefix {
-                radix: Some(Radix::Octal),
+                radix: Radix::Octal,
                 leading_zeros: false,
             })),
         );
@@ -474,7 +479,7 @@ mod tests {
             "0b0101",
             "0101",
             Ok(PrefixResult::Integer(Prefix {
-                radix: Some(Radix::Binary),
+                radix: Radix::Binary,
                 leading_zeros: true,
             })),
         );
@@ -536,6 +541,20 @@ mod tests {
         expect_integer(false, "-0x-24", Err(()));
         expect_integer(false, "0-x24", Err(()));
         expect_integer(false, "00x4", Err(()));
+        expect_integer(false, "0f", Err(()));
+        expect_integer(false, "0x", Err(()));
+        expect_integer(false, "0xx", Err(()));
+        expect_integer(false, "000x", Err(()));
+        expect_integer(false, "000xx", Err(()));
+        expect_integer(false, "000a", Err(()));
+        expect_integer(false, "000aaa", Err(()));
+        expect_integer(false, "000xhh", Err(()));
+        expect_integer(false, "1xx", Err(()));
+        expect_integer(false, "123x", Err(()));
+        expect_integer(false, "123xx", Err(()));
+        expect_integer(false, "123a", Err(()));
+        expect_integer(false, "123aaa", Err(()));
+        expect_integer(false, "123xhh", Err(()));
         expect_integer(false, "##", Err(())); // Invalid digit for decimal base
         expect_integer(false, "-##", Err(()));
         expect_integer(false, "#b", Err(()));
