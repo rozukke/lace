@@ -374,6 +374,7 @@ impl Debugger {
                         value,
                     );
                 }
+                // TODO(feat): Check address is in userspace
                 Location::Memory(location) => {
                     let address = self.resolve_location_address(state, &location)?;
                     *state.mem_mut(address) = value;

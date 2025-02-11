@@ -142,7 +142,7 @@ mod tests {
     use super::*;
     use crate::air::{AirStmt, AsmLine, ImmediateOrReg};
     use crate::symbol::{Register, Span, SrcOffset};
-    use crate::Air;
+    use crate::{env, AsmParser};
 
     #[test]
     fn get_context_lines() {
@@ -179,7 +179,7 @@ fib_inner:
         ldr r0 r7 #1
         and r2 r2 #0
         add r2 r0 #-1
-        brnz fib_post
+        brnz fib_inner
 
         add r0 r0 #-1
         push r0
@@ -191,7 +191,7 @@ fib_inner:
         let stmt_start = src.find(target).expect("target line not found in source");
 
         let stmt = AsmLine {
-            line: 13,
+            line: 7,
             span: Span::new(SrcOffset(stmt_start), target.len()),
             stmt: AirStmt::And {
                 dest: Register::R1,
@@ -200,8 +200,15 @@ fib_inner:
             },
         };
 
+        env::init();
+        let parser = AsmParser::new(src).unwrap();
+        let mut air = parser.parse().unwrap();
+        air.backpatch().unwrap();
+        let ast = air.ast;
+
         let orig = 0x3000;
-        let ast = Air::new(src).ast;
+
+        assert_eq!(ast.get(stmt.line as usize - 1), Some(&stmt));
 
         let asm_source = AsmSource::from(orig, ast.clone(), src);
 
