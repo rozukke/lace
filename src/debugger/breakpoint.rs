@@ -39,6 +39,13 @@ impl Breakpoints {
         None
     }
 
+    /// Get the nth [`Breakpoint`].
+    ///
+    /// Returns `None` if no breakpoint exists.
+    pub fn nth(&self, index: usize) -> Option<Breakpoint> {
+        self.0.get(index).copied()
+    }
+
     /// Insert a new breakpoint, keeping list sorted.
     ///
     /// Returns `true` if breakpoint already exists with that address (new breakpoint will not be

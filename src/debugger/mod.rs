@@ -8,10 +8,10 @@ use std::cmp::Ordering;
 use self::asm::AsmSource;
 use self::command::{Command, CommandReader, Label, Location, MemoryLocation};
 use crate::air::AsmLine;
+use crate::dprintln;
 use crate::output::{Condition, Output};
 use crate::runtime::{RunState, HALT_ADDRESS, USER_MEMORY_END};
 use crate::symbol::with_symbol_table;
-use crate::{dprint, dprintln};
 
 pub use self::breakpoint::{Breakpoint, Breakpoints};
 
@@ -463,46 +463,18 @@ impl Debugger {
                 } else {
                     dprintln!(Sometimes, Info, "Breakpoints:");
 
-                    const LEFT_WIDTH: usize = 8;
-                    const RIGHT_WIDTH: usize = 40;
-
-                    fn draw_line(
-                        char_line: char,
-                        char_left: char,
-                        char_middle: char,
-                        char_right: char,
-                    ) {
-                        dprint!(Always, Normal, "{}", char_left);
-                        for _ in 0..LEFT_WIDTH {
-                            dprint!(Always, Normal, "{}", char_line);
-                        }
-                        dprint!(Always, Normal, "{}", char_middle);
-                        for _ in 0..RIGHT_WIDTH {
-                            dprint!(Always, Normal, "{}", char_line);
-                        }
-                        dprintln!(Always, Normal, "{}", char_right);
-                    }
-
-                    draw_line('─', '┌', '┬', '┐');
-
-                    for (i, breakpoint) in self.breakpoints.iter().enumerate() {
-                        if Output::is_minimal() {
+                    if Output::is_minimal() {
+                        for breakpoint in &self.breakpoints {
                             dprintln!(Always, Info, "0x{:04x}", breakpoint.address);
-                            continue;
                         }
-
-                        if i > 0 {
-                            draw_line('─', '├', '┼', '┤');
-                        }
-
-                        dprint!(Always, Normal, "│ ");
-                        dprint!(Always, Normal, "0x{:04x}", breakpoint.address);
-                        dprint!(Always, Normal, " │ ");
-                        self.asm_source.show_single_line(breakpoint.address);
-                        dprintln!(Always, Normal, " │");
+                    } else {
+                        Output::Debugger(Condition::Always, Default::default())
+                            .print_key_value_table(|i| {
+                                let address = self.breakpoints.nth(i)?.address;
+                                let line = self.asm_source.get_single_line(address).unwrap_or("");
+                                Some((address, line))
+                            });
                     }
-
-                    draw_line('─', '└', '┴', '┘');
                 }
             }
         }

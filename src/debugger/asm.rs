@@ -47,6 +47,14 @@ impl AsmSource {
         dprint!(Always, Normal, "{}", line);
     }
 
+    /// Get instruction/directive corresponding to `address`, with no context.
+    pub fn get_single_line(&self, address: u16) -> Option<&str> {
+        let stmt = self.get_source_statement(address)?;
+        let range: Range<usize> = stmt.span.into();
+        let line = &self.src[range];
+        Some(line)
+    }
+
     /// Get [`AsmLine`] corresponding to `address`.
     ///
     /// Used to access source code span.

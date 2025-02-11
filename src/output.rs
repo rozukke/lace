@@ -209,6 +209,88 @@ impl Output {
         self.print("\x1b[2m└───────────────────────────────────┘\x1b[0m\n");
     }
 
+    /// Print 2-column table of any number of rows.
+    ///
+    /// `row` argument will be called with values `0..` until `None` is returned.
+    ///
+    /// Values in left (key) column are printed as unsigned hexadecimal integers.
+    ///
+    /// Values in right (value) column are printed as strings, and are truncated if their length
+    /// exceeds the column width.
+    ///
+    /// Currently only used to print breakpoints ("break list").
+    pub fn print_key_value_table<'a, F>(&self, row: F)
+    where
+        F: Fn(usize) -> Option<(u16, &'a str)>,
+    {
+        debug_assert!(
+            matches!(self, Self::Debugger(..)),
+            "`Output::print_key_value_table()` called on `Output::Normal`"
+        );
+        debug_assert!(
+            !Self::is_minimal(),
+            "`print_key_value_table` should not be called if `--minimal`"
+        );
+
+        const LEFT_WIDTH: usize = " 0x1234 ".len(); // Note the whitespace
+        const RIGHT_WIDTH: usize = 40; // Arbitrary
+
+        let print_line =
+            |char_line: char, char_left: char, char_middle: char, char_right: char| -> () {
+                self.print(char_left);
+                for _ in 0..LEFT_WIDTH {
+                    self.print(char_line);
+                }
+                self.print(char_middle);
+                for _ in 0..RIGHT_WIDTH {
+                    self.print(char_line);
+                }
+                self.print(char_right);
+                self.print('\n');
+            };
+
+        self.print("\x1b[2m");
+        print_line('─', '┌', '┬', '┐');
+
+        for i in 0.. {
+            let Some((key, value)) = row(i) else {
+                break;
+            };
+            if i > 0 {
+                print_line('─', '├', '┼', '┤');
+            }
+
+            self.print("│ ");
+            self.print("\x1b[0m");
+            self.print(format_args!("0x{:04x}", key));
+            self.print("\x1b[2m");
+            self.print(" │ ");
+            self.print("\x1b[0m");
+
+            // Print line with max length
+            // Replace final ' ' with ellipsis if length exceeds max
+            let mut len = 0;
+            for (i, ch) in value.chars().enumerate() {
+                len += 1;
+                if i > RIGHT_WIDTH - 3 {
+                    self.print("…");
+                    break;
+                }
+                self.print(ch);
+            }
+            for _ in len..RIGHT_WIDTH - 1 {
+                self.print(" ");
+            }
+
+            self.print("\x1b[2m");
+            self.print("│"); // No whitespace here: it (or ellipsis) was printed above
+            self.print('\n');
+        }
+
+        print_line('─', '└', '┴', '┘');
+        self.print("\x1b[0m");
+    }
+
     /// Prints a register as hex, signed decimal, unsigned decimal, and character, in a fancy
     /// table.
     pub fn print_integer(&self, value: u16) {
