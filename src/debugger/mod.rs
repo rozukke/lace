@@ -236,11 +236,12 @@ impl Debugger {
     }
 
     /// An 'interrupt' here is a breakpoint or `HALT` trap.
+    ///
+    /// Always break from "continue|finish|progress|next" on a breakpoint or `HALT`.
+    ///
+    /// Breaking on `RET`/`RETS` (for "finish"), and at end of "progress" and "next" is handled
+    /// later.
     fn check_interrupts(&mut self, pc: u16, instr: Option<SignificantInstr>) {
-        // Always break from "continue|finish|progress|next" on a breakpoint or `HALT`
-        // Breaking on `RET`/`RETS` (for "finish"), and at end of "progress" and "next" is handled
-        // later
-
         // Remember if previous cycle paused on the same breakpoint
         // If so, don't break now
         if let Some(breakpoint) = self
@@ -308,6 +309,10 @@ impl Debugger {
         })
         .unwrap_or(Command::Quit); // "quit" on EOF
 
+        // Do not re-use `SignificantInstr` from caller
+        // Must be recalculated as this method is called in a loop
+        let instr = SignificantInstr::try_from(state.mem(state.pc())).ok();
+
         match command {
             Command::Quit => return Some(Action::StopDebugger),
             Command::Exit => return Some(Action::ExitProgram),
@@ -326,23 +331,27 @@ impl Debugger {
             }
 
             Command::Continue => {
+                Self::check_halt(instr)?;
                 self.status = Status::Continue;
                 self.should_echo_pc = true;
                 dprintln!(Sometimes, Info, "Continuing...");
             }
 
             Command::Finish => {
+                Self::check_halt(instr)?;
                 self.status = Status::Finish;
                 self.should_echo_pc = true;
                 dprintln!(Sometimes, Info, "Finishing subroutine...");
             }
 
             Command::Progress { count } => {
+                Self::check_halt(instr)?;
                 self.status = Status::Step { count: count - 1 };
                 self.should_echo_pc = true;
             }
 
             Command::Next => {
+                Self::check_halt(instr)?;
                 self.status = Status::Next {
                     return_addr: state.pc() + 1,
                 };
@@ -476,6 +485,21 @@ impl Debugger {
         }
 
         None
+    }
+
+    /// If instruction is `HALT`, then warn and return `None`.
+    ///
+    /// Caller should return early if `None`.
+    ///
+    /// Used to provide better feedback to user, instead of repeating same 'pausing execution'
+    /// message.
+    fn check_halt(instr: Option<SignificantInstr>) -> Option<()> {
+        if instr == Some(SignificantInstr::Halt) {
+            dprintln!(Sometimes, Warning, "Already at HALT. Unable to continue.");
+            None
+        } else {
+            Some(())
+        }
     }
 
     /// Wrapper for [`AsmSource::get_source_statement`].
