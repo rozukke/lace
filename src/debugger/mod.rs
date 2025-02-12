@@ -375,7 +375,6 @@ impl Debugger {
                         value,
                     );
                 }
-                // TODO(feat): Check address is in userspace
                 Location::Memory(location) => {
                     let address = self.resolve_location_address(state, &location)?;
                     self.expect_userspace_address(address)?;
@@ -467,7 +466,7 @@ impl Debugger {
                             .print_key_value_table(|i| {
                                 let address = self.breakpoints.nth(i)?.address;
                                 let label =
-                                    get_label_at_address(address - self.orig()).unwrap_or("");
+                                    resolve_symbol_name(address - self.orig()).unwrap_or("");
                                 let line = self.asm_source.get_single_line(address).unwrap_or("");
                                 Some((address, label, line))
                             });
@@ -533,7 +532,7 @@ impl Debugger {
 
     /// Returns `None` if `label` is out of bounds or an invalid label.
     fn resolve_label_address(&self, label: &Label) -> Option<u16> {
-        let address = resolve_label_name_address(label.name)?;
+        let address = resolve_symbol_address(label.name)?;
 
         let Some(address) = self.add_address_offset(address + self.orig(), label.offset) else {
             dprintln!(
@@ -580,18 +579,19 @@ impl Debugger {
     }
 }
 
+/// Get address of symbol with given name.
+///
 /// Returns `None` if `label` is an invalid label.
 ///
 /// Label names are case-sensitive.
-/// Print a warning if the given name only has a case-insensitive match.
-//
-// TODO(rename): `resolve_symbol_address`
-fn resolve_label_name_address(label: &str) -> Option<u16> {
+/// Prints a warning if the given name only has a case-insensitive match.
+fn resolve_symbol_address(label: &str) -> Option<u16> {
     with_symbol_table(|sym| {
         if let Some(addr) = sym.get(label) {
-            // Account for PC being incremented before instruction is executed
+            // -1 to account for PC being incremented before instruction is executed
             return Some(addr - 1);
         }
+
         dprintln!(Always, Error, "Label not found named `{}`.", label);
         // Check for case-*insensitive* match
         for key in sym.keys() {
@@ -604,13 +604,14 @@ fn resolve_label_name_address(label: &str) -> Option<u16> {
     })
 }
 
-// TODO(rename): `resolve_symbol_name`
-fn get_label_at_address(target: u16) -> Option<&'static str> {
-    // Account for PC being incremented before instruction is executed
-    let target = target + 1;
+/// Get name of symbol with given address.
+///
+/// Returns `None` if no symbol exists at `address`.
+fn resolve_symbol_name(address: u16) -> Option<&'static str> {
     with_symbol_table(|sym| {
-        for (label, address) in sym {
-            if *address == target {
+        for (label, symbol_address) in sym {
+            // +1 to account for PC being incremented before instruction is executed
+            if *symbol_address == address + 1 {
                 // SAFETY: Symbol table is statically allocated, and all keys will last until the
                 // end of the program lifetime
                 let label_static = unsafe { &*(label.as_str() as *const str) };

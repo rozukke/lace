@@ -1,7 +1,7 @@
 use std::ops::Range;
 
 use crate::air::AsmLine;
-use crate::{dprint, dprintln, DIAGNOSTIC_CONTEXT_LINES};
+use crate::{dprint, DIAGNOSTIC_CONTEXT_LINES};
 
 /// Reference to assembly source code.
 ///
