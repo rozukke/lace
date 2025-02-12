@@ -222,7 +222,7 @@ impl Output {
     /// Currently only used to print breakpoints ("break list").
     pub fn print_key_value_table<'a, F>(&self, row: F)
     where
-        F: Fn(usize) -> Option<(u16, &'a str)>,
+        F: Fn(usize) -> Option<(u16, &'a str, &'a str)>,
     {
         debug_assert!(
             matches!(self, Self::Debugger(..)),
@@ -233,17 +233,22 @@ impl Output {
             "`print_key_value_table` should not be called if `--minimal`"
         );
 
-        const LEFT_WIDTH: usize = " 0x1234 ".len(); // Note the whitespace
-        const RIGHT_WIDTH: usize = 40; // Arbitrary
+        const WIDTH_KEY: usize = " 0x1234 ".len(); // Note the whitespace
+        const WIDTH_LABEL: usize = 14; // Arbitrary
+        const WIDTH_LINE: usize = 28; // Arbitrary
 
         let print_line =
             |char_line: char, char_left: char, char_middle: char, char_right: char| -> () {
                 self.print(char_left);
-                for _ in 0..LEFT_WIDTH {
+                for _ in 0..WIDTH_KEY {
                     self.print(char_line);
                 }
                 self.print(char_middle);
-                for _ in 0..RIGHT_WIDTH {
+                for _ in 0..WIDTH_LABEL {
+                    self.print(char_line);
+                }
+                self.print(char_middle);
+                for _ in 0..WIDTH_LINE {
                     self.print(char_line);
                 }
                 self.print(char_right);
@@ -253,38 +258,41 @@ impl Output {
         self.print("\x1b[2m");
         print_line('─', '┌', '┬', '┐');
 
+        // Print cell value with max length
+        // Replace final ' ' with ellipsis if length exceeds max
+        let print_cell = |value: &str, width: usize| -> () {
+            let mut len = 0;
+            for (i, ch) in value.chars().enumerate() {
+                len += 1;
+                if i > width - 3 {
+                    self.print('…');
+                    break;
+                }
+                self.print(ch);
+            }
+            for _ in len..width - 1 {
+                self.print(' ');
+            }
+        };
+
         for i in 0.. {
-            let Some((key, value)) = row(i) else {
+            let Some((key, label, line)) = row(i) else {
                 break;
             };
             if i > 0 {
                 print_line('─', '├', '┼', '┤');
             }
 
-            self.print("│ ");
-            self.print("\x1b[0m");
+            self.print("│ \x1b[0;1m");
             self.print(format_args!("0x{:04x}", key));
-            self.print("\x1b[2m");
-            self.print(" │ ");
-            self.print("\x1b[0m");
 
-            // Print line with max length
-            // Replace final ' ' with ellipsis if length exceeds max
-            let mut len = 0;
-            for (i, ch) in value.chars().enumerate() {
-                len += 1;
-                if i > RIGHT_WIDTH - 3 {
-                    self.print("…");
-                    break;
-                }
-                self.print(ch);
-            }
-            for _ in len..RIGHT_WIDTH - 1 {
-                self.print(" ");
-            }
+            self.print("\x1b[0;2m │ \x1b[0m");
+            print_cell(label, WIDTH_LABEL);
 
-            self.print("\x1b[2m");
-            self.print("│"); // No whitespace here: it (or ellipsis) was printed above
+            self.print("\x1b[2m│ \x1b[0m");
+            print_cell(line, WIDTH_LINE);
+
+            self.print("\x1b[2m│");
             self.print('\n');
         }
 

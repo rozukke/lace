@@ -466,9 +466,10 @@ impl Debugger {
                         Output::Debugger(Condition::Always, Default::default())
                             .print_key_value_table(|i| {
                                 let address = self.breakpoints.nth(i)?.address;
-                                println!("{:?}", get_label_at_address(address - self.orig()));
+                                let label =
+                                    get_label_at_address(address - self.orig()).unwrap_or("");
                                 let line = self.asm_source.get_single_line(address).unwrap_or("");
-                                Some((address, line))
+                                Some((address, label, line))
                             });
                     }
                 }
