@@ -601,13 +601,13 @@ fn resolve_label_name_address(label: &str) -> Option<u16> {
 fn get_label_at_address(target: u16) -> Option<&'static str> {
     // Account for PC being incremented before instruction is executed
     let target = target + 1;
-
     with_symbol_table(|sym| {
         for (label, address) in sym {
-            println!("0x{:04x} 0x{:04x} {}", target, *address, label);
             if *address == target {
-                let label_str = unsafe { &*(label.as_str() as *const str) };
-                return Some(label_str);
+                // SAFETY: Symbol table is statically allocated, and all keys will last until the
+                // end of the program lifetime
+                let label_static = unsafe { &*(label.as_str() as *const str) };
+                return Some(label_static);
             }
         }
         None
