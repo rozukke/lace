@@ -7,7 +7,7 @@ use std::{
 
 use crate::{
     debugger::{Action, Debugger, DebuggerOptions, SignificantInstr},
-    dprintln, env,
+    dprintln, env, mc,
     output::{Condition, Output},
     Air,
 };
@@ -554,6 +554,63 @@ impl RunState {
                 Output::Normal.start_new_line();
                 Output::Normal.print_registers(self);
             }
+
+            // chat
+            0x28 => {
+                // TODO(opt): This allocs here and again in `post_to_chat` (can be avoided)
+                let mut message = String::new();
+                for addr in self.reg(0).. {
+                    let chr_raw = self.mem(addr);
+                    let chr_ascii = (chr_raw & 0xFF) as u8 as char;
+                    if chr_ascii == '\0' {
+                        break;
+                    }
+                    message.push(chr_ascii);
+                }
+                mc::with_connection(|mc| {
+                    mc.post_to_chat(&message);
+                });
+            }
+            // getp
+            0x29 => {
+                let (x, y, z) = mc::with_connection(|mc| mc.get_player_position());
+                *self.reg_mut(0) = x as u16;
+                *self.reg_mut(1) = y as u16;
+                *self.reg_mut(2) = z as u16;
+            }
+            // setp
+            0x2a => {
+                let x = self.reg(0) as i16;
+                let y = self.reg(1) as i16;
+                let z = self.reg(2) as i16;
+                mc::with_connection(|mc| {
+                    mc.set_player_position(x, y, z);
+                });
+            }
+            // getb
+            0x2b => {
+                let x = self.reg(0) as i16;
+                let y = self.reg(1) as i16;
+                let z = self.reg(2) as i16;
+                let block = mc::with_connection(|mc| mc.get_block(x, y, z));
+                *self.reg_mut(3) = block;
+            }
+            // setb
+            0x2c => {
+                let x = self.reg(0) as i16;
+                let y = self.reg(1) as i16;
+                let z = self.reg(2) as i16;
+                let block = self.reg(3);
+                mc::with_connection(|mc| mc.set_block(x, y, z, block));
+            }
+            // geth
+            0x2d => {
+                let x = self.reg(0) as i16;
+                let z = self.reg(2) as i16;
+                let height = mc::with_connection(|mc| mc.get_height(x, z));
+                *self.reg_mut(1) = height as u16;
+            }
+
             // unknown
             _ => exception!(
                 "called a trap with an unknown vector of 0x{:02x}",

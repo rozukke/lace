@@ -412,6 +412,12 @@ impl AsmParser {
             TrapKind::Halt => 0x25,
             TrapKind::Putn => 0x26,
             TrapKind::Reg => 0x27,
+            TrapKind::Chat => 0x28,
+            TrapKind::Getp => 0x29,
+            TrapKind::Setp => 0x2a,
+            TrapKind::Getb => 0x2b,
+            TrapKind::Setb => 0x2c,
+            TrapKind::Geth => 0x2d,
         } as u8;
 
         Ok(AirStmt::Trap { trap_vect })

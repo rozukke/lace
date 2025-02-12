@@ -277,6 +277,12 @@ pub enum TrapKind {
     Getc,
     Putn,
     Reg,
+    Chat,
+    Getp,
+    Setp,
+    Getb,
+    Setb,
+    Geth,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
