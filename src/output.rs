@@ -198,15 +198,16 @@ impl Output {
         }
 
         // PC, CC
+        self.print("\x1b[2m├─────────────────┬─────────────────┤\x1b[0m\n");
         self.print("\x1b[2m│\x1b[0m");
-        self.print(" \x1b[1mPC\x1b[0m");
-        self.print(format_args!("  0x{:04x}", state.pc()));
-        self.print("                ");
+        self.print("    \x1b[1mPC\x1b[0m");
+        self.print(format_args!(" 0x{:04x}", state.pc()));
+        self.print("\x1b[2m    │     \x1b[0m");
         self.print(" \x1b[1mCC\x1b[0m");
         self.print(format_args!(" {:03b}", state.flag() as u8));
-        self.print(" \x1b[2m│\x1b[0m\n");
+        self.print("     \x1b[2m│\x1b[0m\n");
 
-        self.print("\x1b[2m└───────────────────────────────────┘\x1b[0m\n");
+        self.print("\x1b[2m└─────────────────┴─────────────────┘\x1b[0m\n");
     }
 
     /// Print 2-column table of any number of rows.
