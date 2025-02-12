@@ -68,36 +68,28 @@ pub(super) enum RunFlag {
 
 impl RunEnvironment {
     // Not generic because of miette error
-    pub fn try_from(air: &Air) -> Result<RunEnvironment> {
+    pub fn try_from(air: Air, debugger_opts: Option<DebuggerOptions>) -> Result<RunEnvironment> {
         let orig = air.orig().unwrap_or(0x3000);
         let mut air_array: Vec<u16> = Vec::with_capacity(air.len() + 1);
 
         air_array.push(orig);
-        for stmt in air {
+        for stmt in &air {
             air_array.push(stmt.emit()?);
         }
 
-        RunEnvironment::from_raw(air_array.as_slice())
-    }
+        let mut env = RunEnvironment::from_raw(air_array.as_slice())?;
 
-    pub fn try_from_with_debugger(
-        air: Air, // Takes ownership of breakpoints
-        debugger_opts: DebuggerOptions,
-    ) -> Result<RunEnvironment> {
-        let mut env = Self::try_from(&air)?;
+        if let Some(debugger_opts) = debugger_opts {
+            env.debugger = Some(Debugger::new(
+                debugger_opts,
+                env.state.clone(),
+                air.breakpoints.with_orig(env.state.pc), // Add orig to each breakpoint
+                air.ast,
+                air.src,
+            ));
+        }
 
-        // Add orig to each breakpoint
-        let breakpoints = air.breakpoints.with_orig(env.state.pc);
-
-        env.debugger = Some(Debugger::new(
-            debugger_opts,
-            env.state.clone(),
-            breakpoints,
-            air.ast,
-            air.src,
-        ));
-
-        Ok(env)
+        return Ok(env);
     }
 
     pub fn from_raw(raw: &[u16]) -> Result<RunEnvironment> {

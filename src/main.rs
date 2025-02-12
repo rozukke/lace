@@ -262,10 +262,7 @@ fn run(name: &PathBuf, debugger_opts: Option<DebuggerOptions>, minimal: bool) ->
             "asm" => {
                 let contents = StaticSource::new(fs::read_to_string(&name).into_diagnostic()?);
                 let air = assemble(&contents)?;
-                match debugger_opts {
-                    None => RunEnvironment::try_from(&air)?,
-                    Some(opts) => RunEnvironment::try_from_with_debugger(air, opts)?,
-                }
+                RunEnvironment::try_from(air, debugger_opts)?
             }
             _ => {
                 bail!("File has unknown extension. Exiting...")
