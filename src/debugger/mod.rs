@@ -466,6 +466,7 @@ impl Debugger {
                         Output::Debugger(Condition::Always, Default::default())
                             .print_key_value_table(|i| {
                                 let address = self.breakpoints.nth(i)?.address;
+                                println!("{:?}", get_label_at_address(address - self.orig()));
                                 let line = self.asm_source.get_single_line(address).unwrap_or("");
                                 Some((address, line))
                             });
@@ -576,11 +577,13 @@ impl Debugger {
 ///
 /// Label names are case-sensitive.
 /// Print a warning if the given name only has a case-insensitive match.
+//
+// TODO(rename): `resolve_symbol_address`
 fn resolve_label_name_address(label: &str) -> Option<u16> {
     with_symbol_table(|sym| {
         if let Some(addr) = sym.get(label) {
             // Account for PC being incremented before instruction is executed
-            return Some(addr + 1);
+            return Some(addr - 1);
         }
         dprintln!(Always, Error, "Label not found named `{}`.", label);
         // Check for case-*insensitive* match
@@ -588,6 +591,23 @@ fn resolve_label_name_address(label: &str) -> Option<u16> {
             if key.eq_ignore_ascii_case(label) {
                 dprintln!(Sometimes, Warning, "Hint: Similar label named `{}`", key);
                 break;
+            }
+        }
+        None
+    })
+}
+
+// TODO(rename): `resolve_symbol_name`
+fn get_label_at_address(target: u16) -> Option<&'static str> {
+    // Account for PC being incremented before instruction is executed
+    let target = target + 1;
+
+    with_symbol_table(|sym| {
+        for (label, address) in sym {
+            println!("0x{:04x} 0x{:04x} {}", target, *address, label);
+            if *address == target {
+                let label_str = unsafe { &*(label.as_str() as *const str) };
+                return Some(label_str);
             }
         }
         None
