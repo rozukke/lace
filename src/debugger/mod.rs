@@ -365,7 +365,7 @@ impl Debugger {
                         .print_integer(state.reg(register as u16));
                 }
                 Location::Memory(location) => {
-                    let address = self.resolve_location_address(state, &location)?;
+                    let address = self.resolve_location(state, &location)?;
                     // Allow non-userspace addresses (it can't hurt)
                     dprintln!(Sometimes, Info, "Memory at address 0x{:04x}:", address);
                     Output::Debugger(Condition::Always, Default::default())
@@ -385,7 +385,7 @@ impl Debugger {
                     );
                 }
                 Location::Memory(location) => {
-                    let address = self.resolve_location_address(state, &location)?;
+                    let address = self.resolve_location(state, &location)?;
                     self.expect_userspace_address(address)?;
                     *state.mem_mut(address) = value;
                     dprintln!(
@@ -404,7 +404,7 @@ impl Debugger {
             }
 
             Command::Jump { location } => {
-                let address = self.resolve_location_address(state, &location)?;
+                let address = self.resolve_location(state, &location)?;
                 self.expect_userspace_address(address)?;
                 *state.pc_mut() = address;
                 self.should_echo_pc = true;
@@ -422,13 +422,13 @@ impl Debugger {
             }
 
             Command::Assembly { location } => {
-                if let Some(address) = self.resolve_location_address(state, &location) {
+                if let Some(address) = self.resolve_location(state, &location) {
                     self.show_assembly_source(state, address);
                 }
             }
 
             Command::BreakAdd { location } => {
-                let address = self.resolve_location_address(state, &location)?;
+                let address = self.resolve_location(state, &location)?;
                 self.expect_userspace_address(address)?;
                 if self.breakpoints.insert(Breakpoint {
                     address,
@@ -446,7 +446,7 @@ impl Debugger {
             }
 
             Command::BreakRemove { location } => {
-                let address = self.resolve_location_address(state, &location)?;
+                let address = self.resolve_location(state, &location)?;
                 self.expect_userspace_address(address)?;
                 if self.breakpoints.remove(address) {
                     dprintln!(
@@ -533,11 +533,11 @@ impl Debugger {
     }
 
     /// Returns `None` if `location` is out of bounds or an invalid label.
-    fn resolve_location_address(&self, state: &RunState, location: &MemoryLocation) -> Option<u16> {
+    fn resolve_location(&self, state: &RunState, location: &MemoryLocation) -> Option<u16> {
         match location {
             MemoryLocation::Address(address) => Some(*address),
             MemoryLocation::PCOffset(offset) => self.resolve_pc_offset(state.pc(), *offset),
-            MemoryLocation::Label(label) => self.resolve_label_address(label),
+            MemoryLocation::Label(label) => self.resolve_label(label),
         }
     }
 
@@ -555,7 +555,7 @@ impl Debugger {
     }
 
     /// Returns `None` if `label` is out of bounds or an invalid label.
-    fn resolve_label_address(&self, label: &Label) -> Option<u16> {
+    fn resolve_label(&self, label: &Label) -> Option<u16> {
         let address = resolve_symbol_address(label.name)?;
 
         let Some(address) = self.add_address_offset(address + self.orig(), label.offset) else {
@@ -588,6 +588,7 @@ impl Debugger {
         }
     }
 
+    /// If address is out of bounds of user memory, then warn and return `None`.
     fn expect_userspace_address(&self, address: u16) -> Option<()> {
         if (self.orig()..USER_MEMORY_END).contains(&address) {
             return Some(());
