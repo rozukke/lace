@@ -14,8 +14,7 @@ pub use self::reader::CommandReader;
 #[cfg_attr(test, derive(PartialEq))]
 pub enum Command<'a> {
     Help,
-    // TODO(rename): `Progress`
-    Step { count: u16 },
+    Progress { count: u16 },
     Next,
     Continue,
     Finish,
@@ -29,8 +28,7 @@ pub enum Command<'a> {
     Jump { location: MemoryLocation<'a> },
     Registers,
     Reset,
-    // TODO(rename): `Assembly`
-    Source { location: MemoryLocation<'a> },
+    Assembly { location: MemoryLocation<'a> },
     // This can be `String` bc it will be allocated later regardless to get a &'static str
     // Unless parsing code is changed, and can accept a non-static string
     Eval { instruction: &'a str },
@@ -179,7 +177,7 @@ impl<'a> Command<'a> {
             CommandName::Step => {
                 expected_args = 1;
                 let count = iter.next_positive_integer_or_default("count")?;
-                Self::Step { count }
+                Self::Progress { count }
             }
             CommandName::Next => Self::Next,
 
@@ -216,7 +214,7 @@ impl<'a> Command<'a> {
             CommandName::Source => {
                 expected_args = 1;
                 let location = iter.next_memory_location_or_default("location")?;
-                Self::Source { location }
+                Self::Assembly { location }
             }
 
             CommandName::Eval => {
@@ -264,9 +262,9 @@ mod tests {
 
         expect_command("help", Ok(Command::Help));
         expect_command("  help   me!  ", Ok(Command::Help));
-        expect_command("progress", Ok(Command::Step { count: 1 }));
-        expect_command("p 0", Ok(Command::Step { count: 1 }));
-        expect_command("progress   #012", Ok(Command::Step { count: 12 }));
+        expect_command("progress", Ok(Command::Progress { count: 1 }));
+        expect_command("p 0", Ok(Command::Progress { count: 1 }));
+        expect_command("progress   #012", Ok(Command::Progress { count: 12 }));
         expect_command(
             "set   #012 0x123",
             Ok(Command::Set {
@@ -283,7 +281,7 @@ mod tests {
         expect_command("registers", Ok(Command::Registers));
         expect_command(
             "assembly  HW+4",
-            Ok(Command::Source {
+            Ok(Command::Assembly {
                 location: MemoryLocation::Label(Label {
                     name: "HW",
                     offset: 4,
@@ -292,7 +290,7 @@ mod tests {
         );
         expect_command(
             "a",
-            Ok(Command::Source {
+            Ok(Command::Assembly {
                 location: MemoryLocation::PCOffset(0),
             }),
         );

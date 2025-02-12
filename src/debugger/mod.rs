@@ -337,7 +337,7 @@ impl Debugger {
                 dprintln!(Sometimes, Info, "Finishing subroutine...");
             }
 
-            Command::Step { count } => {
+            Command::Progress { count } => {
                 self.status = Status::Step { count: count - 1 };
                 self.should_echo_pc = true;
             }
@@ -412,7 +412,7 @@ impl Debugger {
                 self.should_echo_pc = true;
             }
 
-            Command::Source { location } => {
+            Command::Assembly { location } => {
                 if let Some(address) = self.resolve_location_address(state, &location) {
                     self.show_assembly_source(state, address);
                 }
