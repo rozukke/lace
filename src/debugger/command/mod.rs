@@ -113,7 +113,7 @@ impl<'a> Label<'a> {
 impl<'a> Command<'a> {
     pub fn read_from<F>(source: &mut CommandReader, handle_error: F) -> Option<Self>
     where
-        F: Fn(error::Command) -> (),
+        F: Fn(error::Command),
     {
         loop {
             let line = source.read()?.trim();

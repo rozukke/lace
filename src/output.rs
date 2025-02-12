@@ -237,30 +237,29 @@ impl Output {
         const WIDTH_LABEL: usize = 14; // Arbitrary
         const WIDTH_LINE: usize = 28; // Arbitrary
 
-        let print_line =
-            |char_line: char, char_left: char, char_middle: char, char_right: char| -> () {
-                self.print(char_left);
-                for _ in 0..WIDTH_KEY {
-                    self.print(char_line);
-                }
-                self.print(char_middle);
-                for _ in 0..WIDTH_LABEL {
-                    self.print(char_line);
-                }
-                self.print(char_middle);
-                for _ in 0..WIDTH_LINE {
-                    self.print(char_line);
-                }
-                self.print(char_right);
-                self.print('\n');
-            };
+        let print_line = |char_line: char, char_left: char, char_middle: char, char_right: char| {
+            self.print(char_left);
+            for _ in 0..WIDTH_KEY {
+                self.print(char_line);
+            }
+            self.print(char_middle);
+            for _ in 0..WIDTH_LABEL {
+                self.print(char_line);
+            }
+            self.print(char_middle);
+            for _ in 0..WIDTH_LINE {
+                self.print(char_line);
+            }
+            self.print(char_right);
+            self.print('\n');
+        };
 
         self.print("\x1b[2m");
         print_line('─', '┌', '┬', '┐');
 
         // Print cell value with max length
         // Replace final ' ' with ellipsis if length exceeds max
-        let print_cell = |value: &str, width: usize| -> () {
+        let print_cell = |value: &str, width: usize| {
             let mut len = 0;
             for (i, ch) in value.chars().enumerate() {
                 len += 1;
