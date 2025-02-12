@@ -60,12 +60,6 @@ impl AsmSource {
     /// Used to access source code span.
     fn get_source_statement(&self, address: u16) -> Option<&AsmLine> {
         if address < self.orig || (address - self.orig) as usize >= self.ast.len() {
-            dprintln!(
-                Always,
-                Error,
-                "Address 0x{:04x} does not correspond to an instruction",
-                address
-            );
             return None;
         };
         let stmt = self

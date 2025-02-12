@@ -490,6 +490,12 @@ impl Debugger {
         }
 
         let Some(stmt) = self.asm_source.show_line_context(address) else {
+            dprintln!(
+                Always,
+                Error,
+                "Address 0x{:04x} does not correspond to an instruction",
+                address,
+            );
             return;
         };
 
