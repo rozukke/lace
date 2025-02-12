@@ -472,7 +472,7 @@ impl Debugger {
                         }
                     } else {
                         Output::Debugger(Condition::Always, Default::default())
-                            .print_key_value_table(|i| {
+                            .print_breakpoint_table(|i| {
                                 let address = self.breakpoints.nth(i)?.address;
                                 let label =
                                     resolve_symbol_name(address - self.orig()).unwrap_or("");

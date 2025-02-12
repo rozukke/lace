@@ -202,44 +202,42 @@ impl Output {
         self.print("\x1b[2m│\x1b[0m");
         self.print("    \x1b[1mPC\x1b[0m");
         self.print(format_args!(" 0x{:04x}", state.pc()));
-        self.print("\x1b[2m    │     \x1b[0m");
+        self.print("\x1b[2m    │    \x1b[0m");
         self.print(" \x1b[1mCC\x1b[0m");
-        self.print(format_args!(" {:03b}", state.flag() as u8));
+        self.print(format_args!("  {:03b}", state.flag() as u8));
         self.print("     \x1b[2m│\x1b[0m\n");
 
         self.print("\x1b[2m└─────────────────┴─────────────────┘\x1b[0m\n");
     }
 
-    /// Print 2-column table of any number of rows.
+    /// Print table of breakpoints: three columns and any number of rows.
     ///
     /// `row` argument will be called with values `0..` until `None` is returned.
     ///
-    /// Values in left (key) column are printed as unsigned hexadecimal integers.
+    /// Addresses (left column) are printed as unsigned hexadecimal integers.
     ///
-    /// Values in right (value) column are printed as strings, and are truncated if their length
-    /// exceeds the column width.
-    ///
-    /// Currently only used to print breakpoints ("break list").
-    pub fn print_key_value_table<'a, F>(&self, row: F)
+    /// Label and instruction values are printed in the next two columns, truncated if their length
+    /// exceeds their respective column width.
+    pub fn print_breakpoint_table<'a, F>(&self, row: F)
     where
         F: Fn(usize) -> Option<(u16, &'a str, &'a str)>,
     {
         debug_assert!(
             matches!(self, Self::Debugger(..)),
-            "`Output::print_key_value_table()` called on `Output::Normal`"
+            "`Output::print_breakpoint_table()` called on `Output::Normal`"
         );
         debug_assert!(
             !Self::is_minimal(),
-            "`print_key_value_table` should not be called if `--minimal`"
+            "`Output::print_breakpoint_table()` should not be called if `--minimal`"
         );
 
-        const WIDTH_KEY: usize = " 0x1234 ".len(); // Note the whitespace
+        const WIDTH_ADDRESS: usize = " 0x1234 ".len(); // Note the whitespace
         const WIDTH_LABEL: usize = 14; // Arbitrary
         const WIDTH_LINE: usize = 28; // Arbitrary
 
         let print_line = |char_line: char, char_left: char, char_middle: char, char_right: char| {
             self.print(char_left);
-            for _ in 0..WIDTH_KEY {
+            for _ in 0..WIDTH_ADDRESS {
                 self.print(char_line);
             }
             self.print(char_middle);
@@ -259,9 +257,9 @@ impl Output {
 
         // Print cell value with max length
         // Replace final ' ' with ellipsis if length exceeds max
-        let print_cell = |value: &str, width: usize| {
+        let print_cell = |text: &str, width: usize| {
             let mut len = 0;
-            for (i, ch) in value.chars().enumerate() {
+            for (i, ch) in text.chars().enumerate() {
                 len += 1;
                 if i > width - 3 {
                     self.print('…');
@@ -275,7 +273,7 @@ impl Output {
         };
 
         for i in 0.. {
-            let Some((key, label, line)) = row(i) else {
+            let Some((address, label, line)) = row(i) else {
                 break;
             };
             if i > 0 {
@@ -283,7 +281,7 @@ impl Output {
             }
 
             self.print("│ \x1b[0;1m");
-            self.print(format_args!("0x{:04x}", key));
+            self.print(format_args!("0x{:04x}", address));
 
             self.print("\x1b[0;2m │ \x1b[0m");
             print_cell(label, WIDTH_LABEL);
@@ -338,7 +336,7 @@ impl Output {
     fn print_char_display(&self, value: u16) {
         debug_assert!(
             !Self::is_minimal(),
-            "`print_display` should not be called if `--minimal`"
+            "`Output::print_display()` should not be called if `--minimal`"
         );
         if Self::is_minimal() {
             return;
