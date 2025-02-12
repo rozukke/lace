@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::io::{BufRead as _, BufReader, Write as _};
+use std::io::{self, BufRead as _, BufReader, Read as _, Write as _};
 use std::net::TcpStream;
 
 thread_local! {
@@ -50,13 +50,18 @@ impl Connection {
     }
 
     /// Receive and deserialize a response from the server.
-    fn recv(&mut self) -> String {
+    fn recv_old(&mut self) -> String {
         let mut reader = BufReader::new(&self.stream);
+        // TODO(opt): Use fixed size buffer
         let mut buffer = String::new();
         reader
             .read_line(&mut buffer)
             .expect("failed to read response form Minecraft server");
         buffer
+    }
+
+    fn recv(&mut self) -> ResponseReader {
+        ResponseReader::new(&mut self.stream)
     }
 
     /// Sends a message to the in-game chat, does not require a joined player.
@@ -75,15 +80,20 @@ impl Connection {
     /// playermodel).
     pub fn get_player_position(&mut self) -> (i16, i16, i16) {
         self.send(format!("player.getPos()\n"));
-        let response = self.recv();
-        parse_coordinate(&response).expect("malformed server response")
+        let mut response = self.recv();
+        let x = response.read_integer() as i16;
+        let y = response.read_integer() as i16;
+        let z = response.read_integer() as i16;
+        (x, y, z)
     }
 
     /// Returns block id from specified coordinate.
     pub fn get_block(&mut self, x: i16, y: i16, z: i16) -> u16 {
         self.send(format!("world.getBlockWithData({},{},{})\n", x, y, z));
-        let response = self.recv();
-        parse_block_id(&response).expect("malformed server response")
+        let mut response = self.recv();
+        let id = response.read_integer() as u16;
+        let _mod = response.read_integer();
+        id
     }
 
     /// Sets block id specified coordinate.
@@ -95,38 +105,57 @@ impl Connection {
     /// and `z` coordinate
     pub fn get_height(&mut self, x: i16, z: i16) -> i16 {
         self.send(format!("world.getHeight({},{})\n", x, z));
-        let response = self.recv();
-        response.trim().parse().expect("malformed server response")
+        self.recv().read_integer() as i16
     }
 }
 
-fn parse_coordinate(string: &str) -> Option<(i16, i16, i16)> {
-    let mut iter = string.split(',');
-    let x = next_int(&mut iter)?;
-    let y = next_int(&mut iter)?;
-    let z = next_int(&mut iter)?;
-    if iter.next().is_some() {
-        return None;
-    }
-    Some((x, y, z))
+struct ResponseReader<'a> {
+    stream: &'a mut TcpStream,
 }
 
-fn parse_block_id(string: &str) -> Option<u16> {
-    let mut iter = string.split(',');
-    let id = next_int(&mut iter)?;
-    next_int::<i32>(&mut iter)?;
-    if iter.next().is_some() {
-        return None;
+impl<'a> ResponseReader<'a> {
+    pub fn new(stream: &'a mut TcpStream) -> Self {
+        Self { stream }
     }
-    Some(id)
-}
 
-fn next_int<'a, T>(iter: &mut impl Iterator<Item = &'a str>) -> Option<T>
-where
-    T: TryFrom<i32>,
-{
-    let item = iter.next()?;
-    let float: f32 = item.trim().parse().ok()?;
-    let int: i32 = float.floor() as i32;
-    int.try_into().ok()
+    pub fn read_integer(&mut self) -> i32 {
+        let mut integer: i32 = 0;
+        let mut sign = 1;
+        while let Some(byte) = self.read_byte().unwrap() {
+            if matches!(byte, b',' | b'\n') {
+                break;
+            }
+            if byte == b'.' {
+                while let Some(byte) = self.read_byte().unwrap() {
+                    if matches!(byte, b',' | b'\n') {
+                        break;
+                    }
+                }
+                break;
+            }
+            if byte == b'-' {
+                assert_eq!(sign, 1, "multiple sign characters");
+                sign = -1;
+                continue;
+            }
+            let digit = match byte {
+                b'0'..=b'9' => (byte - b'0') as i32,
+                _ => panic!("unexpected byte `0x{:02x}`", byte),
+            };
+            integer *= 10;
+            integer += digit;
+        }
+        integer *= sign;
+        integer
+    }
+
+    fn read_byte(&mut self) -> Result<Option<u8>, io::Error> {
+        let mut buffer = [0u8; 1];
+        let bytes = self.stream.read(&mut buffer)?;
+        assert!(bytes <= 1, "too many bytes read");
+        if bytes == 0 {
+            return Ok(None);
+        }
+        Ok(Some(buffer[0]))
+    }
 }
