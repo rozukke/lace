@@ -29,46 +29,6 @@ pub struct Connection {
     stream: TcpStream,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub enum Error {
-    Connect,
-    Send,
-    Recv,
-    ExpectedInteger,
-    ExpectedEndOfArgument,
-    ExpectedEndOfLine,
-    UnexpectedEndOfLine,
-    IntegerTooLarge,
-}
-
-impl std::error::Error for Error {}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Connect => write!(f, "failed to connect"),
-            Self::Send => write!(f, "failed to send message"),
-            Self::Recv => write!(f, "failed to read message"),
-            _ => {
-                write!(f, "parsing response: ")?;
-                match self {
-                    Self::Connect | Self::Send | Self::Recv => unreachable!(),
-                    Self::ExpectedInteger => write!(f, "expected integer"),
-                    Self::ExpectedEndOfArgument => write!(f, "expected end of argument"),
-                    Self::ExpectedEndOfLine => write!(f, "expected end of line"),
-                    Self::UnexpectedEndOfLine => write!(f, "unexpected end of line"),
-                    Self::IntegerTooLarge => write!(f, "integer is too large"),
-                }
-            }
-        }
-    }
-}
-
-fn fatal(error: Error) -> ! {
-    eprintln!("lace-mc: {}, exiting", error);
-    std::process::exit(0xDD);
-}
-
 impl Connection {
     /// Default server address and port for [ELCI].
     ///
@@ -144,6 +104,7 @@ impl Connection {
     }
 }
 
+/// Wrapper of `TcpStream` to read byte-by-byte as an `Iterator`.
 struct StreamIter<'a> {
     stream: &'a mut TcpStream,
 }
@@ -152,10 +113,8 @@ impl<'a> StreamIter<'a> {
         Self { stream }
     }
 }
-
 impl<'a> Iterator for StreamIter<'a> {
     type Item = u8;
-
     fn next(&mut self) -> Option<Self::Item> {
         let mut buffer = [0u8; 1];
         if self.stream.read_exact(&mut buffer).is_err() {
@@ -165,6 +124,13 @@ impl<'a> Iterator for StreamIter<'a> {
     }
 }
 
+/// Parse an integer from an `Iterator`, byte-by-byte
+///
+/// Only supports the most basic decimal syntax: `^[-+]?[0-9]+(\.[0-9]+)?$`.
+/// All characters after decimal point are taken into account when rounding down, but are otherwise
+/// discarded.
+///
+/// Consumes entire integer and following byte (which must be `b','` or `b'\n'`).
 struct IntegerReader<I>
 where
     I: Iterator<Item = u8>,
@@ -180,6 +146,7 @@ where
         Self { inner }
     }
 
+    /// Read and parse next integer, expecting and consuming following `b','` (end of argument).
     pub fn next<T>(&mut self) -> T
     where
         T: TryFrom<i32>,
@@ -191,6 +158,7 @@ where
         integer
     }
 
+    /// Read and parse next integer, expecting and consuming following `b'\n'` (end of line).
     pub fn last<T>(&mut self) -> T
     where
         T: TryFrom<i32>,
@@ -202,6 +170,7 @@ where
         integer
     }
 
+    /// See also: [`debugger::command::parse::integer`]
     fn next_inner<T>(&mut self) -> (T, bool)
     where
         T: TryFrom<i32>,
@@ -221,6 +190,7 @@ where
         let mut integer: i32 = 0;
         let mut len = 0;
 
+        // Take digits until any non-digit character is peeked
         while let Byte::Some(byte) = self.inner.peek().into() {
             let digit = match byte {
                 b'0'..=b'9' => (byte - b'0') as i32,
@@ -234,28 +204,33 @@ where
         }
 
         if len == 0 {
+            // `^[-+]?$`
             fatal(Error::ExpectedInteger);
         }
 
         integer *= sign;
 
+        // Decimal point and following digits
         if let Byte::Some(b'.') = self.inner.peek().into() {
             self.inner.next();
 
-            let mut has_decimals = false;
+            let mut is_integer = true; // Whether all decimal digits are '0'
             while let Byte::Some(byte) = self.inner.peek().into() {
                 match byte {
                     b'0' => (),
-                    b'1'..=b'9' => has_decimals = true,
+                    b'1'..=b'9' => is_integer = false,
                     _ => break,
                 }
                 self.inner.next();
             }
-            if has_decimals && sign < 0 {
+            // Ensure number is always rounded down, NOT truncated
+            // Without this, `-1.3` would become `-1` (instead of `-2`)
+            if !is_integer && sign < 0 {
                 integer -= 1;
             }
         }
 
+        // Check and consume byte following integer
         let is_final = match self.inner.next().into() {
             Byte::Some(_) => fatal(Error::ExpectedEndOfArgument),
             Byte::EndOfArgument => false,
@@ -270,13 +245,15 @@ where
     }
 }
 
+/// Response byte, with `b','` and `b'\n'` converted to named variants.
 #[derive(Clone, Copy, Debug)]
 enum Byte {
     Some(u8),
+    /// `b','`
     EndOfArgument,
+    /// `b'\n'`
     EndOfLine,
 }
-
 impl From<Option<u8>> for Byte {
     fn from(byte: Option<u8>) -> Self {
         match byte {
@@ -291,6 +268,47 @@ impl From<Option<&u8>> for Byte {
     fn from(byte: Option<&u8>) -> Self {
         byte.copied().into()
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum Error {
+    Connect,
+    Send,
+    Recv,
+    ExpectedInteger,
+    ExpectedEndOfArgument,
+    ExpectedEndOfLine,
+    UnexpectedEndOfLine,
+    IntegerTooLarge,
+}
+
+impl std::error::Error for Error {}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Connect => write!(f, "failed to connect"),
+            Self::Send => write!(f, "failed to send message"),
+            Self::Recv => write!(f, "failed to read message"),
+            _ => {
+                write!(f, "parsing response: ")?;
+                match self {
+                    Self::Connect | Self::Send | Self::Recv => unreachable!(),
+                    Self::ExpectedInteger => write!(f, "expected integer"),
+                    Self::ExpectedEndOfArgument => write!(f, "expected end of argument"),
+                    Self::ExpectedEndOfLine => write!(f, "expected end of line"),
+                    Self::UnexpectedEndOfLine => write!(f, "unexpected end of line"),
+                    Self::IntegerTooLarge => write!(f, "integer is too large"),
+                }
+            }
+        }
+    }
+}
+
+/// Print error message and exit, due to unrecoverable error interfacing with Minecraft server.
+fn fatal(error: Error) -> ! {
+    eprintln!("lace-mc: {}, exiting", error);
+    std::process::exit(0xDD);
 }
 
 #[cfg(test)]
@@ -308,4 +326,6 @@ mod tests {
         assert_eq!(iter.next::<i16>(), -242);
         assert_eq!(iter.last::<u16>(), 24);
     }
+
+    // TODO(test): check panics
 }
