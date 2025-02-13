@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::fmt;
+use std::fmt::{self, Arguments};
 use std::io::{Read as _, Write as _};
 use std::iter::Peekable;
 use std::net::TcpStream;
@@ -69,8 +69,6 @@ fn fatal(error: Error) -> ! {
     std::process::exit(0xDD);
 }
 
-// TODO(opt): Avoid `format!`
-
 impl Connection {
     /// Default server address and port for [ELCI].
     ///
@@ -86,8 +84,8 @@ impl Connection {
     }
 
     /// Serialize and send a command to the server.
-    fn send(&mut self, command: impl AsRef<str>) {
-        if self.stream.write_all(command.as_ref().as_bytes()).is_err() {
+    fn send(&mut self, command: Arguments) {
+        if self.stream.write_fmt(command).is_err() {
             fatal(Error::Send);
         }
     }
@@ -99,13 +97,13 @@ impl Connection {
     /// Sends a message to the in-game chat, does not require a joined player.
     pub fn post_to_chat(&mut self, message: impl AsRef<str>) {
         // TODO(fix): Sanitize string
-        self.send(format!("chat.post({})\n", message.as_ref()));
+        self.send(format_args!("chat.post({})\n", message.as_ref()));
     }
 
     /// Returns a coordinate representing player position (block position of lower half of
     /// playermodel).
     pub fn get_player_position(&mut self) -> (i16, i16, i16) {
-        self.send(format!("player.getPos()\n"));
+        self.send(format_args!("player.getPos()\n"));
         let mut response = self.recv();
         let x = response.next();
         let y = response.next();
@@ -116,12 +114,12 @@ impl Connection {
     /// Sets player position (block position of lower half of playermodel) to
     /// specified coordinate.
     pub fn set_player_position(&mut self, x: i16, y: i16, z: i16) {
-        self.send(format!("player.setPos({},{},{})\n", x, y, z));
+        self.send(format_args!("player.setPos({},{},{})\n", x, y, z));
     }
 
     /// Returns block id from specified coordinate.
     pub fn get_block(&mut self, x: i16, y: i16, z: i16) -> u16 {
-        self.send(format!("world.getBlockWithData({},{},{})\n", x, y, z));
+        self.send(format_args!("world.getBlockWithData({},{},{})\n", x, y, z));
         let mut response = self.recv();
         let id = response.next();
         let _mod = response.last::<i32>();
@@ -130,13 +128,16 @@ impl Connection {
 
     /// Sets block id specified coordinate.
     pub fn set_block(&mut self, x: i16, y: i16, z: i16, block: u16) {
-        self.send(format!("world.setBlock({},{},{},{})\n", x, y, z, block));
+        self.send(format_args!(
+            "world.setBlock({},{},{},{})\n",
+            x, y, z, block
+        ));
     }
 
     /// Returns the `y`-value of the highest solid block at the specified `x`
     /// and `z` coordinate
     pub fn get_height(&mut self, x: i16, z: i16) -> i16 {
-        self.send(format!("world.getHeight({},{})\n", x, z));
+        self.send(format_args!("world.getHeight({},{})\n", x, z));
         self.recv().last()
     }
 }
