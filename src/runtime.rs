@@ -557,7 +557,8 @@ impl RunState {
 
             // chat
             0x28 => {
-                // TODO(opt): This allocs here and again in `post_to_chat` (can be avoided)
+                // Requires copy so string can be sanitized
+                // Technically could be avoided by creating a struct which implements `Display`
                 let mut message = String::new();
                 for addr in self.reg(0).. {
                     let chr_raw = self.mem(addr);
@@ -565,7 +566,11 @@ impl RunState {
                     if chr_ascii == '\0' {
                         break;
                     }
-                    message.push(chr_ascii);
+                    match chr_ascii {
+                        '\n' => message.push(' '),
+                        '\t' | '\x20'..='\x7e' => message.push(chr_ascii),
+                        _ => (),
+                    }
                 }
                 mc::with_connection(|mc| {
                     mc.post_to_chat(&message);

@@ -95,8 +95,10 @@ impl Connection {
     }
 
     /// Sends a message to the in-game chat, does not require a joined player.
+    ///
+    /// **WARNING**: Assumes string has *already* been sanitized! Characters such as '\n' will not
+    /// be accepted by the server!
     pub fn post_to_chat(&mut self, message: impl AsRef<str>) {
-        // TODO(fix): Sanitize string
         self.send(format_args!("chat.post({})\n", message.as_ref()));
     }
 
