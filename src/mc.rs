@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::fmt;
 use std::io::{Read as _, Write as _};
 use std::iter::Peekable;
 use std::net::TcpStream;
@@ -28,6 +29,46 @@ pub struct Connection {
     stream: TcpStream,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum Error {
+    Connect,
+    Send,
+    Recv,
+    ExpectedInteger,
+    ExpectedEndOfArgument,
+    ExpectedEndOfLine,
+    UnexpectedEndOfLine,
+    IntegerTooLarge,
+}
+
+impl std::error::Error for Error {}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Connect => write!(f, "failed to connect"),
+            Self::Send => write!(f, "failed to send message"),
+            Self::Recv => write!(f, "failed to read message"),
+            _ => {
+                write!(f, "parsing response: ")?;
+                match self {
+                    Self::Connect | Self::Send | Self::Recv => unreachable!(),
+                    Self::ExpectedInteger => write!(f, "expected integer"),
+                    Self::ExpectedEndOfArgument => write!(f, "expected end of argument"),
+                    Self::ExpectedEndOfLine => write!(f, "expected end of line"),
+                    Self::UnexpectedEndOfLine => write!(f, "unexpected end of line"),
+                    Self::IntegerTooLarge => write!(f, "integer is too large"),
+                }
+            }
+        }
+    }
+}
+
+fn fatal(error: Error) -> ! {
+    eprintln!("lace-mc: {}, exiting", error);
+    std::process::exit(0xDD);
+}
+
 // TODO(opt): Avoid `format!`
 
 impl Connection {
@@ -38,16 +79,17 @@ impl Connection {
 
     /// Create a new connection with the default server address.
     pub fn new() -> Self {
-        let stream = TcpStream::connect(Self::DEFAULT_ADDRESS)
-            .expect("failed to establish connection to Minecraft server");
+        let Ok(stream) = TcpStream::connect(Self::DEFAULT_ADDRESS) else {
+            fatal(Error::Connect);
+        };
         Self { stream }
     }
 
     /// Serialize and send a command to the server.
     fn send(&mut self, command: impl AsRef<str>) {
-        self.stream
-            .write_all(command.as_ref().as_bytes())
-            .expect("failed to send request to Minecraft server");
+        if self.stream.write_all(command.as_ref().as_bytes()).is_err() {
+            fatal(Error::Send);
+        }
     }
 
     fn recv(&mut self) -> IntegerReader<StreamIter> {
@@ -57,7 +99,7 @@ impl Connection {
     /// Sends a message to the in-game chat, does not require a joined player.
     pub fn post_to_chat(&mut self, message: impl AsRef<str>) {
         // TODO(fix): Sanitize string
-        self.send(format!("chat.post({})\n", message.as_ref()))
+        self.send(format!("chat.post({})\n", message.as_ref()));
     }
 
     /// Returns a coordinate representing player position (block position of lower half of
@@ -74,7 +116,7 @@ impl Connection {
     /// Sets player position (block position of lower half of playermodel) to
     /// specified coordinate.
     pub fn set_player_position(&mut self, x: i16, y: i16, z: i16) {
-        self.send(format!("player.setPos({},{},{})\n", x, y, z))
+        self.send(format!("player.setPos({},{},{})\n", x, y, z));
     }
 
     /// Returns block id from specified coordinate.
@@ -88,7 +130,7 @@ impl Connection {
 
     /// Sets block id specified coordinate.
     pub fn set_block(&mut self, x: i16, y: i16, z: i16, block: u16) {
-        self.send(format!("world.setBlock({},{},{},{})\n", x, y, z, block))
+        self.send(format!("world.setBlock({},{},{},{})\n", x, y, z, block));
     }
 
     /// Returns the `y`-value of the highest solid block at the specified `x`
@@ -113,9 +155,9 @@ impl<'a> Iterator for StreamIter<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut buffer = [0u8; 1];
-        self.stream
-            .read_exact(&mut buffer)
-            .expect("failed to read from stream");
+        if self.stream.read_exact(&mut buffer).is_err() {
+            fatal(Error::Recv)
+        }
         Some(buffer[0])
     }
 }
@@ -140,7 +182,9 @@ where
         T: TryFrom<i32>,
     {
         let (integer, is_final) = self.next_inner();
-        assert!(!is_final, "unexpected end of line");
+        if is_final {
+            fatal(Error::UnexpectedEndOfLine);
+        }
         integer
     }
 
@@ -149,7 +193,9 @@ where
         T: TryFrom<i32>,
     {
         let (integer, is_final) = self.next_inner();
-        assert!(is_final, "expected end of line");
+        if !is_final {
+            fatal(Error::ExpectedEndOfLine);
+        }
         integer
     }
 
@@ -184,7 +230,9 @@ where
             len += 1;
         }
 
-        assert!(len > 0, "expected integer something");
+        if len == 0 {
+            fatal(Error::ExpectedInteger);
+        }
 
         integer *= sign;
 
@@ -206,15 +254,16 @@ where
         }
 
         let is_final = match self.inner.next().into() {
-            Byte::Some(_) => panic!("expected end of integer"),
+            Byte::Some(_) => fatal(Error::ExpectedEndOfArgument),
             Byte::EndOfArgument => false,
             Byte::EndOfLine => true,
         };
 
-        (
-            integer.try_into().map_err(|_| ()).expect("invalid integer"),
-            is_final,
-        )
+        let Ok(integer) = integer.try_into() else {
+            fatal(Error::IntegerTooLarge);
+        };
+
+        (integer, is_final)
     }
 }
 
