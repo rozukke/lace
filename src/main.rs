@@ -26,12 +26,8 @@ struct Args {
 
     /// Quickly provide a `.asm` file to run
     path: Option<PathBuf>,
-
-    /// Feature flags to enable non-standard extensions to the LC3 specification
-    ///
-    /// Available flags: 'stack'
-    #[arg(short, long, value_parser = clap::value_parser!(Features), default_value_t = Default::default())]
-    features: Features,
+    #[command(flatten)]
+    run_options: RunOptions,
 }
 
 #[derive(Subcommand)]
@@ -40,12 +36,8 @@ enum Command {
     Run {
         /// .asm file to run
         name: PathBuf,
-
-        /// Feature flags to enable non-standard extensions to the LC3 specification
-        ///
-        /// Available flags: 'stack'
-        #[arg(short, long, value_parser = clap::value_parser!(Features), default_value_t = Default::default())]
-        features: Features,
+        #[command(flatten)]
+        run_options: RunOptions,
     },
     /// Create binary `.lc3` file to run later or view compiled data
     Compile {
@@ -53,12 +45,8 @@ enum Command {
         name: PathBuf,
         /// Destination to output .lc3 file
         dest: Option<PathBuf>,
-
-        /// Feature flags to enable non-standard extensions to the LC3 specification
-        ///
-        /// Available flags: 'stack'
-        #[arg(short, long, value_parser = clap::value_parser!(Features), default_value_t = Default::default())]
-        features: Features,
+        #[command(flatten)]
+        run_options: RunOptions,
     },
     /// Check a `.asm` file without running or outputting binary
     Check {
@@ -82,13 +70,30 @@ enum Command {
     },
 }
 
+#[derive(clap::Args)]
+struct RunOptions {
+    /// Feature flags to enable non-standard extensions to the LC3 specification
+    ///
+    /// Available flags: 'stack'
+    #[arg(
+        short,
+        long,
+        value_parser = clap::value_parser!(Features),
+        default_value_t = Default::default(),
+    )]
+    features: Features,
+}
+
 fn main() -> miette::Result<()> {
     use MsgColor::*;
     let args = Args::parse();
 
     if let Some(command) = args.command {
         match command {
-            Command::Run { name, features } => {
+            Command::Run {
+                name,
+                run_options: RunOptions { features },
+            } => {
                 lace::features::init(features);
                 run(&name)?;
                 Ok(())
@@ -96,7 +101,7 @@ fn main() -> miette::Result<()> {
             Command::Compile {
                 name,
                 dest,
-                features,
+                run_options: RunOptions { features },
             } => {
                 lace::features::init(features);
                 file_message(Green, "Assembling", &name);
@@ -193,7 +198,7 @@ fn main() -> miette::Result<()> {
         }
     } else {
         if let Some(path) = args.path {
-            lace::features::init(args.features);
+            lace::features::init(args.run_options.features);
             run(&path)?;
             Ok(())
         } else {
