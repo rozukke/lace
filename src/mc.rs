@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 use std::fmt::{self, Arguments};
-use std::io::{Read as _, Write as _};
+use std::io::{BufReader, Read as _, Write as _};
 use std::iter::Peekable;
 use std::net::TcpStream;
 
@@ -106,11 +106,13 @@ impl Connection {
 
 /// Wrapper of `TcpStream` to read byte-by-byte as an `Iterator`.
 struct StreamIter<'a> {
-    stream: &'a mut TcpStream,
+    stream: BufReader<&'a mut TcpStream>,
 }
 impl<'a> StreamIter<'a> {
     pub fn new(stream: &'a mut TcpStream) -> Self {
-        Self { stream }
+        Self {
+            stream: BufReader::new(stream),
+        }
     }
 }
 impl<'a> Iterator for StreamIter<'a> {
