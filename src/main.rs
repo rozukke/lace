@@ -25,6 +25,7 @@ struct Args {
 
     /// Quickly provide a `.asm` file to run
     path: Option<PathBuf>,
+    // TODO: Include `--minimal` option here, mirroring `run` subcommand
 }
 
 #[derive(Subcommand)]
