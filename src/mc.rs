@@ -108,10 +108,16 @@ impl Connection {
 struct StreamIter<'a> {
     stream: BufReader<&'a mut TcpStream>,
 }
+impl StreamIter<'_> {
+    /// Large enough to hold the longest realistic response (3 floats), plus some extra space.
+    ///
+    /// Default buffer size for `std::io::BufReader` is currently 8kiB.
+    const BUFFER_SIZE: usize = 96;
+}
 impl<'a> StreamIter<'a> {
     pub fn new(stream: &'a mut TcpStream) -> Self {
         Self {
-            stream: BufReader::new(stream),
+            stream: BufReader::with_capacity(Self::BUFFER_SIZE, stream),
         }
     }
 }
