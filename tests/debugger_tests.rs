@@ -21,11 +21,20 @@ fn debugs_hello_world() {
         .arg("--command")
         .arg(
             "
-            echo lea; reg
+            echo lea
+            assembly
+            registers
+
             progress
-            echo puts; reg
+            echo puts
+            assembly
+            reg
+
             progress
-            echo halt; reg
+            echo halt
+            assembly
+            reg
+
             continue
         ",
         );
@@ -38,6 +47,7 @@ fn debugs_hello_world() {
             // Empty line is where "Hello, world!" is printed to stdout
             "\
                 [lea]\n\
+                lea r0 hw\n\
                 R0 0x0000\n\
                 R1 0x0000\n\
                 R2 0x0000\n\
@@ -49,6 +59,7 @@ fn debugs_hello_world() {
                 PC 0x3000\n\
                 CC 0b000\n\
                 [puts]\n\
+                puts\n\
                 R0 0x3003\n\
                 R1 0x0000\n\
                 R2 0x0000\n\
@@ -62,6 +73,7 @@ fn debugs_hello_world() {
                 \n\
                 Reached HALT. Pausing execution.\n\
                 [halt]\n\
+                halt\n\
                 R0 0x3003\n\
                 R1 0x0000\n\
                 R2 0x0000\n\
