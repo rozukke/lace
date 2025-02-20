@@ -70,6 +70,7 @@ pub(super) enum RunFlag {
 impl RunEnvironment {
     // Not generic because of miette error
     pub fn try_from(air: Air, debugger_opts: Option<DebuggerOptions>) -> Result<RunEnvironment> {
+        // TODO(refactor): Use constant for default origin ?
         let orig = air.orig().unwrap_or(0x3000);
         let mut air_array: Vec<u16> = Vec::with_capacity(air.len() + 1);
 
@@ -115,7 +116,8 @@ impl RunEnvironment {
             state: RunState {
                 mem: Box::new(mem),
                 pc: orig as u16,
-                reg: [0, 0, 0, 0, 0, 0, 0, 0xFDFF],
+                // Stack pointer (R7) initalized to last address in user memory
+                reg: [0, 0, 0, 0, 0, 0, 0, USER_MEMORY_END - 1],
                 flag: RunFlag::Uninit,
                 _psr: 0,
                 orig: orig as u16,
