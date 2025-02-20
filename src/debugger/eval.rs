@@ -28,18 +28,19 @@ fn eval_inner(state: &mut RunState, line: &'static str) -> Result<()> {
             dprintln!(
                 Always,
                 Error,
-                "Evaluation of `BR*` instructions is not supported."
+                "Simulating `BR*` instructions is not permitted."
             );
             dprintln!(Sometimes, Error, "Consider using `jump` command instead.");
             return Ok(());
         }
 
         // Don't allow `HALT` instruction
+        // Since `HALT` is treated specially by debugger
         AirStmt::Trap { trap_vect: 0x25 } => {
             dprintln!(
                 Always,
                 Error,
-                "Evaluation of `HALT` trap instruction is not supported."
+                "Simulating `HALT` trap instruction is not permitted."
             );
             return Ok(());
         }
