@@ -1,4 +1,4 @@
--------{1} LACE DEBUGGER {0}-------
+{36}-------{1} LACE DEBUGGER {0;36}-------{0}
 Available Commands:
 
     {35;1}help{0;35;2}(h){0}
@@ -16,7 +16,7 @@ Available Commands:
         Continue execution until breakpoint or {1}HALT{0}.
 
     {35;1}finish{0;35;2}(f){0}
-        Continue execution until end of subroutine, breakpoint, or {1}HALT{0}.
+        Continue execution until breakpoint, {1}HALT{0}, or end of subroutine.
 
     {35;1}get{0;35;2}(g){0} {32;3}LOCATION{2}?{0}
         Print the value at a register or address.
@@ -34,27 +34,30 @@ Available Commands:
         Unconditionally jump to an address.
           {2}-{0} {3}LOCATION{0}: {36}Address{2}+{0}
 
-    {35;1}break add{0;35;2}({0;35}ba{2}){0} {32;3}LOCATION{2}?{0}
+    {35;1}break add{0;35;2}(ba){0} {32;3}LOCATION{2}?{0}
         Add breakpoint at an address.
           {2}-{0} {3}LOCATION{0}: {36}Address{2}+{0} {3}(default: PC){0}
 
-    {35;1}break remove{0;35;2}({0;35}ba{2}){0} {32;3}LOCATION{2}?{0}
+    {35;1}break remove{0;35;2}(ba){0} {32;3}LOCATION{2}?{0}
         Remove breakpoint at an address.
           {2}-{0} {3}LOCATION{0}: {36}Address{2}+{0} {3}(default: PC){0}
 
-    {35;1}break list{0;35;2}({0;35}ba{2}){0}
+    {35;1}break list{0;35;2}(ba){0}
         List all breakpoints.
 
     {35;1}assembly{0;35;2}(a){0}
-        Print corresponding line of assembly source code from address.
+        Print line of assembly source code corresponding to an address.
           {2}-{0} {3}LOCATION{0}: {36}Address{2}+{0} {3}(default: PC){0}
 
-    {35;1}eval{0;35;2}(e){0}
-        Simulate an instruction. Note that labels cannot be created or modified.
-          {2}-{0} Instruction: {36}OPCODE OPERANDS{2}...{0}
+    {35;1}eval{0;35;2}(e){0} {32;3}INSTRUCTION{0}
+        Simulate an assembly instruction.
+          {2}-{0} {3}INSTRUCTION{0}: {36}Mnemonic{2}, {0;36}Operands{2}...{0}
+        {3}Note:{0} Labels cannot be created or modified.
+        {3}Note:{0} Branch ({1}BR{2}*{0}) instructions cannot be simulated, use {35}jump{0} instead.
+        {3}Note:{0} {1}HALT{0} trap cannot be simulated, use {35}exit{0} instead.
 
     {35;1}reset{0}
-        Reset all memory and registers to original state.
+        Reset all memory and registers to initial state.
 
     {35;1}quit{0;35;2}(q){0}
         Stop debugger and continue execution as normal.
@@ -62,7 +65,7 @@ Available Commands:
     {35;1}exit{0}
         Exit debugger and simulator.
 
-{3}Note:{0} A {36}Address{2}+{0} argument can be one of the following:
-    {1}1.{0} An absolute address value            {36}x3010{0}
-    {1}2.{0} A label with an optional offset      {36}Foo{0;2}, {0;36}Hello+4{0}
-    {1}3.{0} An offset from the program counter   {36}^{0;2}, {0;36}^3{0;2}, {0;36}^-x10{0}
+{3}Note:{0} An {36}Address{2}+{0} argument can be one of the following:
+    {1}1.{0} An absolute address value            {35}x3010{0}
+    {1}2.{0} A label with an optional offset      {35}Foo{2}, {0;35}Hello+4{0}
+    {1}3.{0} An offset from the program counter   {35}^{2}, {0;35}^3{2}, {0;35}^-x10{0}
