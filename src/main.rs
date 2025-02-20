@@ -13,6 +13,7 @@ use hotwatch::{
 };
 use miette::{bail, IntoDiagnostic, Result};
 
+use lace::features::Features;
 use lace::reset_state;
 use lace::{Air, RunState, StaticSource};
 
@@ -25,6 +26,8 @@ struct Args {
 
     /// Quickly provide a `.asm` file to run
     path: Option<PathBuf>,
+    #[command(flatten)]
+    run_options: RunOptions,
 }
 
 #[derive(Subcommand)]
@@ -33,6 +36,8 @@ enum Command {
     Run {
         /// .asm file to run
         name: PathBuf,
+        #[command(flatten)]
+        run_options: RunOptions,
     },
     /// Create binary `.lc3` file to run later or view compiled data
     Compile {
@@ -40,6 +45,8 @@ enum Command {
         name: PathBuf,
         /// Destination to output .lc3 file
         dest: Option<PathBuf>,
+        #[command(flatten)]
+        run_options: RunOptions,
     },
     /// Check a `.asm` file without running or outputting binary
     Check {
@@ -63,18 +70,40 @@ enum Command {
     },
 }
 
+#[derive(clap::Args)]
+struct RunOptions {
+    /// Feature flags to enable non-standard extensions to the LC3 specification
+    ///
+    /// Available flags: 'stack'
+    #[arg(
+        short,
+        long,
+        value_parser = clap::value_parser!(Features),
+        default_value_t = Default::default(),
+    )]
+    features: Features,
+}
+
 fn main() -> miette::Result<()> {
     use MsgColor::*;
     let args = Args::parse();
-    lace::env::init();
 
     if let Some(command) = args.command {
         match command {
-            Command::Run { name } => {
+            Command::Run {
+                name,
+                run_options: RunOptions { features },
+            } => {
+                lace::features::init(features);
                 run(&name)?;
                 Ok(())
             }
-            Command::Compile { name, dest } => {
+            Command::Compile {
+                name,
+                dest,
+                run_options: RunOptions { features },
+            } => {
+                lace::features::init(features);
                 file_message(Green, "Assembling", &name);
                 let contents = StaticSource::new(fs::read_to_string(&name).into_diagnostic()?);
                 let air = assemble(&contents)?;
@@ -169,6 +198,7 @@ fn main() -> miette::Result<()> {
         }
     } else {
         if let Some(path) = args.path {
+            lace::features::init(args.run_options.features);
             run(&path)?;
             Ok(())
         } else {
