@@ -421,6 +421,10 @@ impl Debugger {
                 self.should_echo_pc = true;
             }
 
+            Command::Echo { string } => {
+                dprintln!(Always, Normal, "[{}]", string);
+            }
+
             Command::Assembly { location } => {
                 if let Some(address) = self.resolve_location(state, &location) {
                     self.show_assembly_source(state, address);

@@ -17,6 +17,7 @@ const COMMANDS: CommandNameList = &[
     (CommandName::Jump,        &["jump", "j"]),
     (CommandName::Source,      &["assembly", "asm", "a"]), // or 'source'
     (CommandName::Eval,        &["eval", "e"]),
+    (CommandName::Echo,        &["echo"]),
     (CommandName::BreakList,   &["breaklist", "bl"]),
     (CommandName::BreakAdd,    &["breakadd", "ba"]),
     (CommandName::BreakRemove, &["breakremove", "br"]),

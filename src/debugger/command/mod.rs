@@ -29,9 +29,8 @@ pub enum Command<'a> {
     Registers,
     Reset,
     Assembly { location: MemoryLocation<'a> },
-    // This can be `String` bc it will be allocated later regardless to get a &'static str
-    // Unless parsing code is changed, and can accept a non-static string
     Eval { instruction: &'a str },
+    Echo { string: &'a str },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -53,6 +52,7 @@ pub(super) enum CommandName {
     Reset,
     Source,
     Eval,
+    Echo,
 }
 
 impl fmt::Display for CommandName {
@@ -75,6 +75,7 @@ impl fmt::Display for CommandName {
             Self::Reset => write!(f, "reset"),
             Self::Source => write!(f, "source"),
             Self::Eval => write!(f, "eval"),
+            Self::Echo => write!(f, "echo"),
         }
     }
 }
@@ -230,6 +231,20 @@ impl<'a> Command<'a> {
                     "no more arguments should exist",
                 );
                 return Ok(Self::Eval { instruction });
+            }
+
+            CommandName::Echo => {
+                let string = iter.get_rest();
+                if string.is_empty() {
+                    return Err(error::Argument::MissingArgumentList {
+                        argument_name: "instruction",
+                    });
+                }
+                debug_assert!(
+                    iter.expect_end(0, 0).is_ok(),
+                    "no more arguments should exist",
+                );
+                return Ok(Self::Echo { string });
             }
         };
 
