@@ -485,10 +485,10 @@ impl fmt::Write for DebuggerWriter {
 
         if self.minimal {
             eprint!("{}", Decolored::new(string));
-            return Ok(());
+        } else {
+            eprint!("{}", Colored::new(color, string));
         }
 
-        eprint!("{}", Colored::new(color, string));
         LineTracker.write_str(string).unwrap();
         Ok(())
     }
