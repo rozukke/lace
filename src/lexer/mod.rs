@@ -7,7 +7,7 @@ use miette::Result;
 
 use crate::lexer::cursor::Cursor;
 use crate::symbol::{DirKind, Flag, InstrKind, Register, Span, SrcOffset, TrapKind};
-use crate::{env, error};
+use crate::{error, features};
 
 pub mod cursor;
 
@@ -312,7 +312,7 @@ impl Cursor<'_> {
         use TokenKind::Instr;
 
         if matches!(ident, "pop" | "push" | "call" | "rets") {
-            if !env::is_stack_enabled() {
+            if !features::stack() {
                 return Err(error::lex_stack_extension_not_enabled(
                     ident,
                     Span::new(SrcOffset(start_pos), self.pos_in_token()),

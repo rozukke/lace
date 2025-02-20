@@ -5,9 +5,10 @@ use std::{
     u16, u32, u8, usize,
 };
 
+use crate::features;
 use crate::{
     debugger::{Action, Debugger, DebuggerOptions, SignificantInstr},
-    dprintln, env,
+    dprintln,
     output::{Condition, Output},
     Air,
 };
@@ -300,11 +301,11 @@ impl RunState {
     }
 
     fn stack(&mut self, instr: u16) {
-        if !env::is_stack_enabled() {
+        if !features::stack() {
             eprintln!(
                 "\
                 You called a reserved instruction.\n\
-                Note: Run with `LACE_STACK=1` to enable stack features.\n\
+                Note: Run with `-f stack` to enable stack extension feature.\n\
                 Halting...\
                 "
             );
@@ -339,8 +340,8 @@ impl RunState {
 
     fn push_val(&mut self, val: u16) {
         debug_assert!(
-            env::is_stack_enabled(),
-            "caller should have ensured stack features are enabled",
+            features::stack(),
+            "caller should have ensured stack feature is enabled",
         );
         // Decrement stack
         *self.reg_mut(7) -= 1;
@@ -351,8 +352,8 @@ impl RunState {
 
     fn pop_val(&mut self) -> u16 {
         debug_assert!(
-            env::is_stack_enabled(),
-            "caller should have ensured stack features are enabled",
+            features::stack(),
+            "caller should have ensured stack feature is enabled",
         );
         let sp = self.reg(7);
         let val = self.mem(sp);
