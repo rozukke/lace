@@ -179,10 +179,10 @@ impl Output {
     pub fn print_registers(&self, state: &RunState) {
         if Self::is_minimal() {
             for i in 0..8 {
-                self.print(format_args!("R{} {}\n", i, state.reg(i)));
+                self.print(format_args!("R{} 0x{:04x}\n", i, state.reg(i)));
             }
-            self.print(format_args!("PC {}\n", state.pc()));
-            self.print(format_args!("CC {:03b}\n", state.flag() as u8));
+            self.print(format_args!("PC 0x{:04x}\n", state.pc()));
+            self.print(format_args!("CC 0b{:03b}\n", state.flag() as u8));
             return;
         }
 
