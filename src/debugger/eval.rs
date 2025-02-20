@@ -58,7 +58,17 @@ fn eval_inner(state: &mut RunState, line: &'static str) -> Result<()> {
             return Ok(());
         }
 
-        // TODO: Unknown traps
+        // Don't allow unknown/invalid trap instructions
+        // To prevent exception and program exit
+        AirStmt::Trap { trap_vect } if !(0x20..=0x27).contains(&trap_vect) => {
+            dprintln!(
+                Always,
+                Error,
+                "Simulating invalid or unknown trap instructions is not permitted."
+            );
+            dprintln!(Sometimes, Error, "What are you even trying to do?");
+            return Ok(());
+        }
 
         // TODO: `RawWord`
         _ => (),
