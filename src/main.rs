@@ -121,8 +121,7 @@ fn main() -> miette::Result<()> {
                 run_options: RunOptions { features },
             } => {
                 lace::features::init(features);
-                run(&name, None, minimal)?;
-                Ok(())
+                run(&name, None, minimal)
             }
             Command::Debug {
                 name,
@@ -131,7 +130,7 @@ fn main() -> miette::Result<()> {
                 run_options: RunOptions { features },
             } => {
                 lace::features::init(features);
-                run(&name, Some(DebuggerOptions { command }), minimal)?;
+                run(&name, Some(DebuggerOptions { command }), minimal)
             }
             Command::Compile {
                 name,

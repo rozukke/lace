@@ -142,7 +142,7 @@ mod tests {
     use super::*;
     use crate::air::{AirStmt, AsmLine, ImmediateOrReg};
     use crate::symbol::{Register, Span, SrcOffset};
-    use crate::{env, AsmParser};
+    use crate::{features, AsmParser};
 
     #[test]
     fn get_context_lines() {
@@ -200,7 +200,7 @@ fib_inner:
             },
         };
 
-        env::init();
+        features::init("stack".parse().unwrap());
         let parser = AsmParser::new(src).unwrap();
         let mut air = parser.parse().unwrap();
         air.backpatch().unwrap();
