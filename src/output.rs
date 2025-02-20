@@ -24,9 +24,9 @@ macro_rules! dprint {
         $crate::output::Output::Debugger($crate::output::Condition::Sometimes, $category)
             .print_category($category);
         $crate::output::Output::Debugger($condition, $category)
-            .print(format_args!($fmt $(, $($tt)* )?)
-        );
-        eprint!("\x1b[0m"); // This is not ideal here
+            .print(format_args!($fmt $(, $($tt)* )?));
+        $crate::output::Output::Debugger($condition, $category)
+            .reset_style();
     }};
 
     ( $fmt:literal $($tt:tt)* ) => {{
@@ -389,6 +389,19 @@ impl Output {
                 .unwrap();
             }
         }
+    }
+
+    /// Resets all ANSI color/style attributes for debugger output.
+    pub fn reset_style(&self) {
+        debug_assert!(
+            matches!(self, Self::Debugger(..)),
+            "`Output::reset_style()` called on `Output::Normal`"
+        );
+        if Self::is_minimal() {
+            return;
+        }
+        // Bypass debugger writer
+        eprint!("\x1b[0m");
     }
 }
 
