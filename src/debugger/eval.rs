@@ -22,8 +22,8 @@ fn eval_inner(state: &mut RunState, line: &'static str) -> Result<()> {
 
     match stmt {
         // Don't allow any branch instructions
-        // Since CC is set to 0b000 at start, this could lead to confusion when `BR` instructions are
-        // not executed
+        // Since CC is set to 0b000 at start, this could lead to confusion when `BR` instructions
+        // are not executed
         AirStmt::Branch { .. } => {
             dprintln!(
                 Always,
@@ -31,6 +31,18 @@ fn eval_inner(state: &mut RunState, line: &'static str) -> Result<()> {
                 "Simulating `BR*` instructions is not permitted."
             );
             dprintln!(Sometimes, Error, "Consider using `jump` command instead.");
+            return Ok(());
+        }
+
+        // Don't allow `RTI` (interrupt) instruction
+        // Since it can only be used in supervisor mode, and it is unimplemented regardless
+        AirStmt::Interrupt => {
+            dprintln!(
+                Always,
+                Error,
+                "Simulating `RTI` instruction is not permitted."
+            );
+            dprintln!(Sometimes, Error, "Don't even think about it.");
             return Ok(());
         }
 
@@ -42,9 +54,13 @@ fn eval_inner(state: &mut RunState, line: &'static str) -> Result<()> {
                 Error,
                 "Simulating `HALT` trap instruction is not permitted."
             );
+            dprintln!(Sometimes, Error, "Consider using `exit` command instead.");
             return Ok(());
         }
 
+        // TODO: Unknown traps
+
+        // TODO: `RawWord`
         _ => (),
     }
 
