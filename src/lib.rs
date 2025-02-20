@@ -6,7 +6,11 @@ pub use air::Air;
 
 // Running
 mod runtime;
-pub use runtime::RunState;
+pub use runtime::RunEnvironment;
+#[macro_use]
+mod debugger;
+pub use debugger::DebuggerOptions;
+mod output;
 
 // Reset global state for watch
 mod symbol;
@@ -16,3 +20,6 @@ mod error;
 mod lexer;
 
 pub mod features;
+
+/// Amount of lines to show as context, each side of focus line (line containing span).
+pub const DIAGNOSTIC_CONTEXT_LINES: usize = 8;
