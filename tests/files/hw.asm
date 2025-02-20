@@ -1,12 +1,6 @@
 ; comment
-    jsr foo
-    reg
-    halt
-
-foo:
-    lea r0 hw
-    puts
-    ret
-
+lea r0 hw
+puts
+halt
 hw .stringz "Hello, world!"
 
