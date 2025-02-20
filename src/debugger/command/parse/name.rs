@@ -70,6 +70,12 @@ impl Arguments<'_> {
             return Ok(command);
         }
 
+        // User clearly wants return to bash
+        if command_name == "sudo" {
+            println!("Goodbye");
+            std::process::exit(0);
+        }
+
         Err(error::Command::InvalidCommand {
             command_name: command_name.to_string(),
         })
