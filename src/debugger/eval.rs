@@ -70,7 +70,8 @@ fn eval_inner(state: &mut RunState, line: &'static str) -> Result<()> {
             return Ok(());
         }
 
-        // TODO: `RawWord`
+        AirStmt::RawWord { .. } => unreachable!("tried to simulate raw word"),
+
         _ => (),
     }
 
