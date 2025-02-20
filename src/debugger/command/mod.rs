@@ -203,12 +203,12 @@ impl<'a> Command<'a> {
             CommandName::BreakList => Self::BreakList,
             CommandName::BreakAdd => {
                 expected_args = 1;
-                let location = iter.next_memory_location_or_default("location")?;
+                let location = iter.next_memory_location("location", expected_args)?;
                 Self::BreakAdd { location }
             }
             CommandName::BreakRemove => {
                 expected_args = 1;
-                let location = iter.next_memory_location_or_default("location")?;
+                let location = iter.next_memory_location("location", expected_args)?;
                 Self::BreakRemove { location }
             }
 
