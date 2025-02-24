@@ -18,17 +18,20 @@ pub enum Key {
     Char(char),
 }
 
+/// Must only be called if terminal is NOT in raw mode.
 pub fn enable_raw_mode() {
     debug_assert!(
         !terminal::is_raw_mode_enabled().is_ok_and(|is| is),
-        "terminal should not be in raw mode at this point",
+        "terminal should not be in raw mode to enable raw mode",
     );
     terminal::enable_raw_mode().expect("failed to enable raw terminal");
 }
+
+/// Must only be called if terminal is in raw mode.
 pub fn disable_raw_mode() {
     debug_assert!(
         terminal::is_raw_mode_enabled().is_ok_and(|is| is),
-        "terminal should be in raw mode at this point",
+        "terminal should already be in raw mode to disable raw mode",
     );
     terminal::disable_raw_mode().expect("failed to disable raw terminal");
 }
@@ -36,6 +39,8 @@ pub fn disable_raw_mode() {
 /// Read terminal events until key event is read as a valid [`Key`].
 ///
 /// Caller must ensure terminal is in raw mode.
+///
+/// `Ctrl+C` will always return the terminal to normal state and exit.
 pub fn read_key() -> Key {
     assert!(
         terminal::is_raw_mode_enabled().is_ok_and(|is| is),
@@ -74,7 +79,7 @@ impl TryFrom<KeyEvent> for Key {
         let key = match (event.modifiers, event.code) {
             // Ctrl+C
             (Mod::CONTROL, KeyCode::Char('c')) => {
-                disable_raw_mode();
+                disable_raw_mode(); // Generic cleanup
                 println!();
                 std::process::exit(0);
             }

@@ -5,15 +5,15 @@ use std::{
     u16, u32, u8, usize,
 };
 
-use crate::features;
 use crate::{
     debugger::{Action, Debugger, DebuggerOptions, SignificantInstr},
     dprintln,
     output::{Condition, Output},
+    term::Key,
     Air,
 };
+use crate::{features, term};
 use colored::Colorize;
-use console::Term;
 use miette::Result;
 
 /// First address which is out of bounds of user memory.
@@ -561,11 +561,16 @@ impl RunState {
 // Read one byte from stdin or unbuffered terminal
 fn read_input() -> u8 {
     if stdin().is_terminal() {
-        let cons = Term::stdout();
-        let ch = cons
-            .read_char()
-            .expect("read from interactive terminal should not fail");
-        ch as u8
+        term::enable_raw_mode();
+        let ch = loop {
+            match term::read_key() {
+                Key::Char(ch) => break ch as u8,
+                Key::Enter => break b'\n',
+                _ => continue,
+            };
+        };
+        term::disable_raw_mode();
+        return ch;
     } else {
         let mut buf = [0; 1];
         if let Err(err) = stdin().read_exact(&mut buf) {
@@ -576,6 +581,7 @@ fn read_input() -> u8 {
                 panic!("failed to read character from stdin: {:?}", err)
             }
         }
+        println!("<{:02x}>", buf[0]);
         buf[0]
     }
 }
