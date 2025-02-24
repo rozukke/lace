@@ -3,7 +3,7 @@ use std::fs::{self, File};
 use std::io::{self, BufRead as _, BufReader, IsTerminal as _, Read as _, Write as _};
 
 use crossterm::event::{self, Event, KeyEvent};
-use crossterm::terminal;
+use crossterm::{cursor, execute, terminal};
 
 use crate::output::debugger_colors;
 use crate::{dprint, dprintln, output::Output};
@@ -44,7 +44,7 @@ struct Stdin {
 // TODO(feat): Support CTRL+Arrow keybinds
 #[derive(Debug)]
 struct Terminal {
-    term: console::Term,
+    stderr: io::Stderr,
     buffer: String,
     /// Byte index.
     cursor: usize,
@@ -64,6 +64,7 @@ struct TerminalHistory {
     file: Option<File>,
 }
 
+/// Must be ASCII to ensure `.len() == .chars().count()`
 const PROMPT: &str = "DEBUGGER> ";
 
 /// Print prompt and command.
@@ -284,7 +285,7 @@ impl TryFrom<KeyEvent> for Key {
 impl Terminal {
     pub fn new() -> Self {
         Self {
-            term: console::Term::stdout(),
+            stderr: io::stderr(),
             buffer: String::new(),
             cursor: 0,
             visible_cursor: 0,
@@ -328,24 +329,34 @@ impl Terminal {
         }
     }
 
+    /// Clear current line, draw REPL prompt and current input, and set cursor position.
     fn print_prompt(&mut self) {
-        // Clear line, print prompt, set cursor position
-        self.term.clear_line().unwrap();
+        // Don't use `dprint(ln)!` in this function: we already have a handle to `stderr` and want
+        // to have control over conditions and attributes for printing.
+
+        // Equivalent to `write!(... "\r")`
+        execute!(
+            self.stderr,
+            terminal::Clear(terminal::ClearType::CurrentLine),
+            cursor::MoveToColumn(0),
+        )
+        .expect("failed to clear line and move cursor");
 
         // Print prompt and current input
         // Equivalent code found in non-terminal source
         if Output::is_minimal() {
-            write!(&mut self.term, "{}", PROMPT).unwrap();
+            write!(&self.stderr, "{}", PROMPT)
         } else {
             write!(
-                &mut self.term,
+                &self.stderr,
                 "\x1b[1;{}m{}\x1b[0m",
                 debugger_colors::PRIMARY,
-                PROMPT,
+                PROMPT
             )
-            .unwrap();
         }
+        .expect("failed to print debugger prompt");
 
+        // Print current input
         // Inline `self.get_current()` due to borrowing issues
         let current = if self.is_next() {
             &self.buffer
@@ -355,18 +366,16 @@ impl Terminal {
                 .get(self.history.index)
                 .expect("checked above")
         };
-        write!(self.term, "{}", current).unwrap();
+        write!(self.stderr, "{}", current).expect("failed to print debugger input");
 
-        self.term
-            .move_cursor_left(
-                self.get_current()
-                    .chars()
-                    .count()
-                    .saturating_sub(self.visible_cursor),
-            )
-            .unwrap();
+        // Set final cursor position
+        execute!(
+            self.stderr,
+            cursor::MoveToColumn((PROMPT.len() + self.visible_cursor) as u16),
+        )
+        .expect("failed to move cursor");
 
-        self.term.flush().unwrap();
+        // Previous `execute!` call flushed output already
     }
 
     // Returns `None` to indicate `Ctrl+C` which must be handled explicitly by caller.
