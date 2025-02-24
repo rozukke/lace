@@ -41,7 +41,6 @@ struct Stdin {
 }
 
 /// Interactive unbuffered terminal.
-// TODO(feat): Support CTRL+Arrow keybinds
 #[derive(Debug)]
 struct Terminal {
     stderr: io::Stderr,
@@ -212,73 +211,6 @@ impl Read for Stdin {
         }
 
         Some(&self.buffer)
-    }
-}
-
-#[derive(Debug)]
-enum Key {
-    CtrlC,
-    Enter,
-    Backspace,
-    Delete,
-    Left,
-    Right,
-    Up,
-    Down,
-    CtrlLeft,
-    CtrlRight,
-    Char(char),
-}
-
-impl TryFrom<Event> for Key {
-    type Error = ();
-
-    fn try_from(event: Event) -> Result<Self, Self::Error> {
-        if let Event::Key(event) = event {
-            if let Ok(key) = event.try_into() {
-                return Ok(key);
-            }
-        }
-        Err(())
-    }
-}
-
-impl TryFrom<KeyEvent> for Key {
-    type Error = ();
-
-    fn try_from(event: KeyEvent) -> Result<Self, Self::Error> {
-        use event::{KeyCode, KeyEventKind, KeyModifiers as Mod};
-
-        if matches!(event.kind, KeyEventKind::Release) {
-            return Err(());
-        }
-
-        let key = match (event.modifiers, event.code) {
-            // Ctrl+C
-            (Mod::CONTROL, KeyCode::Char('c')) => Key::CtrlC,
-
-            // Backspace, Delete, Enter
-            (_, KeyCode::Backspace) => Key::Backspace,
-            (_, KeyCode::Delete) => Key::Delete,
-            (_, KeyCode::Enter) | (_, KeyCode::Char('\n')) => Key::Enter,
-
-            // Arrow keys
-            (Mod::NONE, KeyCode::Left) => Key::Left,
-            (Mod::NONE, KeyCode::Right) => Key::Right,
-            (Mod::NONE, KeyCode::Up) => Key::Up,
-            (Mod::NONE, KeyCode::Down) => Key::Down,
-
-            // Ctrl + Arrow keys
-            (Mod::CONTROL, KeyCode::Left) => Key::CtrlLeft,
-            (Mod::CONTROL, KeyCode::Right) => Key::CtrlRight,
-
-            // Normal character
-            (Mod::NONE | Mod::SHIFT, KeyCode::Char(ch)) => Key::Char(ch),
-
-            _ => return Err(()),
-        };
-
-        Ok(key)
     }
 }
 
@@ -564,6 +496,72 @@ impl Read for Terminal {
             self.read_line();
         }
         Some(self.get_next_command())
+    }
+}
+
+/// Similar to [`crossterm::Event::KeyCode`] but only contains relevant information.
+#[derive(Debug)]
+enum Key {
+    CtrlC,
+    Enter,
+    Backspace,
+    Delete,
+    Left,
+    Right,
+    Up,
+    Down,
+    CtrlLeft,
+    CtrlRight,
+    Char(char),
+}
+
+impl TryFrom<Event> for Key {
+    type Error = ();
+    fn try_from(event: Event) -> Result<Self, Self::Error> {
+        if let Event::Key(event) = event {
+            if let Ok(key) = event.try_into() {
+                return Ok(key);
+            }
+        }
+        Err(())
+    }
+}
+
+impl TryFrom<KeyEvent> for Key {
+    type Error = ();
+    fn try_from(event: KeyEvent) -> Result<Self, Self::Error> {
+        use event::{KeyCode, KeyEventKind, KeyModifiers as Mod};
+
+        if matches!(event.kind, KeyEventKind::Release) {
+            return Err(());
+        }
+
+        let key = match (event.modifiers, event.code) {
+            // Ctrl+C
+            (Mod::CONTROL, KeyCode::Char('c')) => Key::CtrlC,
+
+            // Backspace, Delete, Enter
+            (_, KeyCode::Backspace) => Key::Backspace,
+            (_, KeyCode::Delete) => Key::Delete,
+            (_, KeyCode::Enter) | (_, KeyCode::Char('\n')) => Key::Enter,
+
+            // Arrow keys
+            (Mod::NONE, KeyCode::Left) => Key::Left,
+            (Mod::NONE, KeyCode::Right) => Key::Right,
+            (Mod::NONE, KeyCode::Up) => Key::Up,
+            (Mod::NONE, KeyCode::Down) => Key::Down,
+
+            // Ctrl + Arrow keys
+            (Mod::CONTROL, KeyCode::Left) => Key::CtrlLeft,
+            (Mod::CONTROL, KeyCode::Right) => Key::CtrlRight,
+
+            // Normal character
+            (Mod::NONE | Mod::SHIFT, KeyCode::Char(ch)) => Key::Char(ch),
+
+            _ => return Err(()),
+        };
+
+        Ok(key)
     }
 }
 
