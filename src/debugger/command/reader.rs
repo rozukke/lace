@@ -500,46 +500,39 @@ impl Read for Terminal {
     }
 }
 
-// TODO(refactor/opt): Rewrite to be more idiomaticly Rust
-fn find_word_start(string: &str, mut cursor: usize, full_word: bool) -> usize {
-    // Empty line
-    if string.is_empty() {
-        return 0;
-    }
-    // At end of line
-    if cursor + 1 >= string.len() {
+fn find_word_start(string: &str, cursor: usize, full_word: bool) -> usize {
+    let mut chars = string.char_indices().skip(cursor);
+    // At end of line (covers empty string case)
+    let Some((_, first)) = chars.next() else {
         return string.len();
-    }
-    // On a space
-    // Look for first non-space character
-    if string.chars().nth(cursor).unwrap().is_whitespace() {
-        while cursor + 1 < string.len() {
-            cursor += 1;
-            if !string.chars().nth(cursor).unwrap().is_whitespace() {
-                return cursor;
+    };
+    if first.is_whitespace() {
+        // On a space
+        // Look for first non-space character
+        while let Some((i, ch)) = chars.next() {
+            if !ch.is_whitespace() {
+                return i;
             }
         }
-    }
-    // On non-space
-    let alnum = string.chars().nth(cursor).unwrap().is_alphanumeric();
-    while cursor < string.len() - 1 {
-        cursor += 1;
-        // Space found
-        // Look for first non-space character
-        if string.chars().nth(cursor).unwrap().is_whitespace() {
-            while cursor + 1 < string.len() {
-                cursor += 1;
-                if !string.chars().nth(cursor).unwrap().is_whitespace() {
-                    return cursor;
+    } else {
+        // On non-space
+        let alnum = first.is_alphanumeric();
+        while let Some((i, ch)) = chars.next() {
+            // Space found
+            // Look for first non-space character
+            if ch.is_whitespace() {
+                while let Some((i, ch)) = chars.next() {
+                    if !ch.is_whitespace() {
+                        return i;
+                    }
                 }
             }
-            break;
-        }
-        // First punctuation after word
-        // OR first word after punctuation
-        // (If distinguishing words and punctuation)
-        if !full_word && string.chars().nth(cursor).unwrap().is_alphanumeric() != alnum {
-            return cursor;
+            // First punctuation after word
+            // OR first word after punctuation
+            // (If distinguishing words and punctuation)
+            if !full_word && ch.is_alphanumeric() != alnum {
+                return i;
+            }
         }
     }
     // No next word found
