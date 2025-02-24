@@ -2,10 +2,10 @@ use std::fmt;
 use std::fs::{self, File};
 use std::io::{self, BufRead as _, BufReader, IsTerminal as _, Read as _, Write as _};
 
-use crossterm::event::{self, Event, KeyEvent};
 use crossterm::{cursor, execute, terminal};
 
 use crate::output::debugger_colors;
+use crate::term::{self, Key};
 use crate::{dprint, dprintln, output::Output};
 
 // TODO(feat): UTF-8 support for `Stdin`
@@ -310,14 +310,10 @@ impl Terminal {
         // Previous `execute!` call flushed output already
     }
 
-    // Returns `None` to indicate `Ctrl+C` which must be handled explicitly by caller.
-    //
-    // Returns `Some(true)` indicates to break loop (EOL). Only occurs on `Key::Enter` when buffer
+    // Returns `true` indicates to break loop (EOL). Only occurs on `Key::Enter` when buffer
     // is non-empty.
-    fn handle_key(&mut self, key: Key) -> Option<bool> {
+    fn handle_key(&mut self, key: Key) -> bool {
         match key {
-            Key::CtrlC => return None,
-
             Key::Enter => {
                 if self.is_next() && self.buffer.trim().is_empty() {
                     self.buffer.clear();
@@ -325,7 +321,7 @@ impl Terminal {
                     println!();
                 } else {
                     self.update_next();
-                    return Some(true);
+                    return true;
                 }
             }
 
@@ -394,56 +390,23 @@ impl Terminal {
                 }
             }
         }
-        Some(false)
-    }
-
-    /// Read terminal events until key event is read as a valid [`Key`].
-    ///
-    /// Caller must ensure terminal is in raw mode.
-    fn read_key() -> Key {
-        assert!(
-            terminal::is_raw_mode_enabled().is_ok_and(|is| is),
-            "terminal must be in raw mode to read key",
-        );
-        let key = loop {
-            let event = event::read().expect("failed to read terminal event");
-            if let Ok(key) = event.try_into() {
-                break key;
-            }
-        };
-        key
+        false
     }
 
     /// Read keys until newline.
-    ///
-    /// Exit process on `Ctrl+C`.
     fn read_line_raw(&mut self) {
-        debug_assert!(
-            !terminal::is_raw_mode_enabled().is_ok_and(|is| is),
-            "terminal should not be in raw mode before line is read",
-        );
-        terminal::enable_raw_mode().expect("failed to enable raw terminal");
-
-        // Loop must `break`, not `return` to ensure cleanup -- hence flag variable
-        let should_exit = loop {
+        term::enable_raw_mode();
+        loop {
             // Technically redrawing of prompt could be avoided, but this method makes it much
             // simpler and less error-prone
             self.print_prompt();
-            let key = Self::read_key();
-            match self.handle_key(key) {
-                Some(false) => continue,
-                Some(true) => break false, // EOL
-                None => break true,        // Ctrl+C
+            let key = term::read_key();
+            if self.handle_key(key) {
+                break; // EOL
             }
-        };
-
-        terminal::disable_raw_mode().expect("failed to disable raw terminal");
-        println!();
-
-        // `Ctrl+C` is read as a normal key event so must be handled explicitely
-        if should_exit {
-            std::process::exit(0)
         }
+        term::disable_raw_mode();
+        println!();
     }
 
     /// Read entire (multi-command) line from terminal.
@@ -571,72 +534,6 @@ fn find_word_back(string: &str, mut cursor: usize, full_word: bool) -> usize {
     // No previous word found
     // Go to start of line
     return 0;
-}
-
-/// Similar to [`crossterm::Event::KeyCode`] but only contains relevant information.
-#[derive(Debug)]
-enum Key {
-    CtrlC,
-    Enter,
-    Backspace,
-    Delete,
-    Left,
-    Right,
-    Up,
-    Down,
-    CtrlLeft,
-    CtrlRight,
-    Char(char),
-}
-
-impl TryFrom<Event> for Key {
-    type Error = ();
-    fn try_from(event: Event) -> Result<Self, Self::Error> {
-        if let Event::Key(event) = event {
-            if let Ok(key) = event.try_into() {
-                return Ok(key);
-            }
-        }
-        Err(())
-    }
-}
-
-impl TryFrom<KeyEvent> for Key {
-    type Error = ();
-    fn try_from(event: KeyEvent) -> Result<Self, Self::Error> {
-        use event::{KeyCode, KeyEventKind, KeyModifiers as Mod};
-
-        if matches!(event.kind, KeyEventKind::Release) {
-            return Err(());
-        }
-
-        let key = match (event.modifiers, event.code) {
-            // Ctrl+C
-            (Mod::CONTROL, KeyCode::Char('c')) => Key::CtrlC,
-
-            // Backspace, Delete, Enter
-            (_, KeyCode::Backspace) => Key::Backspace,
-            (_, KeyCode::Delete) => Key::Delete,
-            (_, KeyCode::Enter) | (_, KeyCode::Char('\n')) => Key::Enter,
-
-            // Arrow keys
-            (Mod::NONE, KeyCode::Left) => Key::Left,
-            (Mod::NONE, KeyCode::Right) => Key::Right,
-            (Mod::NONE, KeyCode::Up) => Key::Up,
-            (Mod::NONE, KeyCode::Down) => Key::Down,
-
-            // Ctrl + Arrow keys
-            (Mod::CONTROL, KeyCode::Left) => Key::CtrlLeft,
-            (Mod::CONTROL, KeyCode::Right) => Key::CtrlRight,
-
-            // Normal character
-            (Mod::NONE | Mod::SHIFT, KeyCode::Char(ch)) => Key::Char(ch),
-
-            _ => return Err(()),
-        };
-
-        Ok(key)
-    }
 }
 
 /// Insert a character at a character index.
