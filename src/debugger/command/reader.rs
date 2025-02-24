@@ -2,7 +2,8 @@ use std::fmt;
 use std::fs::{self, File};
 use std::io::{self, BufRead as _, BufReader, IsTerminal as _, Read as _, Write as _};
 
-use console::Key;
+use crossterm::event::{self, Event, KeyEvent};
+use crossterm::terminal;
 
 use crate::output::debugger_colors;
 use crate::{dprint, dprintln, output::Output};
@@ -213,6 +214,73 @@ impl Read for Stdin {
     }
 }
 
+#[derive(Debug)]
+enum Key {
+    CtrlC,
+    Enter,
+    Backspace,
+    Delete,
+    Left,
+    Right,
+    Up,
+    Down,
+    CtrlLeft,
+    CtrlRight,
+    Char(char),
+}
+
+impl TryFrom<Event> for Key {
+    type Error = ();
+
+    fn try_from(event: Event) -> Result<Self, Self::Error> {
+        if let Event::Key(event) = event {
+            if let Ok(key) = event.try_into() {
+                return Ok(key);
+            }
+        }
+        Err(())
+    }
+}
+
+impl TryFrom<KeyEvent> for Key {
+    type Error = ();
+
+    fn try_from(event: KeyEvent) -> Result<Self, Self::Error> {
+        use event::{KeyCode, KeyEventKind, KeyModifiers as Mod};
+
+        if matches!(event.kind, KeyEventKind::Release) {
+            return Err(());
+        }
+
+        let key = match (event.modifiers, event.code) {
+            // Ctrl+C
+            (Mod::CONTROL, KeyCode::Char('c')) => Key::CtrlC,
+
+            // Backspace, Delete, Enter
+            (_, KeyCode::Backspace) => Key::Backspace,
+            (_, KeyCode::Delete) => Key::Delete,
+            (_, KeyCode::Enter) | (_, KeyCode::Char('\n')) => Key::Enter,
+
+            // Arrow keys
+            (Mod::NONE, KeyCode::Left) => Key::Left,
+            (Mod::NONE, KeyCode::Right) => Key::Right,
+            (Mod::NONE, KeyCode::Up) => Key::Up,
+            (Mod::NONE, KeyCode::Down) => Key::Down,
+
+            // Ctrl + Arrow keys
+            (Mod::CONTROL, KeyCode::Left) => Key::CtrlLeft,
+            (Mod::CONTROL, KeyCode::Right) => Key::CtrlRight,
+
+            // Normal character
+            (Mod::NONE | Mod::SHIFT, KeyCode::Char(ch)) => Key::Char(ch),
+
+            _ => return Err(()),
+        };
+
+        Ok(key)
+    }
+}
+
 impl Terminal {
     pub fn new() -> Self {
         Self {
@@ -301,18 +369,22 @@ impl Terminal {
         self.term.flush().unwrap();
     }
 
-    // Return of `true` indicates to break loop.
-    fn read_key(&mut self) -> bool {
-        let key = self.term.read_key().unwrap();
+    // Returns `None` to indicate `Ctrl+C` which must be handled explicitly by caller.
+    //
+    // Returns `Some(true)` indicates to break loop (EOL). Only occurs on `Key::Enter` when buffer
+    // is non-empty.
+    fn handle_key(&mut self, key: Key) -> Option<bool> {
         match key {
-            Key::Enter | Key::Char('\n') => {
+            Key::CtrlC => return None,
+
+            Key::Enter => {
                 if self.is_next() && self.buffer.trim().is_empty() {
                     self.buffer.clear();
                     self.visible_cursor = 0;
                     println!();
                 } else {
                     self.update_next();
-                    return true;
+                    return Some(true);
                 }
             }
 
@@ -338,42 +410,98 @@ impl Terminal {
                     remove_char_index(&mut self.buffer, self.visible_cursor);
                 }
             }
-            Key::Del => {
+            Key::Delete => {
                 self.update_next();
                 if self.visible_cursor < self.get_current().chars().count() {
                     remove_char_index(&mut self.buffer, self.visible_cursor);
                 }
             }
 
-            // Left/right in current input
-            Key::ArrowLeft => {
+            // Left/right single character in input
+            Key::Left => {
                 if self.visible_cursor > 0 {
                     self.visible_cursor -= 1;
                 }
             }
-            Key::ArrowRight => {
+            Key::Right => {
                 if self.visible_cursor < self.get_current().chars().count() {
                     self.visible_cursor += 1;
                 }
             }
 
+            // Left/right entire word in input
+            // TODO(feat): Ctrl + Arrow keys
+            Key::CtrlLeft => {
+                println!("\t\tunimplemented: CtrlLeft");
+            }
+            Key::CtrlRight => {
+                println!("\t\tunimplemented: CtrlRight");
+            }
+
             // Back/forth through history
-            Key::ArrowUp => {
+            Key::Up => {
                 if self.history.index > 0 {
                     self.history.index -= 1;
                     self.visible_cursor = self.get_current().chars().count();
                 }
             }
-            Key::ArrowDown => {
+            Key::Down => {
                 if self.history.index < self.history.list.len() {
                     self.history.index += 1;
                     self.visible_cursor = self.get_current().chars().count();
                 }
             }
-
-            _ => (),
         }
-        false
+        Some(false)
+    }
+
+    /// Read terminal events until key event is read as a valid [`Key`].
+    ///
+    /// Caller must ensure terminal is in raw mode.
+    fn read_key() -> Key {
+        assert!(
+            terminal::is_raw_mode_enabled().is_ok_and(|is| is),
+            "terminal must be in raw mode to read key",
+        );
+        let key = loop {
+            let event = event::read().expect("failed to read terminal event");
+            if let Ok(key) = event.try_into() {
+                break key;
+            }
+        };
+        key
+    }
+
+    /// Read keys until newline.
+    ///
+    /// Exit process on `Ctrl+C`.
+    fn read_line_raw(&mut self) {
+        debug_assert!(
+            !terminal::is_raw_mode_enabled().is_ok_and(|is| is),
+            "terminal should not be in raw mode before line is read",
+        );
+        terminal::enable_raw_mode().expect("failed to enable raw terminal");
+
+        // Loop must `break`, not `return` to ensure cleanup -- hence flag variable
+        let should_exit = loop {
+            // Technically redrawing of prompt could be avoided, but this method makes it much
+            // simpler and less error-prone
+            self.print_prompt();
+            let key = Self::read_key();
+            match self.handle_key(key) {
+                Some(false) => continue,
+                Some(true) => break false, // EOL
+                None => break true,        // Ctrl+C
+            }
+        };
+
+        terminal::disable_raw_mode().expect("failed to disable raw terminal");
+        println!();
+
+        // `Ctrl+C` is read as a normal key event so must be handled explicitely
+        if should_exit {
+            std::process::exit(0)
+        }
     }
 
     /// Read entire (multi-command) line from terminal.
@@ -381,18 +509,10 @@ impl Terminal {
         self.buffer.clear();
         self.visible_cursor = 0;
 
-        // Read keys until newline
-        loop {
-            self.print_prompt();
-            if self.read_key() {
-                break;
-            }
-        }
-        println!();
-
+        self.read_line_raw();
         debug_assert!(
             !self.buffer.trim().is_empty(),
-            "should have looped until non-empty"
+            "should have read characters until non-empty"
         );
 
         // Push to history if different to last command
