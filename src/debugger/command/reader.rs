@@ -225,7 +225,7 @@ impl Terminal {
         }
     }
 
-    /// Returns `true` if current command is a new command, rather than a focused history item.
+    /// Returns `true` if current line is a new line, rather than a focused history item.
     fn is_next(&self) -> bool {
         debug_assert!(
             self.history.index <= self.history.list.len(),
@@ -249,7 +249,7 @@ impl Terminal {
         self.history.index = self.history.list.len();
     }
 
-    /// Get next or historic command, from index.
+    /// Get next or historic line, from history index.
     fn get_current(&self) -> &str {
         if self.is_next() {
             &self.buffer
@@ -371,12 +371,13 @@ impl Terminal {
             }
 
             // Left/right entire word in input
-            // TODO(feat): Ctrl + Arrow keys
             Key::CtrlLeft => {
-                println!("\t\tunimplemented: CtrlLeft");
+                self.visible_cursor =
+                    find_word_back(self.get_current(), self.visible_cursor, false);
             }
             Key::CtrlRight => {
-                println!("\t\tunimplemented: CtrlRight");
+                self.visible_cursor =
+                    find_word_start(self.get_current(), self.visible_cursor, false);
             }
 
             // Back/forth through history
@@ -456,7 +457,7 @@ impl Terminal {
             "should have read characters until non-empty"
         );
 
-        // Push to history if different to last command
+        // Push to history if different to last line
         if self
             .history
             .list
@@ -465,7 +466,7 @@ impl Terminal {
         {
             self.history.push(self.buffer.clone());
         }
-        // Always reset index to next command
+        // Always reset index to next line
         self.history.index = self.history.list.len();
     }
 
@@ -497,6 +498,86 @@ impl Read for Terminal {
         }
         Some(self.get_next_command())
     }
+}
+
+// TODO(refactor/opt): Rewrite to be more idiomaticly Rust
+fn find_word_start(string: &str, mut cursor: usize, full_word: bool) -> usize {
+    // Empty line
+    if string.is_empty() {
+        return 0;
+    }
+    // At end of line
+    if cursor + 1 >= string.len() {
+        return string.len();
+    }
+    // On a space
+    // Look for first non-space character
+    if string.chars().nth(cursor).unwrap().is_whitespace() {
+        while cursor + 1 < string.len() {
+            cursor += 1;
+            if !string.chars().nth(cursor).unwrap().is_whitespace() {
+                return cursor;
+            }
+        }
+    }
+    // On non-space
+    let alnum = string.chars().nth(cursor).unwrap().is_alphanumeric();
+    while cursor < string.len() - 1 {
+        cursor += 1;
+        // Space found
+        // Look for first non-space character
+        if string.chars().nth(cursor).unwrap().is_whitespace() {
+            while cursor + 1 < string.len() {
+                cursor += 1;
+                if !string.chars().nth(cursor).unwrap().is_whitespace() {
+                    return cursor;
+                }
+            }
+            break;
+        }
+        // First punctuation after word
+        // OR first word after punctuation
+        // (If distinguishing words and punctuation)
+        if !full_word && string.chars().nth(cursor).unwrap().is_alphanumeric() != alnum {
+            return cursor;
+        }
+    }
+    // No next word found
+    // Go to end of line
+    return string.len();
+}
+
+// TODO(refactor/opt): Rewrite to be more idiomaticly Rust
+fn find_word_back(string: &str, mut cursor: usize, full_word: bool) -> usize {
+    // At start of line
+    if cursor <= 1 {
+        return 0;
+    }
+    // Start at previous character
+    cursor -= 1;
+    // On a sequence of spaces (>=1)
+    // Look for end of previous word, start from there instead
+    while cursor > 0 && string.chars().nth(cursor).unwrap().is_whitespace() {
+        cursor -= 1;
+    }
+    // Now on a non-space
+    let alnum = string.chars().nth(cursor).unwrap().is_alphanumeric();
+    while cursor > 0 {
+        cursor -= 1;
+        // Space found
+        // OR first punctuation before word
+        // OR first word before punctuation
+        // Word starts at next index
+        // (If distinguishing words and punctuation)
+        if string.chars().nth(cursor).unwrap().is_whitespace()
+            || (!full_word && string.chars().nth(cursor).unwrap().is_alphanumeric() != alnum)
+        {
+            return cursor + 1;
+        }
+    }
+    // No previous word found
+    // Go to start of line
+    return 0;
 }
 
 /// Similar to [`crossterm::Event::KeyCode`] but only contains relevant information.
@@ -600,14 +681,14 @@ impl TerminalHistory {
         Self { list, index, file }
     }
 
-    /// Push command into list and write to file.
-    pub fn push(&mut self, command: String) {
+    /// Push line into list and write to file.
+    pub fn push(&mut self, line: String) {
         if let Some(file) = &mut self.file {
-            if writeln!(file, "{}", command).is_err() {
+            if writeln!(file, "{}", line).is_err() {
                 Self::report_error("Failed to write to file");
             }
         }
-        self.list.push(command);
+        self.list.push(line);
     }
 
     /// Returns empty vector if failed to read.
