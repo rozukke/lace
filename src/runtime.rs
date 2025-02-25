@@ -562,11 +562,11 @@ fn read_char() -> char {
     /// '�'
     const REPLACEMENT_CHAR: char = '\u{FFFD}';
 
-    // TODO(opt): Reuse `stdin` handle
-    let byte = if stdin().is_terminal() {
+    let stdin = stdin();
+    let byte = if stdin.is_terminal() {
         term::read_byte()
     } else {
-        Some(read_byte_stdin())
+        Some(read_byte_stdin(stdin))
     };
     // Replace with marker character if non-ASCII
     match byte {
@@ -579,9 +579,9 @@ fn read_char() -> char {
 ///
 /// Handles `UnexpectedEof` by printing error minimally and exiting.
 /// Panics on any other error.
-fn read_byte_stdin() -> u8 {
+fn read_byte_stdin(mut stdin: io::Stdin) -> u8 {
     let mut buf = [0; 1];
-    if let Err(err) = stdin().read_exact(&mut buf) {
+    if let Err(err) = stdin.read_exact(&mut buf) {
         if let io::ErrorKind::UnexpectedEof = err.kind() {
             // This should NOT use `exception!`: it is an error with the
             // emulator, not the CPU
