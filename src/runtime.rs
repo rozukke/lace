@@ -492,7 +492,7 @@ impl RunState {
         match trap_vect {
             // getc
             0x20 => {
-                *self.reg_mut(0) = read_input() as u16;
+                *self.reg_mut(0) = read_char() as u16;
             }
             // out
             0x21 => {
@@ -515,7 +515,7 @@ impl RunState {
             }
             // in
             0x23 => {
-                let ch = read_input();
+                let ch = read_char();
                 *self.reg_mut(0) = ch as u16;
                 Output::Normal.print(ch as char);
                 stdout().flush().unwrap();
@@ -559,31 +559,98 @@ impl RunState {
 }
 
 // Read one byte from stdin or unbuffered terminal
-fn read_input() -> u8 {
-    if stdin().is_terminal() {
+fn read_char() -> char {
+    let ch = if stdin().is_terminal() {
+        read_byte_terminal()
+    } else {
+        Some(read_byte_piped())
+    };
+
+    // println!("\t{:02x?}", ch);
+
+    match ch {
+        Some(ch) if ch <= 0x7f => ch as char,
+        _ => '\u{FFFD}',
+    }
+}
+
+fn read_byte_piped() -> u8 {
+    let mut buf = [0; 1];
+    if let Err(err) = stdin().read_exact(&mut buf) {
+        if let io::ErrorKind::UnexpectedEof = err.kind() {
+            eprintln!("unexpected end of input file stream.");
+            std::process::exit(1);
+        } else {
+            panic!("failed to read character from stdin: {:?}", err)
+        }
+    }
+    buf[0]
+}
+
+fn read_byte_terminal() -> Option<u8> {
+    use std::cell::RefCell;
+    thread_local! {
+        static COUNTER: RefCell<u8> = const { RefCell::new(0) };
+    };
+    fn with_counter<F, R>(func: F) -> R
+    where
+        F: FnOnce(&mut u8) -> R,
+    {
+        COUNTER.with(|counter| {
+            let mut counter = counter.borrow_mut();
+            func(&mut *counter)
+        })
+    }
+
+    fn read_char() -> char {
         term::enable_raw_mode();
         let ch = loop {
             match term::read_key() {
-                Key::Char(ch) => break ch as u8,
-                Key::Enter => break b'\n',
+                Key::Char(ch) => break ch,
+                Key::Enter => break '\n',
                 _ => continue,
             };
         };
         term::disable_raw_mode();
-        return ch;
-    } else {
-        let mut buf = [0; 1];
-        if let Err(err) = stdin().read_exact(&mut buf) {
-            if let io::ErrorKind::UnexpectedEof = err.kind() {
-                eprintln!("unexpected end of input file stream.");
-                std::process::exit(1);
-            } else {
-                panic!("failed to read character from stdin: {:?}", err)
-            }
-        }
-        println!("<{:02x}>", buf[0]);
-        buf[0]
+        ch
     }
+
+    if with_counter(|counter| {
+        if *counter > 0 {
+            *counter -= 1;
+            return true;
+        }
+        false
+    }) {
+        return None;
+    };
+
+    let ch = read_char();
+
+    // println!("\t{:02x?}", (ch as u32).to_le_bytes());
+
+    let mut bytes = (ch as u32)
+        .to_le_bytes()
+        .into_iter()
+        .filter(|byte| *byte != 0)
+        .peekable();
+
+    let Some(first) = bytes.next() else {
+        return Some(0); // All zero bytes: ASCII NUL
+    };
+
+    let count = bytes.count();
+
+    // Single byte: Should be ASCII
+    if count == 0 {
+        return Some(first);
+    }
+
+    with_counter(|counter| {
+        *counter = count as u8;
+    });
+
+    None
 }
 
 #[cfg(test)]
