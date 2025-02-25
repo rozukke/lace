@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+
 use crossterm::{
     event::{self, Event, KeyEvent},
     terminal,
@@ -36,7 +38,9 @@ pub fn disable_raw_mode() {
     terminal::disable_raw_mode().expect("failed to disable raw terminal");
 }
 
-/// Read terminal events until key event is read as a valid [`Key`].
+/// Read next key from interactive terminal.
+///
+/// Events are consumed until a key event is read as a valid [`Key`].
 ///
 /// Caller must ensure terminal is in raw mode.
 ///
@@ -53,6 +57,76 @@ pub fn read_key() -> Key {
         }
     };
     key
+}
+
+/// Read one byte from interactive terminal.
+///
+/// Inputs are read as [`KeyEvent`]s, which read multi-byte characters as `char`. Therefore,
+/// any such characters are encoded in 1-4 bytes as UTF-8, and buffered for the next call.
+///
+/// Caller must ensure terminal is NOT in raw mode.
+pub fn read_byte() -> Option<u8> {
+    // Counter > 0: bytes are still 'buffered'
+    if with_counter(|counter| {
+        if *counter > 0 {
+            *counter -= 1;
+            return true;
+        }
+        false
+    }) {
+        return None;
+    };
+
+    let ch = read_char();
+
+    // Convert `char` to iterator of bytes, which skips any zero-bytes
+    let mut bytes = [0u8; 4];
+    ch.encode_utf8(&mut bytes);
+    let mut bytes = bytes.into_iter().filter(|byte| *byte != 0);
+
+    let Some(first) = bytes.next() else {
+        return Some(0); // All zero-bytes (length == 0): ASCII NUL
+    };
+
+    let count = bytes.count(); // = length - 1
+    if count == 0 {
+        return Some(first); // Single byte: Should be ASCII
+    }
+
+    // Multi-byte (length > 1): 'buffer' rest of characters (1-3) for next call
+    with_counter(|counter| {
+        *counter = count as u8;
+    });
+    None
+}
+
+thread_local! {
+    /// Must only be used inside `read_byte`.
+    static BUFFERED_BYTE_COUNT: RefCell<u8> = const { RefCell::new(0) };
+}
+fn with_counter<F, R>(func: F) -> R
+where
+    F: FnOnce(&mut u8) -> R,
+{
+    BUFFERED_BYTE_COUNT.with(|counter| func(&mut *counter.borrow_mut()))
+}
+
+/// Read single character from interactive terminal.
+///
+/// Loops until [`Key::Char`] or [`Key::Enter`] are read.
+///
+/// Caller must ensure terminal is NOT in raw mode.
+fn read_char() -> char {
+    enable_raw_mode();
+    let ch = loop {
+        match read_key() {
+            Key::Char(ch) => break ch,
+            Key::Enter => break '\n',
+            _ => continue,
+        };
+    };
+    disable_raw_mode();
+    ch
 }
 
 impl TryFrom<Event> for Key {
