@@ -9,7 +9,6 @@ use crate::{
     debugger::{Action, Debugger, DebuggerOptions, SignificantInstr},
     dprintln,
     output::{Condition, Output},
-    term::Key,
     Air,
 };
 use crate::{features, term};
@@ -558,26 +557,34 @@ impl RunState {
     }
 }
 
-// Read one byte from stdin or unbuffered terminal
+// Read one byte from stdin or interactive terminal.
 fn read_char() -> char {
-    let ch = if stdin().is_terminal() {
-        read_byte_terminal()
+    /// '�'
+    const REPLACEMENT_CHAR: char = '\u{FFFD}';
+
+    // TODO(opt): Reuse `stdin` handle
+    let byte = if stdin().is_terminal() {
+        term::read_byte()
     } else {
-        Some(read_byte_piped())
+        Some(read_byte_stdin())
     };
-
-    // println!("\t{:02x?}", ch);
-
-    match ch {
-        Some(ch) if ch <= 0x7f => ch as char,
-        _ => '\u{FFFD}',
+    // Replace with marker character if non-ASCII
+    match byte {
+        Some(byte) if byte.is_ascii() => byte as char,
+        _ => REPLACEMENT_CHAR,
     }
 }
 
-fn read_byte_piped() -> u8 {
+/// Read one byte from stdin.
+///
+/// Handles `UnexpectedEof` by printing error minimally and exiting.
+/// Panics on any other error.
+fn read_byte_stdin() -> u8 {
     let mut buf = [0; 1];
     if let Err(err) = stdin().read_exact(&mut buf) {
         if let io::ErrorKind::UnexpectedEof = err.kind() {
+            // This should NOT use `exception!`: it is an error with the
+            // emulator, not the CPU
             eprintln!("unexpected end of input file stream.");
             std::process::exit(1);
         } else {
@@ -585,72 +592,6 @@ fn read_byte_piped() -> u8 {
         }
     }
     buf[0]
-}
-
-fn read_byte_terminal() -> Option<u8> {
-    use std::cell::RefCell;
-    thread_local! {
-        static COUNTER: RefCell<u8> = const { RefCell::new(0) };
-    };
-    fn with_counter<F, R>(func: F) -> R
-    where
-        F: FnOnce(&mut u8) -> R,
-    {
-        COUNTER.with(|counter| {
-            let mut counter = counter.borrow_mut();
-            func(&mut *counter)
-        })
-    }
-
-    fn read_char() -> char {
-        term::enable_raw_mode();
-        let ch = loop {
-            match term::read_key() {
-                Key::Char(ch) => break ch,
-                Key::Enter => break '\n',
-                _ => continue,
-            };
-        };
-        term::disable_raw_mode();
-        ch
-    }
-
-    if with_counter(|counter| {
-        if *counter > 0 {
-            *counter -= 1;
-            return true;
-        }
-        false
-    }) {
-        return None;
-    };
-
-    let ch = read_char();
-
-    // println!("\t{:02x?}", (ch as u32).to_le_bytes());
-
-    let mut bytes = (ch as u32)
-        .to_le_bytes()
-        .into_iter()
-        .filter(|byte| *byte != 0)
-        .peekable();
-
-    let Some(first) = bytes.next() else {
-        return Some(0); // All zero bytes: ASCII NUL
-    };
-
-    let count = bytes.count();
-
-    // Single byte: Should be ASCII
-    if count == 0 {
-        return Some(first);
-    }
-
-    with_counter(|counter| {
-        *counter = count as u8;
-    });
-
-    None
 }
 
 #[cfg(test)]
