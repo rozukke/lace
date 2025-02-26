@@ -18,6 +18,9 @@ Available Commands:
     {35;1}continue{0;35;2}(c){0}
         Continue execution until breakpoint or {1}HALT{0}.
 
+    {35;1}registers{0;35;2}(r){0}
+        Print the value of all registers.
+
     {35;1}print{0;35;2}(p){0} {32;3}LOCATION{2}?{0}
         Print the value at a register or address.
           {2}-{0} {3}LOCATION{0}: {36}Register{0} {2}|{0} {36}Address{2}+{0} {3}(default: PC){0}
@@ -26,9 +29,6 @@ Available Commands:
         Set the value at a register or address.
           {2}-{0} {3}LOCATION{0}: {36}Register{0} {2}|{0} {36}Address{2}+{0}
           {2}-{0} {3}VALUE{0}: {36}Integer{0}
-
-    {35;1}registers{0;35;2}(r){0}
-        Print the value of all registers.
 
     {35;1}goto{0;35;2}(g){0} {32;3}LOCATION{0}
         Unconditionally jump to an address.

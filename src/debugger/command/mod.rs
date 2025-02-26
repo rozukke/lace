@@ -36,46 +36,46 @@ pub enum Command<'a> {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum CommandName {
     Help,
-    Step,
     Next,
-    Continue,
+    Step,
     Finish,
-    Quit,
-    Exit,
-    BreakList,
-    BreakAdd,
-    BreakRemove,
+    Continue,
+    Registers,
     Get,
     Set,
     Jump,
-    Registers,
-    Reset,
+    BreakList,
+    BreakAdd,
+    BreakRemove,
     Source,
     Eval,
     Echo,
+    Reset,
+    Quit,
+    Exit,
 }
 
 impl fmt::Display for CommandName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Help => write!(f, "help"),
-            Self::Step => write!(f, "step"),
-            Self::Next => write!(f, "next"),
+            Self::Next => write!(f, "step"),
+            Self::Step => write!(f, "step-into"),
+            Self::Finish => write!(f, "step-out"),
             Self::Continue => write!(f, "continue"),
-            Self::Finish => write!(f, "finish"),
-            Self::Quit => write!(f, "quit"),
-            Self::Exit => write!(f, "exit"),
+            Self::Registers => write!(f, "registers"),
+            Self::Get => write!(f, "print"),
+            Self::Set => write!(f, "move"),
+            Self::Jump => write!(f, "goto"),
             Self::BreakList => write!(f, "break list"),
             Self::BreakAdd => write!(f, "break add"),
             Self::BreakRemove => write!(f, "break remove"),
-            Self::Get => write!(f, "get"),
-            Self::Set => write!(f, "set"),
-            Self::Jump => write!(f, "jump"),
-            Self::Registers => write!(f, "registers"),
-            Self::Reset => write!(f, "reset"),
-            Self::Source => write!(f, "source"),
+            Self::Source => write!(f, "assembly"),
             Self::Eval => write!(f, "eval"),
             Self::Echo => write!(f, "echo"),
+            Self::Reset => write!(f, "reset"),
+            Self::Quit => write!(f, "quit"),
+            Self::Exit => write!(f, "exit"),
         }
     }
 }
@@ -168,19 +168,19 @@ impl<'a> Command<'a> {
             // Allow trailing arguments
             CommandName::Help => return Ok(Self::Help),
 
+            CommandName::Next => Self::Next,
             CommandName::Continue => Self::Continue,
             CommandName::Finish => Self::Finish,
-            CommandName::Exit => Self::Exit,
-            CommandName::Quit => Self::Quit,
             CommandName::Registers => Self::Registers,
             CommandName::Reset => Self::Reset,
+            CommandName::Quit => Self::Quit,
+            CommandName::Exit => Self::Exit,
 
             CommandName::Step => {
                 expected_args = 1;
                 let count = iter.next_positive_integer_or_default("count")?;
                 Self::Progress { count }
             }
-            CommandName::Next => Self::Next,
 
             CommandName::Get => {
                 expected_args = 1;
@@ -200,6 +200,12 @@ impl<'a> Command<'a> {
                 Self::Jump { location }
             }
 
+            CommandName::Source => {
+                expected_args = 1;
+                let location = iter.next_memory_location_or_default("location")?;
+                Self::Assembly { location }
+            }
+
             CommandName::BreakList => Self::BreakList,
             CommandName::BreakAdd => {
                 expected_args = 1;
@@ -210,12 +216,6 @@ impl<'a> Command<'a> {
                 expected_args = 1;
                 let location = iter.next_memory_location("location", expected_args)?;
                 Self::BreakRemove { location }
-            }
-
-            CommandName::Source => {
-                expected_args = 1;
-                let location = iter.next_memory_location_or_default("location")?;
-                Self::Assembly { location }
             }
 
             CommandName::Eval => {
