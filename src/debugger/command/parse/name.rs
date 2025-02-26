@@ -3,21 +3,21 @@ use super::{error, Arguments, CommandName};
 // TODO(feat): Add more aliases (such as undocumented typo aliases)
 #[rustfmt::skip]
 const COMMANDS: CommandNameList = &[
-    (CommandName::Help,        &["help", "--help", "h", "-h"]),
-    (CommandName::Continue,    &["continue", "cont", "c"]), // or 'proceed'
-    (CommandName::Finish,      &["finish", "fin", "f"]),
-    (CommandName::Exit,        &["exit"]),
-    (CommandName::Quit,        &["quit", "q"]),
-    (CommandName::Registers,   &["registers", "reg", "r"]),
+    (CommandName::Help,        &["help", "--help", "h", "-h", "HELP", "man", "info", "wtf"]),
+    (CommandName::Next,        &["step", "s"]),
+    (CommandName::Step,        &["stepinto", "stepin", "step-into", "step-in", "stepi", "step-i", "si"]),
+    (CommandName::Finish,      &["stepout", "step-out", "stepo", "step-o", "so"]),
+    (CommandName::Continue,    &["continue", "cont", "con", "c"]),
+    (CommandName::Get,         &["print", "p"]),
+    (CommandName::Set,         &["move", "mov", "mv", "m"]),
+    (CommandName::Registers,   &["registers", "register", "reg", "regs", "r"]),
+    (CommandName::Jump,        &["goto", "go", "g"]),
+    (CommandName::Source,      &["assembly", "asm", "a"]),
+    (CommandName::Eval,        &["eval", "evil", "e"]),
     (CommandName::Reset,       &["reset"]),
-    (CommandName::Step,        &["progress", "p"]), // or 'advance'
-    (CommandName::Next,        &["next", "n"]),
-    (CommandName::Get,         &["get", "g"]),
-    (CommandName::Set,         &["set", "s"]),
-    (CommandName::Jump,        &["jump", "j"]),
-    (CommandName::Source,      &["assembly", "asm", "a"]), // or 'source'
-    (CommandName::Eval,        &["eval", "e"]),
     (CommandName::Echo,        &["echo"]),
+    (CommandName::Quit,        &["quit", "q"]),
+    (CommandName::Exit,        &["exit", "x", ":q", ":wq", "^C"]),
     (CommandName::BreakList,   &["breaklist", "bl"]),
     (CommandName::BreakAdd,    &["breakadd", "ba"]),
     (CommandName::BreakRemove, &["breakremove", "br"]),
@@ -26,9 +26,9 @@ const COMMANDS: CommandNameList = &[
 const BREAK_COMMAND: CandidateList = &["break", "b"];
 #[rustfmt::skip]
 const BREAK_SUBCOMMANDS: CommandNameList = &[
-    (CommandName::BreakList,   &["list", "l"]),
+    (CommandName::BreakList,   &["list", "ls", "l"]),
     (CommandName::BreakAdd,    &["add", "a"]),
-    (CommandName::BreakRemove, &["remove", "r"]),
+    (CommandName::BreakRemove, &["remove", "rm", "r"]),
 ];
 
 impl Arguments<'_> {
