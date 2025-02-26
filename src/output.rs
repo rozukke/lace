@@ -152,7 +152,7 @@ impl Output {
 
     /// Print a decoration symbol, to indicate the purpose of the next message printed.
     ///
-    /// Only works for [`Output::Debugger`].
+    /// Must only be called on [`Output::Debugger`].
     pub fn print_category(&self, category: Category) {
         debug_assert!(
             matches!(self, Self::Debugger(..)),
@@ -218,6 +218,9 @@ impl Output {
     ///
     /// Label and instruction values are printed in the next two columns, truncated if their length
     /// exceeds their respective column width.
+    ///
+    /// Must only be called on [`Output::Debugger`].
+    /// Must NOT be called if `Output::is_minimal()`.
     pub fn print_breakpoint_table<'a, F>(&self, row: F)
     where
         F: Fn(usize) -> Option<(u16, &'a str, &'a str)>,
@@ -333,6 +336,8 @@ impl Output {
     /// - Printable ASCII characters are displayed normally.
     /// - Any other ASCII character is printed as `───`
     /// - Any non-ASCII (UTF-16) character is displayed as `┄┄┄`
+    ///
+    /// Must NOT be called if `Output::is_minimal()`.
     fn print_char_display(&self, value: u16) {
         debug_assert!(
             !Self::is_minimal(),
@@ -392,6 +397,8 @@ impl Output {
     }
 
     /// Resets all ANSI color/style attributes for debugger output.
+    ///
+    /// Must only be called on [`Output::Debugger`].
     pub fn reset_style(&self) {
         debug_assert!(
             matches!(self, Self::Debugger(..)),
