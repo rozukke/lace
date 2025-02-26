@@ -26,7 +26,9 @@ struct Args {
 
     /// Quickly provide a `.asm` file to run
     path: Option<PathBuf>,
-    // TODO: Include `--minimal` option here, mirroring `run` subcommand
+    /// Produce minimal output, suited for blackbox tests
+    #[arg(short, long)]
+    minimal: bool,
     #[command(flatten)]
     run_options: RunOptions,
 }
@@ -233,7 +235,7 @@ fn main() -> miette::Result<()> {
     } else {
         if let Some(path) = args.path {
             lace::features::init(args.run_options.features);
-            run(&path, None, false)?;
+            run(&path, None, args.minimal)?;
             Ok(())
         } else {
             println!("\n~ lace v{VERSION} - Copyright (c) 2024 Artemis Rosman ~");
