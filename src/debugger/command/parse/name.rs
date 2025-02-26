@@ -1,6 +1,5 @@
 use super::{error, Arguments, CommandName};
 
-// TODO(feat): Add more aliases (such as undocumented typo aliases)
 #[rustfmt::skip]
 const COMMANDS: CommandNameList = &[
     (CommandName::Help,        &["help", "--help", "h", "-h", "HELP", "man", "info", "wtf"]),
@@ -29,6 +28,18 @@ const BREAK_SUBCOMMANDS: CommandNameList = &[
     (CommandName::BreakList,   &["list", "ls", "l"]),
     (CommandName::BreakAdd,    &["add", "a"]),
     (CommandName::BreakRemove, &["remove", "rm", "r"]),
+];
+#[rustfmt::skip]
+const MISTAKE_COMMANDS: CommandNameList = &[
+    (CommandName::Next,        &["next"]),
+    (CommandName::Finish,      &["finish", "fin"]),
+    (CommandName::Set,         &["set"]),
+    (CommandName::Get,         &["get"]),
+    (CommandName::Jump,        &["jump", "jmp", "jsr", "jsrr"]),
+    (CommandName::Source,      &["source", "src"]),
+    (CommandName::Eval,        &["run", "exec", "execute", "sim", "simulate"]),
+    (CommandName::BreakList,   &["breakpoint", "breakp"]),
+    (CommandName::Exit,        &["halt", "end", "stop"]),
 ];
 
 impl Arguments<'_> {
@@ -76,8 +87,11 @@ impl Arguments<'_> {
             std::process::exit(0);
         }
 
+        let suggested = find_name_match(command_name, MISTAKE_COMMANDS);
+
         Err(error::Command::InvalidCommand {
             command_name: command_name.to_string(),
+            suggested,
         })
     }
 }
