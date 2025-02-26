@@ -4,25 +4,25 @@ Available Commands:
     {35;1}help{0;35;2}(h){0}
         Show this message.
 
-    {35;1}progress{0;35;2}(p){0} {32;3}COUNT{2}?{0}
+    {35;1}step{0;35;2}(s){0}
+        Execute next instruction or whole subroutine (including any nested
+            subroutine calls).
+
+    {35;1}step-into{0;35;2}(si){0} {32;3}COUNT{2}?{0}
         Execute next instruction or jump into subroutine.
           {2}-{0} {3}COUNT{0}: {36}Integer{0} {3}(default: 1){0}
 
-    {35;1}next{0;35;2}(n){0}
-        Execute next instruction or whole subroutine (including any nested
-            subroutine calls).
+    {35;1}step-out{0;35;2}(so){0}
+        Continue execution until breakpoint, {1}HALT{0}, or end of subroutine.
 
     {35;1}continue{0;35;2}(c){0}
         Continue execution until breakpoint or {1}HALT{0}.
 
-    {35;1}finish{0;35;2}(f){0}
-        Continue execution until breakpoint, {1}HALT{0}, or end of subroutine.
-
-    {35;1}get{0;35;2}(g){0} {32;3}LOCATION{2}?{0}
+    {35;1}print{0;35;2}(p){0} {32;3}LOCATION{2}?{0}
         Print the value at a register or address.
           {2}-{0} {3}LOCATION{0}: {36}Register{0} {2}|{0} {36}Address{2}+{0} {3}(default: PC){0}
 
-    {35;1}set{0;35;2}(s){0} {32;3}LOCATION VALUE{0}
+    {35;1}move{0;35;2}(m){0} {32;3}LOCATION VALUE{0}
         Set the value at a register or address.
           {2}-{0} {3}LOCATION{0}: {36}Register{0} {2}|{0} {36}Address{2}+{0}
           {2}-{0} {3}VALUE{0}: {36}Integer{0}
@@ -30,7 +30,7 @@ Available Commands:
     {35;1}registers{0;35;2}(r){0}
         Print the value of all registers.
 
-    {35;1}jump{0;35;2}(j){0} {32;3}LOCATION{0}
+    {35;1}goto{0;35;2}(g){0} {32;3}LOCATION{0}
         Unconditionally jump to an address.
           {2}-{0} {3}LOCATION{0}: {36}Address{2}+{0}
 
@@ -38,11 +38,11 @@ Available Commands:
         Add breakpoint at an address.
           {2}-{0} {3}LOCATION{0}: {36}Address{2}+{0}
 
-    {35;1}break remove{0;35;2}(ba){0} {32;3}LOCATION{0}
+    {35;1}break remove{0;35;2}(br){0} {32;3}LOCATION{0}
         Remove breakpoint at an address.
           {2}-{0} {3}LOCATION{0}: {36}Address{2}+{0}
 
-    {35;1}break list{0;35;2}(ba){0}
+    {35;1}break list{0;35;2}(bl){0}
         List all breakpoints.
 
     {35;1}assembly{0;35;2}(a){0} {32;3}LOCATION{2}?{0}
@@ -62,7 +62,7 @@ Available Commands:
     {35;1}quit{0;35;2}(q){0}
         Stop debugger and continue execution as normal.
 
-    {35;1}exit{0}
+    {35;1}exit{0;35;2}(x){0}
         Exit debugger and simulator.
 
 {3}Note:{0} An {36}Address{2}+{0} argument can be one of the following:
