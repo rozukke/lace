@@ -115,134 +115,133 @@ fn main() -> miette::Result<()> {
         )
     }))?;
 
-    if let Some(command) = args.command {
-        match command {
-            Command::Run {
-                name,
-                minimal,
-                run_options: RunOptions { features },
-            } => {
-                lace::features::init(features);
-                run(&name, None, minimal)
-            }
-            Command::Debug {
-                name,
-                command,
-                minimal,
-                run_options: RunOptions { features },
-            } => {
-                lace::features::init(features);
-                run(&name, Some(DebuggerOptions { command }), minimal)
-            }
-            Command::Compile {
-                name,
-                dest,
-                run_options: RunOptions { features },
-            } => {
-                lace::features::init(features);
-                file_message(Green, "Assembling", &name);
-                let contents = StaticSource::new(fs::read_to_string(&name).into_diagnostic()?);
-                let air = assemble(&contents)?;
-
-                let out_file_name =
-                    dest.unwrap_or(name.with_extension("lc3").file_name().unwrap().into());
-                let mut file = File::create(&out_file_name).unwrap();
-
-                // Deal with .orig
-                if let Some(orig) = air.orig() {
-                    let _ = file.write(&orig.to_be_bytes());
-                } else {
-                    let _ = file.write(&0x3000u16.to_be_bytes());
-                }
-
-                // Write lines
-                for stmt in &air {
-                    let _ = file.write(&stmt.emit()?.to_be_bytes());
-                }
-
-                message(Green, "Finished", "emit binary");
-                file_message(Green, "Saved", &out_file_name);
+    match args.command {
+        None => {
+            if let Some(path) = args.path {
+                lace::features::init(args.run_options.features);
+                run(&path, None, args.minimal)?;
                 Ok(())
+            } else {
+                println!("\n~ lace v{VERSION} - Copyright (c) 2024 Artemis Rosman ~");
+                println!("{}", LOGO.truecolor(255, 183, 197).bold());
+                println!("{SHORT_INFO}");
+                std::process::exit(0);
             }
-            Command::Check { name } => {
-                file_message(Green, "Checking", &name);
-                let contents = StaticSource::new(fs::read_to_string(&name).into_diagnostic()?);
-                let _ = assemble(&contents)?;
-                message(Green, "Success", "no errors found!");
-                Ok(())
-            }
-            Command::Clean { name: _ } => todo!("There are no debug files implemented to clean!"),
-            Command::Watch { name } => {
-                if !name.exists() {
-                    bail!("File does not exist. Exiting...")
-                }
-                // Vim breaks if watching a single file
-                let folder_path = match name.parent() {
-                    Some(pth) if pth.is_dir() => pth.to_path_buf(),
-                    _ => Path::new(".").to_path_buf(),
-                };
-
-                // Clear screen and move cursor to top left
-                print!("\x1B[2J\x1B[2;1H");
-                file_message(Green, "Watching", &name);
-                message(Cyan, "Help", "press CTRL+C to exit");
-
-                let mut watcher = Hotwatch::new_with_custom_delay(Duration::from_millis(500))
-                    .into_diagnostic()?;
-
-                watcher
-                    .watch(folder_path, move |event: Event| match event.kind {
-                        // Watch remove for vim changes
-                        EventKind::Modify(_) | EventKind::Remove(_) => {
-                            // Clear screen
-                            print!("\x1B[2J\x1B[2;1H");
-                            file_message(Green, "Watching", &name);
-                            message(Green, "Re-checking", "file change detected");
-                            message(Cyan, "Help", "press CTRL+C to exit");
-
-                            // Now we are developing software (makes reruns more obvious)
-                            sleep(Duration::from_millis(50));
-
-                            let mut contents = StaticSource::new(match fs::read_to_string(&name) {
-                                Ok(cts) => cts,
-                                Err(e) => {
-                                    eprintln!("{e}. Exiting...");
-                                    std::process::exit(1)
-                                }
-                            });
-                            let _ = match assemble(&contents) {
-                                Ok(_) => {
-                                    message(Green, "Success", "no errors found!");
-                                }
-                                Err(e) => {
-                                    println!("\n{:?}", e);
-                                }
-                            };
-
-                            reset_state();
-                            // To avoid leaking memory
-                            contents.reclaim();
-                            Flow::Continue
-                        }
-                        _ => Flow::Continue,
-                    })
-                    .into_diagnostic()?;
-                watcher.run();
-                Ok(())
-            }
-            Command::Fmt { name: _ } => todo!("Formatting is not currently implemented"),
         }
-    } else {
-        if let Some(path) = args.path {
-            lace::features::init(args.run_options.features);
-            run(&path, None, args.minimal)?;
+        Some(Command::Run {
+            name,
+            minimal,
+            run_options: RunOptions { features },
+        }) => {
+            lace::features::init(features);
+            run(&name, None, minimal)
+        }
+        Some(Command::Debug {
+            name,
+            command,
+            minimal,
+            run_options: RunOptions { features },
+        }) => {
+            lace::features::init(features);
+            run(&name, Some(DebuggerOptions { command }), minimal)
+        }
+        Some(Command::Compile {
+            name,
+            dest,
+            run_options: RunOptions { features },
+        }) => {
+            lace::features::init(features);
+            file_message(Green, "Assembling", &name);
+            let contents = StaticSource::new(fs::read_to_string(&name).into_diagnostic()?);
+            let air = assemble(&contents)?;
+
+            let out_file_name =
+                dest.unwrap_or(name.with_extension("lc3").file_name().unwrap().into());
+            let mut file = File::create(&out_file_name).unwrap();
+
+            // Deal with .orig
+            if let Some(orig) = air.orig() {
+                let _ = file.write(&orig.to_be_bytes());
+            } else {
+                let _ = file.write(&0x3000u16.to_be_bytes());
+            }
+
+            // Write lines
+            for stmt in &air {
+                let _ = file.write(&stmt.emit()?.to_be_bytes());
+            }
+
+            message(Green, "Finished", "emit binary");
+            file_message(Green, "Saved", &out_file_name);
             Ok(())
-        } else {
-            println!("\n~ lace v{VERSION} - Copyright (c) 2024 Artemis Rosman ~");
-            println!("{}", LOGO.truecolor(255, 183, 197).bold());
-            println!("{SHORT_INFO}");
-            std::process::exit(0);
         }
+        Some(Command::Check { name }) => {
+            file_message(Green, "Checking", &name);
+            let contents = StaticSource::new(fs::read_to_string(&name).into_diagnostic()?);
+            let _ = assemble(&contents)?;
+            message(Green, "Success", "no errors found!");
+            Ok(())
+        }
+        Some(Command::Clean { name: _ }) => todo!("There are no debug files implemented to clean!"),
+        Some(Command::Watch { name }) => {
+            if !name.exists() {
+                bail!("File does not exist. Exiting...")
+            }
+            // Vim breaks if watching a single file
+            let folder_path = match name.parent() {
+                Some(pth) if pth.is_dir() => pth.to_path_buf(),
+                _ => Path::new(".").to_path_buf(),
+            };
+
+            // Clear screen and move cursor to top left
+            print!("\x1B[2J\x1B[2;1H");
+            file_message(Green, "Watching", &name);
+            message(Cyan, "Help", "press CTRL+C to exit");
+
+            let mut watcher =
+                Hotwatch::new_with_custom_delay(Duration::from_millis(500)).into_diagnostic()?;
+
+            watcher
+                .watch(folder_path, move |event: Event| match event.kind {
+                    // Watch remove for vim changes
+                    EventKind::Modify(_) | EventKind::Remove(_) => {
+                        // Clear screen
+                        print!("\x1B[2J\x1B[2;1H");
+                        file_message(Green, "Watching", &name);
+                        message(Green, "Re-checking", "file change detected");
+                        message(Cyan, "Help", "press CTRL+C to exit");
+
+                        // Now we are developing software (makes reruns more obvious)
+                        sleep(Duration::from_millis(50));
+
+                        let mut contents = StaticSource::new(match fs::read_to_string(&name) {
+                            Ok(cts) => cts,
+                            Err(e) => {
+                                eprintln!("{e}. Exiting...");
+                                std::process::exit(1)
+                            }
+                        });
+                        let _ = match assemble(&contents) {
+                            Ok(_) => {
+                                message(Green, "Success", "no errors found!");
+                            }
+                            Err(e) => {
+                                println!("\n{:?}", e);
+                            }
+                        };
+
+                        reset_state();
+                        // To avoid leaking memory
+                        contents.reclaim();
+                        Flow::Continue
+                    }
+                    _ => Flow::Continue,
+                })
+                .into_diagnostic()?;
+            watcher.run();
+            Ok(())
+        }
+        Some(Command::Fmt { name: _ }) => todo!("Formatting is not currently implemented"),
     }
 }
 
