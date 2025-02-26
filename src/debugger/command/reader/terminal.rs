@@ -292,7 +292,7 @@ fn find_word_start(string: &str, cursor: usize, full_word: bool) -> usize {
     if first.is_whitespace() {
         // On a space
         // Look for first non-space character
-        while let Some((i, ch)) = chars.next() {
+        for (i, ch) in chars.by_ref() {
             if !ch.is_whitespace() {
                 return i;
             }
@@ -304,7 +304,7 @@ fn find_word_start(string: &str, cursor: usize, full_word: bool) -> usize {
             // Space found
             // Look for first non-space character
             if ch.is_whitespace() {
-                while let Some((i, ch)) = chars.next() {
+                for (i, ch) in chars.by_ref() {
                     if !ch.is_whitespace() {
                         return i;
                     }
@@ -320,7 +320,7 @@ fn find_word_start(string: &str, cursor: usize, full_word: bool) -> usize {
     }
     // No next word found
     // Go to end of line
-    return string.len();
+    string.len()
 }
 
 // TODO(refactor/opt): Rewrite to be more idiomaticly Rust
@@ -353,7 +353,7 @@ fn find_word_back(string: &str, mut cursor: usize, full_word: bool) -> usize {
     }
     // No previous word found
     // Go to start of line
-    return 0;
+    0
 }
 
 /// Insert a character at a character index.

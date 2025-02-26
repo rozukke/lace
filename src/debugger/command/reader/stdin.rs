@@ -53,6 +53,7 @@ where
         return Err(());
     };
 
+    #[allow(clippy::needless_range_loop)]
     for i in 1..utf8_len {
         let Some(byte) = next_byte() else {
             return Err(());
@@ -105,7 +106,7 @@ impl Utf8Position {
         if byte & MASK_CONT == MASK_CONT {
             return Utf8Position::Continuation;
         }
-        return Utf8Position::Begin1;
+        Utf8Position::Begin1
     }
 
     pub fn len(&self) -> Option<usize> {
