@@ -21,6 +21,7 @@ pub enum Command {
     InvalidSubcommand {
         command_name: &'static str,
         subcommand_name: String,
+        suggested: Option<CommandName>,
     },
     InvalidArgument {
         command_name: CommandName,
@@ -86,12 +87,16 @@ impl fmt::Display for Command {
             Self::InvalidSubcommand {
                 command_name,
                 subcommand_name,
+                suggested,
             } => {
                 write!(
                     f,
                     "Invalid subcommand: `{} {}`",
                     command_name, subcommand_name
                 )?;
+                if let Some(suggested) = suggested {
+                    write!(f, "\n    Did you mean `{}`?", suggested)?;
+                }
             }
             Self::MissingSubcommand { command_name } => {
                 write!(f, "Missing subcommand: `{} (...)`", command_name)?;
