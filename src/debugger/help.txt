@@ -43,8 +43,7 @@ Available Commands:
           {2}-{0} {3}LOCATION{0}: {36}Address{2}+{0}
 
     {35;1}break list{0;35;2}(bl){0}
-        List all breakpoints. Includes breakpoints declared with {35}.BREAK{0}
-            directive.
+        List all breakpoints. Includes breakpoints declared with {35}.BREAK{0}.
 
     {35;1}assembly{0;35;2}(a){0} {32;3}LOCATION{2}?{0}
         Print line of assembly source code corresponding to address.

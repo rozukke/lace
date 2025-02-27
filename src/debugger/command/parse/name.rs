@@ -19,42 +19,42 @@ macro_rules! name_list {
 }
 const COMMANDS: &'static [CommandNameEntry] = name_list![
     Help
-        ["h", "help", "--help", "-h", "HELP", "man", "info", "wtf"]
+        ["h", "help", "--help", "-h", ":h", "HELP", "man", "info", "wtf"]
         []
     Next
         ["s", "step"]
-        ["next"]
+        ["next", "step-over", "stepover"]
     Step
-        ["si", "stepinto", "stepin", "step-into", "step-in", "stepi", "step-i"]
-        []
+        ["si", "stepinto"]
+        ["into", "in", "stepin", "step-into", "step-in", "stepi", "step-i", "sin"]
     Finish
-        ["so", "stepout", "step-out", "stepo", "step-o"]
-        ["finish", "fin"]
+        ["so", "stepout"]
+        ["finish", "fin", "out", "step-out", "stepo", "step-o", "sout"]
     Continue
-        ["c", "continue", "cont", "con"]
-        []
+        ["c", "continue", "cont"]
+        ["con"]
     Get
         ["p", "print"]
-        ["get"]
+        ["get", "show", "display"]
     Set
-        ["m", "move", "mov", "mv"]
-        ["set"]
+        ["m", "move"]
+        ["set", "mov", "mv"]
     Registers
-        ["r", "registers", "register", "reg", "regs"]
-        []
+        ["r", "registers", "reg"]
+        ["dump", "register", "regs"]
     Jump
-        ["g", "goto", "go"]
-        ["jump", "jsr", "jsrr", "call"]
+        ["g", "goto"]
+        ["jump", "jsr", "jsrr", "call", "go"]
     Source
         ["a", "assembly", "asm"]
-        ["source", "src"]
+        ["source", "src", "inspect"]
     Eval
         ["e", "eval", "evil"]
         ["run", "exec", "execute", "sim", "simulate"]
     Reset
         ["z", "reset"]
-        []
-    Echo
+        ["restart"]
+    Echo // Not included in help
         ["echo"]
         []
     Quit
@@ -64,26 +64,26 @@ const COMMANDS: &'static [CommandNameEntry] = name_list![
         ["x", "exit", ":q", ":wq", "^C"]
         ["halt", "end", "stop"]
     BreakList
-        ["bl", "breaklist", "break-list", "break-ls"]
-        []
+        ["bl", "breaklist"]
+        ["break-list", "break-ls", "blist", "bls"]
     BreakAdd
-        ["ba", "breakadd", "break-add"]
-        []
+        ["ba", "breakadd"]
+        ["break-add", "badd"]
     BreakRemove
-        ["br", "breakremove", "break-remove", "break-rm"]
-        []
+        ["br", "breakremove"]
+        ["break-remove", "break-rm", "bremove", "brm"]
 ];
 const BREAK_COMMAND: CandidateList = &["break", "b"];
 const BREAK_SUBCOMMANDS: &'static [CommandNameEntry] = name_list![
     BreakList
-        ["l", "list", "ls"]
-        []
+        ["l", "list"]
+        ["print", "show", "display", "dump", "ls"]
     BreakAdd
         ["a", "add"]
-        []
+        ["set", "move"]
     BreakRemove
-        ["r", "remove", "rm"]
-        []
+        ["r", "remove"]
+        ["delete", "rm"]
 ];
 
 impl Arguments<'_> {
@@ -114,10 +114,11 @@ impl Arguments<'_> {
             };
             match find_name_match(subcommand_name, BREAK_SUBCOMMANDS) {
                 Ok(command) => return Ok(command),
-                Err(_) => {
+                Err(suggested) => {
                     return Err(error::Command::InvalidSubcommand {
                         command_name,
                         subcommand_name: subcommand_name.to_string(),
+                        suggested,
                     });
                 }
             }
