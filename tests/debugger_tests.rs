@@ -25,12 +25,12 @@ fn debugs_hello_world() {
             assembly
             registers
 
-            progress
+            step
             echo puts
             assembly
             reg
 
-            progress
+            step
             echo halt
             assembly
             reg

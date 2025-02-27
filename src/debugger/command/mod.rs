@@ -60,8 +60,8 @@ impl fmt::Display for CommandName {
         match self {
             Self::Help => write!(f, "help"),
             Self::Next => write!(f, "step"),
-            Self::Step => write!(f, "step-into"),
-            Self::Finish => write!(f, "step-out"),
+            Self::Step => write!(f, "stepinto"),
+            Self::Finish => write!(f, "stepout"),
             Self::Continue => write!(f, "continue"),
             Self::Registers => write!(f, "registers"),
             Self::Get => write!(f, "print"),
@@ -269,26 +269,26 @@ mod tests {
         expect_command("ts", Err(()));
         expect_command("break", Err(()));
         expect_command("break ts", Err(()));
-        expect_command("progress r0", Err(()));
-        expect_command("get r0 r0", Err(()));
-        expect_command("set r0", Err(()));
+        expect_command("stepinto r0", Err(()));
+        expect_command("print r0 r0", Err(()));
+        expect_command("move r0", Err(()));
         expect_command("p x19248", Err(()));
         expect_command("p Q@)#", Err(()));
 
         expect_command("help", Ok(Command::Help));
         expect_command("  help   me!  ", Ok(Command::Help));
-        expect_command("progress", Ok(Command::Progress { count: 1 }));
-        expect_command("p 0", Ok(Command::Progress { count: 1 }));
-        expect_command("progress   #012", Ok(Command::Progress { count: 12 }));
+        expect_command("stepinto", Ok(Command::Progress { count: 1 }));
+        expect_command("si 0", Ok(Command::Progress { count: 1 }));
+        expect_command("stepinto   #012", Ok(Command::Progress { count: 12 }));
         expect_command(
-            "set   #012 0x123",
+            "move   #012 0x123",
             Ok(Command::Set {
                 location: Location::Memory(MemoryLocation::Address(12)),
                 value: 0x123,
             }),
         );
         expect_command(
-            "get r6",
+            "print r6",
             Ok(Command::Get {
                 location: Location::Register(Register::R6),
             }),
