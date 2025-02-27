@@ -337,20 +337,20 @@ impl Debugger {
                 dprintln!(Sometimes, Info, "Continuing...");
             }
 
-            Command::Finish => {
+            Command::StepOut => {
                 Self::check_halt(instr)?;
                 self.status = Status::Finish;
                 self.should_echo_pc = true;
                 dprintln!(Sometimes, Info, "Finishing subroutine...");
             }
 
-            Command::Progress { count } => {
+            Command::StepInto { count } => {
                 Self::check_halt(instr)?;
                 self.status = Status::Step { count: count - 1 };
                 self.should_echo_pc = true;
             }
 
-            Command::Next => {
+            Command::StepOver => {
                 Self::check_halt(instr)?;
                 self.status = Status::Next {
                     return_addr: state.pc() + 1,
@@ -358,7 +358,7 @@ impl Debugger {
                 self.should_echo_pc = true;
             }
 
-            Command::Get { location } => match location {
+            Command::Print { location } => match location {
                 Location::Register(register) => {
                     dprintln!(Sometimes, Info, "Register R{}:", register as u16);
                     Output::Debugger(Condition::Always, Default::default())
@@ -373,7 +373,7 @@ impl Debugger {
                 }
             },
 
-            Command::Set { location, value } => match location {
+            Command::Move { location, value } => match location {
                 Location::Register(register) => {
                     *state.reg_mut(register as u16) = value;
                     dprintln!(
@@ -403,7 +403,7 @@ impl Debugger {
                 Output::Debugger(Condition::Always, Default::default()).print_registers(state);
             }
 
-            Command::Jump { location } => {
+            Command::Goto { location } => {
                 let address = self.resolve_location(state, &location)?;
                 self.expect_userspace_address(address)?;
                 *state.pc_mut() = address;
