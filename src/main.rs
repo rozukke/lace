@@ -45,9 +45,11 @@ enum Command {
         #[command(flatten)]
         run_options: RunOptions,
     },
-    /// Run text `.asm` file directly and with debugger
+    /// Run and debug text `.asm` file directly
+    ///
+    /// For information on commands, run `debug -c help` or type `help` in the debugger prompt
     Debug {
-        /// `.asm` file to run
+        /// `.asm` file to run and debug
         name: PathBuf,
         /// Read debugger commands from argument
         #[arg(short, long)]
