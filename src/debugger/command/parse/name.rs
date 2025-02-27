@@ -21,31 +21,31 @@ const COMMANDS: &'static [CommandNameEntry] = name_list![
     Help
         ["h", "help", "--help", "-h", ":h", "HELP", "man", "info", "wtf"]
         []
-    Next
+    StepOver
         ["s", "step"]
         ["next", "step-over", "stepover"]
-    Step
+    StepInto
         ["si", "stepinto"]
         ["into", "in", "stepin", "step-into", "step-in", "stepi", "step-i", "sin"]
-    Finish
+    StepOut
         ["so", "stepout"]
         ["finish", "fin", "out", "step-out", "stepo", "step-o", "sout"]
     Continue
         ["c", "continue", "cont"]
         ["con"]
-    Get
+    Print
         ["p", "print"]
         ["get", "show", "display"]
-    Set
+    Move
         ["m", "move"]
         ["set", "mov", "mv"]
     Registers
         ["r", "registers", "reg"]
         ["dump", "register", "regs"]
-    Jump
+    Goto
         ["g", "goto"]
         ["jump", "jsr", "jsrr", "call", "go"]
-    Source
+    Assembly
         ["a", "assembly", "asm"]
         ["source", "src", "inspect"]
     Eval

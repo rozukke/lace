@@ -14,68 +14,68 @@ pub use self::reader::CommandReader;
 #[cfg_attr(test, derive(PartialEq))]
 pub enum Command<'a> {
     Help,
-    Progress { count: u16 },
-    Next,
+    StepOver,
+    StepInto { count: u16 },
+    StepOut,
     Continue,
-    Finish,
+    Registers,
+    Print { location: Location<'a> },
+    Move { location: Location<'a>, value: u16 },
+    Goto { location: MemoryLocation<'a> },
+    Assembly { location: MemoryLocation<'a> },
+    Eval { instruction: &'a str },
+    Echo { string: &'a str },
+    Reset,
     Quit,
     Exit,
     BreakList,
     BreakAdd { location: MemoryLocation<'a> },
     BreakRemove { location: MemoryLocation<'a> },
-    Get { location: Location<'a> },
-    Set { location: Location<'a>, value: u16 },
-    Jump { location: MemoryLocation<'a> },
-    Registers,
-    Reset,
-    Assembly { location: MemoryLocation<'a> },
-    Eval { instruction: &'a str },
-    Echo { string: &'a str },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum CommandName {
     Help,
-    Next,
-    Step,
-    Finish,
+    StepOver,
+    StepInto,
+    StepOut,
     Continue,
     Registers,
-    Get,
-    Set,
-    Jump,
-    BreakList,
-    BreakAdd,
-    BreakRemove,
-    Source,
+    Print,
+    Move,
+    Goto,
+    Assembly,
     Eval,
     Echo,
     Reset,
     Quit,
     Exit,
+    BreakList,
+    BreakAdd,
+    BreakRemove,
 }
 
 impl fmt::Display for CommandName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Help => write!(f, "help"),
-            Self::Next => write!(f, "step"),
-            Self::Step => write!(f, "stepinto"),
-            Self::Finish => write!(f, "stepout"),
+            Self::StepOver => write!(f, "step"),
+            Self::StepInto => write!(f, "stepinto"),
+            Self::StepOut => write!(f, "stepout"),
             Self::Continue => write!(f, "continue"),
             Self::Registers => write!(f, "registers"),
-            Self::Get => write!(f, "print"),
-            Self::Set => write!(f, "move"),
-            Self::Jump => write!(f, "goto"),
-            Self::BreakList => write!(f, "break list"),
-            Self::BreakAdd => write!(f, "break add"),
-            Self::BreakRemove => write!(f, "break remove"),
-            Self::Source => write!(f, "assembly"),
+            Self::Print => write!(f, "print"),
+            Self::Move => write!(f, "move"),
+            Self::Goto => write!(f, "goto"),
+            Self::Assembly => write!(f, "assembly"),
             Self::Eval => write!(f, "eval"),
             Self::Echo => write!(f, "echo"),
             Self::Reset => write!(f, "reset"),
             Self::Quit => write!(f, "quit"),
             Self::Exit => write!(f, "exit"),
+            Self::BreakList => write!(f, "break list"),
+            Self::BreakAdd => write!(f, "break add"),
+            Self::BreakRemove => write!(f, "break remove"),
         }
     }
 }
@@ -168,39 +168,39 @@ impl<'a> Command<'a> {
             // Allow trailing arguments
             CommandName::Help => return Ok(Self::Help),
 
-            CommandName::Next => Self::Next,
+            CommandName::StepOver => Self::StepOver,
             CommandName::Continue => Self::Continue,
-            CommandName::Finish => Self::Finish,
+            CommandName::StepOut => Self::StepOut,
             CommandName::Registers => Self::Registers,
             CommandName::Reset => Self::Reset,
             CommandName::Quit => Self::Quit,
             CommandName::Exit => Self::Exit,
 
-            CommandName::Step => {
+            CommandName::StepInto => {
                 expected_args = 1;
                 let count = iter.next_positive_integer_or_default("count")?;
-                Self::Progress { count }
+                Self::StepInto { count }
             }
 
-            CommandName::Get => {
+            CommandName::Print => {
                 expected_args = 1;
                 let location = iter.next_location("location", expected_args)?;
-                Self::Get { location }
+                Self::Print { location }
             }
-            CommandName::Set => {
+            CommandName::Move => {
                 expected_args = 2;
                 let location = iter.next_location("location", expected_args)?;
                 let value = iter.next_integer("value", expected_args)?;
-                Self::Set { location, value }
+                Self::Move { location, value }
             }
 
-            CommandName::Jump => {
+            CommandName::Goto => {
                 expected_args = 1;
                 let location = iter.next_memory_location("location", expected_args)?;
-                Self::Jump { location }
+                Self::Goto { location }
             }
 
-            CommandName::Source => {
+            CommandName::Assembly => {
                 expected_args = 1;
                 let location = iter.next_memory_location_or_default("location")?;
                 Self::Assembly { location }
@@ -277,19 +277,19 @@ mod tests {
 
         expect_command("help", Ok(Command::Help));
         expect_command("  help   me!  ", Ok(Command::Help));
-        expect_command("stepinto", Ok(Command::Progress { count: 1 }));
-        expect_command("si 0", Ok(Command::Progress { count: 1 }));
-        expect_command("stepinto   #012", Ok(Command::Progress { count: 12 }));
+        expect_command("stepinto", Ok(Command::StepInto { count: 1 }));
+        expect_command("si 0", Ok(Command::StepInto { count: 1 }));
+        expect_command("stepinto   #012", Ok(Command::StepInto { count: 12 }));
         expect_command(
             "move   #012 0x123",
-            Ok(Command::Set {
+            Ok(Command::Move {
                 location: Location::Memory(MemoryLocation::Address(12)),
                 value: 0x123,
             }),
         );
         expect_command(
             "print r6",
-            Ok(Command::Get {
+            Ok(Command::Print {
                 location: Location::Register(Register::R6),
             }),
         );
