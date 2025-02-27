@@ -94,7 +94,7 @@ impl fmt::Display for Command {
                 )?;
             }
             Self::MissingSubcommand { command_name } => {
-                write!(f, "Missing subcommand: `{} ?`", command_name)?;
+                write!(f, "Missing subcommand: `{} (...)`", command_name)?;
             }
             Self::InvalidArgument {
                 command_name,
