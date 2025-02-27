@@ -9,20 +9,20 @@ Available Commands:
             subroutine calls).
 
     {35;1}step-into{0;35;2}(si){0} {32;3}COUNT{2}?{0}
-        Execute next instruction or jump into subroutine.
+        Execute next instruction or jump into subroutine. Repeats {32;3}COUNT{0} times.
           {2}-{0} {3}COUNT{0}: {36}Integer{0} {3}(default: 1){0}
 
     {35;1}step-out{0;35;2}(so){0}
-        Continue execution until breakpoint, {1}HALT{0}, or end of subroutine.
+        Continue execution until {1}HALT{0}, breakpoint, or end of current subroutine.
 
     {35;1}continue{0;35;2}(c){0}
-        Continue execution until breakpoint or {1}HALT{0}.
+        Continue execution until {1}HALT{0} or breakpoint.
 
     {35;1}registers{0;35;2}(r){0}
-        Print the value of all registers.
+        Show the value of all registers. Equivalent to {35}eval reg{0}.
 
     {35;1}print{0;35;2}(p){0} {32;3}LOCATION{2}?{0}
-        Print the value at a register or address.
+        Show the value at a register or address.
           {2}-{0} {3}LOCATION{0}: {36}Register{0} {2}|{0} {36}Address{2}+{0} {3}(default: PC){0}
 
     {35;1}move{0;35;2}(m){0} {32;3}LOCATION VALUE{0}
@@ -43,10 +43,11 @@ Available Commands:
           {2}-{0} {3}LOCATION{0}: {36}Address{2}+{0}
 
     {35;1}break list{0;35;2}(bl){0}
-        List all breakpoints.
+        List all breakpoints. Includes breakpoints declared with {35}.BREAK{0}
+            directive.
 
     {35;1}assembly{0;35;2}(a){0} {32;3}LOCATION{2}?{0}
-        Print line of assembly source code corresponding to an address.
+        Print line of assembly source code corresponding to address.
           {2}-{0} {3}LOCATION{0}: {36}Address{2}+{0} {3}(default: PC){0}
 
     {35;1}eval{0;35;2}(e){0} {32;3}INSTRUCTION{0}
@@ -56,7 +57,7 @@ Available Commands:
         {3}Note:{0} Branch ({1}BR{2}*{0}) instructions cannot be simulated, use {35}jump{0} instead.
         {3}Note:{0} {1}HALT{0} trap cannot be simulated, use {35}exit{0} instead.
 
-    {35;1}reset{0}
+    {35;1}reset{0;35;2}(z){0}
         Reset all memory and registers to initial state.
 
     {35;1}quit{0;35;2}(q){0}
