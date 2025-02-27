@@ -49,20 +49,20 @@ enum Status {
     /// Keep executing user commands, until one changes the debugger status.
     #[default]
     WaitForAction,
-    /// Execute `count` instructions.
-    ///
-    /// Stop execution early if breakpoint or `HALT` is reached.
-    ///
-    /// Subroutines are not treated specially; `JSR|JSRR|CALL` and `RET`|`RETS` instructions are
-    /// treated as any other instruction is.
-    Step { count: u16 },
     /// Execute the next instruction, or the whole subroutine if next instruction is
     /// `JSR|JSRR|CALL`.
     ///
     /// Stop execution early if breakpoint or `HALT` is reached.
     ///
     /// Return address is necessary to support nested subroutine calls.
-    Next { return_addr: u16 },
+    StepOver { return_addr: u16 },
+    /// Execute `count` instructions.
+    ///
+    /// Stop execution early if breakpoint or `HALT` is reached.
+    ///
+    /// Subroutines are not treated specially; `JSR|JSRR|CALL` and `RET`|`RETS` instructions are
+    /// treated as any other instruction is.
+    StepInto { count: u16 },
     /// Execute all instructions until breakpoint or `HALT` is reached.
     Continue,
     /// Execute all instructions until `RET`|`RETS` instruction, breakpoint, or `HALT` is reached.
@@ -188,16 +188,7 @@ impl Debugger {
                     }
                 }
 
-                Status::Step { count } => {
-                    if *count > 0 {
-                        *count -= 1;
-                    } else {
-                        self.status = Status::WaitForAction;
-                    }
-                    return Action::Proceed;
-                }
-
-                Status::Next { return_addr } => {
+                Status::StepOver { return_addr } => {
                     if state.pc() == *return_addr {
                         // If subroutine was excecuted (for `JSR|JSRR|CALL` + `RET`|`RETS`)
                         // As opposed to a single instruction
@@ -210,6 +201,15 @@ impl Debugger {
                         }
                         self.status = Status::WaitForAction;
                         continue;
+                    }
+                    return Action::Proceed;
+                }
+
+                Status::StepInto { count } => {
+                    if *count > 0 {
+                        *count -= 1;
+                    } else {
+                        self.status = Status::WaitForAction;
                     }
                     return Action::Proceed;
                 }
@@ -346,13 +346,13 @@ impl Debugger {
 
             Command::StepInto { count } => {
                 Self::check_halt(instr)?;
-                self.status = Status::Step { count: count - 1 };
+                self.status = Status::StepInto { count: count - 1 };
                 self.should_echo_pc = true;
             }
 
             Command::StepOver => {
                 Self::check_halt(instr)?;
-                self.status = Status::Next {
+                self.status = Status::StepOver {
                     return_addr: state.pc() + 1,
                 };
                 self.should_echo_pc = true;
