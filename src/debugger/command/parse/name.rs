@@ -5,84 +5,84 @@ macro_rules! name_list {
         $(
             $name:ident
             [ $( $candidate:literal ),* $(,)? ]
-            [ $( $suggested:literal ),* $(,)? ]
+            [ $( $misspellings:literal ),* $(,)? ]
         )*
     ] => {
         &[
-            $( (
-                CommandName::$name,
-                &[ $($candidate,)* ],
-                &[ $($suggested,)* ],
-            ), )*
+            $( CommandNameEntry {
+                name: CommandName::$name,
+                candidates: &[ $($candidate,)* ],
+                misspellings: &[ $($misspellings,)* ],
+            }, )*
         ]
     };
 }
-const COMMANDS: CommandNameList = name_list![
+const COMMANDS: &'static [CommandNameEntry] = name_list![
     Help
-        ["help", "--help", "h", "-h", "HELP", "man", "info", "wtf"]
+        ["h", "help", "--help", "-h", "HELP", "man", "info", "wtf"]
         []
     Next
-        ["step", "s"]
+        ["s", "step"]
         ["next"]
     Step
-        ["stepinto", "stepin", "step-into", "step-in", "stepi", "step-i", "si"]
+        ["si", "stepinto", "stepin", "step-into", "step-in", "stepi", "step-i"]
         []
     Finish
-        ["stepout", "step-out", "stepo", "step-o", "so"]
+        ["so", "stepout", "step-out", "stepo", "step-o"]
         ["finish", "fin"]
     Continue
-        ["continue", "cont", "con", "c"]
+        ["c", "continue", "cont", "con"]
         []
     Get
-        ["print", "p"]
+        ["p", "print"]
         ["get"]
     Set
-        ["move", "mov", "mv", "m"]
+        ["m", "move", "mov", "mv"]
         ["set"]
     Registers
-        ["registers", "register", "reg", "regs", "r"]
+        ["r", "registers", "register", "reg", "regs"]
         []
     Jump
-        ["goto", "go", "g"]
+        ["g", "goto", "go"]
         ["jump", "jsr", "jsrr", "call"]
     Source
-        ["assembly", "asm", "a"]
+        ["a", "assembly", "asm"]
         ["source", "src"]
     Eval
-        ["eval", "evil", "e"]
+        ["e", "eval", "evil"]
         ["run", "exec", "execute", "sim", "simulate"]
     Reset
-        ["reset"]
+        ["z", "reset"]
         []
     Echo
         ["echo"]
         []
     Quit
-        ["quit", "q"]
+        ["q", "quit"]
         []
     Exit
-        ["exit", "x", ":q", ":wq", "^C"]
+        ["x", "exit", ":q", ":wq", "^C"]
         ["halt", "end", "stop"]
     BreakList
-        ["breaklist", "bl"]
+        ["bl", "breaklist", "break-list", "break-ls"]
         []
     BreakAdd
-        ["breakadd", "ba"]
+        ["ba", "breakadd", "break-add"]
         []
     BreakRemove
-        ["breakremove", "br"]
+        ["br", "breakremove", "break-remove", "break-rm"]
         []
 ];
 const BREAK_COMMAND: CandidateList = &["break", "b"];
-const BREAK_SUBCOMMANDS: CommandNameList = name_list![
+const BREAK_SUBCOMMANDS: &'static [CommandNameEntry] = name_list![
     BreakList
-        ["list", "ls", "l"]
+        ["l", "list", "ls"]
         []
     BreakAdd
-        ["add", "a"]
+        ["a", "add"]
         []
     BreakRemove
-        ["remove", "rm", "r"]
+        ["r", "remove", "rm"]
         []
 ];
 
@@ -142,37 +142,49 @@ impl Arguments<'_> {
     }
 }
 
-// TODO(refactor): Make all 'static ?
-/// A [`CommandName`] with a list of name candidates.
-type CommandNameList = &'static [(CommandName, CandidateList, CandidateList)];
+/// A [`CommandName`] with a list of name candidates and misspellings which should trigger a
+/// suggestion.
+struct CommandNameEntry {
+    name: CommandName,
+    candidates: CandidateList,
+    misspellings: CandidateList,
+}
+
 /// List of single-word aliases for a command or subcommand.
 type CandidateList = &'static [&'static str];
 
-/// Returns the first [`CommandName`], which has a corresponding candidate which matches `name`
-/// (case insensitive).
+/// Returns the first [`CommandName`], which has a corresponding candidate which matches the
+/// `provided` command name (case insensitive).
 ///
-/// Returns `None` if no match was found.
+/// Returns `Err(_)` if no match was found, with an optional 'suggested' command name.
 fn find_name_match(
-    name: &str,
-    commands: CommandNameList,
+    provided: &str,
+    entries: &'static [CommandNameEntry],
 ) -> Result<CommandName, Option<CommandName>> {
-    for (command, candidates, _) in commands {
-        if name_matches(name, candidates) {
-            return Ok(*command);
+    for CommandNameEntry {
+        name, candidates, ..
+    } in entries
+    {
+        if name_matches(provided, candidates) {
+            return Ok(*name);
         }
     }
-    for (command, _, mistakes) in commands {
-        if name_matches(name, mistakes) {
-            return Err(Some(*command));
+    for CommandNameEntry {
+        name, misspellings, ..
+    } in entries
+    {
+        if name_matches(provided, misspellings) {
+            return Err(Some(*name));
         }
     }
     Err(None)
 }
 
-/// Returns `true` if `name` matchs any item of `candidates` (case insensitive).
-fn name_matches(name: &str, candidates: CandidateList) -> bool {
+/// Returns `true` if the `provided` command name matchs any item of `candidates` (case
+/// insensitive).
+fn name_matches(provided: &str, candidates: CandidateList) -> bool {
     for candidate in candidates {
-        if name.eq_ignore_ascii_case(candidate) {
+        if provided.eq_ignore_ascii_case(candidate) {
             return true;
         }
     }
