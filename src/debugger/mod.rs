@@ -8,10 +8,10 @@ use std::cmp::Ordering;
 use self::asm::AsmSource;
 use self::command::{Command, CommandReader, Label, Location, MemoryLocation};
 use crate::air::AsmLine;
-use crate::dprintln;
 use crate::output::{Condition, Output};
 use crate::runtime::{RunState, HALT_ADDRESS, USER_MEMORY_END};
 use crate::symbol::with_symbol_table;
+use crate::{dprintln, features};
 
 pub use self::breakpoint::{Breakpoint, Breakpoints};
 
@@ -349,10 +349,18 @@ impl Debugger {
             }
 
             Command::StepOut => {
-                Self::check_halt(instr)?;
-                self.status = Status::Finish;
-                self.should_echo_pc = true;
-                dprintln!(Sometimes, Info, "Finishing subroutine...");
+                if features::stack() {
+                    dprintln!(
+                        Always,
+                        Error,
+                        "Using `stepout` while 'stack' feature is enabled is not permitted.\n    Run without `-f stack` or consider using breakpoints instead."
+                    );
+                } else {
+                    Self::check_halt(instr)?;
+                    self.status = Status::Finish;
+                    self.should_echo_pc = true;
+                    dprintln!(Sometimes, Info, "Finishing subroutine...");
+                }
             }
 
             Command::Print { location } => match location {
