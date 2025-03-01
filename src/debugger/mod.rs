@@ -320,9 +320,6 @@ impl Debugger {
             Command::Reset => {
                 *state = self.initial_state.clone();
                 self.should_echo_pc = true;
-                // Other fields either:
-                // - Shouldn't be mutated/reset
-                // - Or would be redundant to do so
                 dprintln!(Sometimes, Warning, "Reset program to initial state.");
             }
 
@@ -337,11 +334,12 @@ impl Debugger {
                 dprintln!(Sometimes, Info, "Continuing...");
             }
 
-            Command::StepOut => {
+            Command::StepOver => {
                 Self::check_halt(instr)?;
-                self.status = Status::Finish;
+                self.status = Status::StepOver {
+                    return_addr: state.pc() + 1,
+                };
                 self.should_echo_pc = true;
-                dprintln!(Sometimes, Info, "Finishing subroutine...");
             }
 
             Command::StepInto { count } => {
@@ -350,12 +348,11 @@ impl Debugger {
                 self.should_echo_pc = true;
             }
 
-            Command::StepOver => {
+            Command::StepOut => {
                 Self::check_halt(instr)?;
-                self.status = Status::StepOver {
-                    return_addr: state.pc() + 1,
-                };
+                self.status = Status::Finish;
                 self.should_echo_pc = true;
+                dprintln!(Sometimes, Info, "Finishing subroutine...");
             }
 
             Command::Print { location } => match location {
