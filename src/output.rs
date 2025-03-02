@@ -3,6 +3,8 @@ use std::fmt::{self, Write as _};
 
 use crate::runtime::RunState;
 
+// TODO(feat): Replace `unwrap` calls with `expect` or proper handling
+
 /// Colors used by [`Output::Debugger`].
 ///
 /// Note that color depends on the [`Category`] used, and can be overridden.
@@ -136,7 +138,10 @@ impl Output {
     /// not track the state.
     pub fn start_new_line(&self) {
         if !LineTracker::is_line_start() {
-            self.print('\n');
+            // Do not use `dprintln` or `self.print` or anything
+            // No attributes should be applied
+            eprintln!();
+            LineTracker.write_str("\n").unwrap();
         }
     }
 
