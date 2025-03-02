@@ -3,8 +3,6 @@ use std::fmt::{self, Write as _};
 
 use crate::runtime::RunState;
 
-// TODO(feat): Replace `unwrap` calls with `expect` or proper handling
-
 /// Colors used by [`Output::Debugger`].
 ///
 /// Note that color depends on the [`Category`] used, and can be overridden.
@@ -141,7 +139,9 @@ impl Output {
             // Do not use `dprintln` or `self.print` or anything
             // No attributes should be applied
             eprintln!();
-            LineTracker.write_str("\n").unwrap();
+            LineTracker
+                .write_str("\n")
+                .expect("`LineTracker::write_str` should never fail");
         }
     }
 
@@ -385,7 +385,9 @@ impl Output {
         let minimal = Self::is_minimal();
         match self {
             Self::Normal => {
-                NormalWriter { minimal }.write_fmt(args).unwrap();
+                NormalWriter { minimal }
+                    .write_fmt(args)
+                    .expect("`NormalWriter::write_fmt` should never fail");
             }
             Self::Debugger(condition, category) => {
                 if minimal && condition == &Condition::Sometimes {
@@ -396,7 +398,7 @@ impl Output {
                     category: *category,
                 }
                 .write_fmt(args)
-                .unwrap();
+                .expect("`DebuggerWriter::write_fmt` should never fail");
             }
         }
     }
@@ -422,13 +424,16 @@ struct NormalWriter {
     minimal: bool,
 }
 impl fmt::Write for NormalWriter {
+    /// Must never fail.
     fn write_str(&mut self, string: &str) -> fmt::Result {
         if self.minimal {
             print!("{}", Decolored::new(string));
         } else {
             print!("{}", string);
         }
-        LineTracker.write_str(string).unwrap();
+        LineTracker
+            .write_str(string)
+            .expect("`LineTracker::write_str` should never fail");
         Ok(())
     }
 }
@@ -441,6 +446,7 @@ struct DebuggerWriter {
     category: Category,
 }
 impl fmt::Write for DebuggerWriter {
+    /// Must never fail.
     fn write_str(&mut self, string: &str) -> fmt::Result {
         let color = match self.category {
             Category::Normal => debugger_colors::PRIMARY,
@@ -490,7 +496,9 @@ impl fmt::Write for DebuggerWriter {
                     }
                 }
 
-                LineTracker.write_str(string).unwrap();
+                LineTracker
+                    .write_str(string)
+                    .expect("`LineTracker::write_str` should never fail");
                 return Ok(());
             }
         };
@@ -501,7 +509,9 @@ impl fmt::Write for DebuggerWriter {
             eprint!("{}", Colored::new(color, string));
         }
 
-        LineTracker.write_str(string).unwrap();
+        LineTracker
+            .write_str(string)
+            .expect("`LineTracker::write_str` should never fail");
         Ok(())
     }
 }
@@ -535,6 +545,7 @@ impl LineTracker {
     }
 }
 impl fmt::Write for LineTracker {
+    /// Must never fail.
     fn write_str(&mut self, string: &str) -> fmt::Result {
         let mut chars = string.chars();
         while let Some(ch) = chars.next() {
