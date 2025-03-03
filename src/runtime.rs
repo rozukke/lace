@@ -125,10 +125,6 @@ impl RunEnvironment {
         })
     }
 
-    pub fn set_minimal(&mut self, minimal: bool) {
-        Output::set_minimal(minimal);
-    }
-
     /// Run with preset memory
     pub fn run(&mut self) {
         loop {

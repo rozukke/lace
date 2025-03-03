@@ -23,3 +23,7 @@ pub mod features;
 
 /// Amount of lines to show as context, each side of focus line (line containing span).
 pub const DIAGNOSTIC_CONTEXT_LINES: usize = 8;
+
+pub fn set_minimal(minimal: bool) {
+    output::Output::set_minimal(minimal);
+}
