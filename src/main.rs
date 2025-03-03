@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::thread::sleep;
 use std::time::Duration;
 
-use clap::{Parser, Subcommand};
+use clap::{ArgGroup, Parser, Subcommand};
 use colored::Colorize;
 use hotwatch::notify::Event;
 use hotwatch::{
@@ -14,7 +14,7 @@ use hotwatch::{
 use miette::{bail, IntoDiagnostic, Result};
 
 use lace::features::Features;
-use lace::{reset_state, DebuggerOptions};
+use lace::{debugger, reset_state};
 use lace::{Air, RunEnvironment, StaticSource};
 
 /// Lace is a complete & convenient assembler toolchain for the LC3 assembly language.
@@ -47,10 +47,12 @@ enum Command {
     },
     /// Run and debug text `.asm` file directly
     ///
-    /// For information on commands, run `debug -c help` or type `help` in the debugger prompt
+    /// For information on commands, run `lace debug --print-help` or type `help` in the debugger prompt
+    #[clap(group(ArgGroup::new("name_or_help").required(true)))]
     Debug {
         /// `.asm` file to run and debug
-        name: PathBuf,
+        #[arg(group("name_or_help"))]
+        name: Option<PathBuf>,
         /// Read debugger commands from argument
         #[arg(short, long)]
         command: Option<String>,
@@ -59,6 +61,11 @@ enum Command {
         minimal: bool,
         #[command(flatten)]
         run_options: RunOptions,
+        /// Print information on debugger commands, without reading any file
+        ///
+        /// Similar to `lace debug <file> --command 'help'`
+        #[arg(short, long, group("name_or_help"))]
+        print_help: bool,
     },
     /// Create binary `.lc3` file to run later or view compiled data
     Compile {
@@ -143,10 +150,20 @@ fn main() -> miette::Result<()> {
             command,
             minimal,
             run_options: RunOptions { features },
-        }) => {
-            lace::features::init(features);
-            run(&name, Some(DebuggerOptions { command }), minimal)
-        }
+            print_help,
+        }) => match (name, print_help) {
+            (Some(name), false) => {
+                lace::features::init(features);
+                run(&name, Some(debugger::Options { command }), minimal)
+            }
+            (None, true) => {
+                // TODO(fix): Respect `--minimal`
+                debugger::print_help_message();
+                Ok(())
+            }
+            // Should never happen due to argument group
+            _ => panic!("command-line parsing is broken. expected `name` XOR `--print-help`."),
+        },
         Some(Command::Compile {
             name,
             dest,
@@ -271,7 +288,7 @@ where
     println!("{left:>12} {right}");
 }
 
-fn run(name: &PathBuf, debugger_opts: Option<DebuggerOptions>, minimal: bool) -> Result<()> {
+fn run(name: &PathBuf, debugger_opts: Option<debugger::Options>, minimal: bool) -> Result<()> {
     file_message(MsgColor::Green, "Assembling", &name);
     let mut program = if let Some(ext) = name.extension() {
         match ext.to_str().unwrap() {

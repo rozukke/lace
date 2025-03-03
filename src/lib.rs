@@ -8,8 +8,7 @@ pub use air::Air;
 mod runtime;
 pub use runtime::RunEnvironment;
 #[macro_use]
-mod debugger;
-pub use debugger::DebuggerOptions;
+pub mod debugger;
 mod output;
 mod term;
 
