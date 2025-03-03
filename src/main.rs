@@ -61,7 +61,7 @@ enum Command {
         minimal: bool,
         #[command(flatten)]
         run_options: RunOptions,
-        /// Print information on debugger commands, without reading any file
+        /// Print information on debugger commands (without reading any file)
         ///
         /// Similar to `lace debug <file> --command 'help'`
         #[arg(short, long, group("name_or_help"))]
