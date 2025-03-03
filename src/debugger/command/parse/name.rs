@@ -75,19 +75,7 @@ const COMMANDS: &'static [CommandNameEntry] = name_list![
         ["br", "breakremove"]
         ["break-remove", "break-rm", "bremove", "brm"]
 ];
-const COMMAND_BREAK: CandidateList = &["break", "b"];
 const COMMAND_STEP: CandidateList = &["step", "s"];
-const SUBCOMMANDS_BREAK: &'static [CommandNameEntry] = name_list![
-    BreakList
-        ["l", "list"]
-        ["print", "show", "display", "dump", "ls"]
-    BreakAdd
-        ["a", "add"]
-        ["set", "move"]
-    BreakRemove
-        ["r", "remove"]
-        ["delete", "rm"]
-];
 const SUBCOMMANDS_STEP: &'static [CommandNameEntry] = name_list![
     StepOver
         []
@@ -98,6 +86,18 @@ const SUBCOMMANDS_STEP: &'static [CommandNameEntry] = name_list![
     StepOut
         ["o", "out"]
         ["finish", "fin"]
+];
+const COMMAND_BREAK: CandidateList = &["break", "b"];
+const SUBCOMMANDS_BREAK: &'static [CommandNameEntry] = name_list![
+    BreakList
+        ["l", "list"]
+        ["print", "show", "display", "dump", "ls"]
+    BreakAdd
+        ["a", "add"]
+        ["set", "move"]
+    BreakRemove
+        ["r", "remove"]
+        ["delete", "rm"]
 ];
 
 impl Arguments<'_> {
@@ -116,45 +116,20 @@ impl Arguments<'_> {
         // Command source should always return a string containing non-whitespace characters
         let command_name = command_name.expect("missing command name");
 
-        // This could be written a bit nicer. But it doesn't seem necessary.
-        if name_matches(command_name, COMMAND_BREAK) {
-            // Normalize name and get as `'static`
-            // Only used for errors
-            let command_name = COMMAND_BREAK[0]; // Array must be non-empty if this branch is being ran
-
-            let Some(subcommand_name) = self.next_token_str() else {
-                return Err(error::Command::MissingSubcommand { command_name });
-            };
-            match find_name_match(subcommand_name, SUBCOMMANDS_BREAK) {
-                Ok(command) => return Ok(command),
-                Err(suggested) => {
-                    return Err(error::Command::InvalidSubcommand {
-                        command_name,
-                        subcommand_name: subcommand_name.to_string(),
-                        suggested,
-                    });
-                }
-            }
+        // Subcommands for `step`
+        if let Some(command) = self.name_matches_with_subcommand(
+            command_name,
+            COMMAND_STEP,
+            SUBCOMMANDS_STEP,
+            Some(CommandName::StepOver),
+        )? {
+            return Ok(command);
         }
-
-        if name_matches(command_name, COMMAND_STEP) {
-            // Normalize name and get as `'static`
-            // Only used for errors
-            let command_name = COMMAND_STEP[0]; // Array must be non-empty if this branch is being ran
-
-            let Some(subcommand_name) = self.next_token_str() else {
-                return Ok(CommandName::StepOver);
-            };
-            match find_name_match(subcommand_name, SUBCOMMANDS_STEP) {
-                Ok(command) => return Ok(command),
-                Err(suggested) => {
-                    return Err(error::Command::InvalidSubcommand {
-                        command_name,
-                        subcommand_name: subcommand_name.to_string(),
-                        suggested,
-                    });
-                }
-            }
+        // Subcommands for `break`
+        if let Some(command) =
+            self.name_matches_with_subcommand(command_name, COMMAND_BREAK, SUBCOMMANDS_BREAK, None)?
+        {
+            return Ok(command);
         }
 
         match find_name_match(command_name, COMMANDS) {
@@ -169,6 +144,41 @@ impl Arguments<'_> {
 
                 return Err(error::Command::InvalidCommand {
                     command_name: command_name.to_string(),
+                    suggested,
+                });
+            }
+        }
+    }
+
+    fn name_matches_with_subcommand(
+        &mut self,
+        command_name: &str,
+        commands: CandidateList,
+        subcommands: &'static [CommandNameEntry],
+        default: Option<CommandName>,
+    ) -> Result<Option<CommandName>, error::Command> {
+        // This could be written a bit nicer. But it doesn't seem necessary.
+        if !name_matches(command_name, commands) {
+            return Ok(None);
+        }
+
+        // Normalize name and get as `'static`
+        // Only used for errors
+        let command_name = commands[0]; // Array must be non-empty if this branch is being ran
+
+        let Some(subcommand_name) = self.next_token_str() else {
+            match default {
+                Some(command) => return Ok(Some(command)),
+                None => return Err(error::Command::MissingSubcommand { command_name }),
+            }
+        };
+
+        match find_name_match(subcommand_name, subcommands) {
+            Ok(command) => return Ok(Some(command)),
+            Err(suggested) => {
+                return Err(error::Command::InvalidSubcommand {
+                    command_name,
+                    subcommand_name: subcommand_name.to_string(),
                     suggested,
                 });
             }
