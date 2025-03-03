@@ -17,11 +17,11 @@ pub use self::breakpoint::{Breakpoint, Breakpoints};
 
 /// Leave this as a struct, in case more options are added in the future. Plus it is more explicit.
 #[derive(Debug)]
-pub struct DebuggerOptions {
+pub struct Options {
     pub command: Option<String>,
 }
 
-pub struct Debugger {
+pub(super) struct Debugger {
     /// Must not be mutated.
     initial_state: RunState,
     /// Must not be mutated.
@@ -73,7 +73,7 @@ enum Status {
 
 /// A message which the debugger passes to the runtime loop.
 #[derive(Debug)]
-pub enum Action {
+pub(super) enum Action {
     /// Keep executing as normal (with the debugger active).
     Proceed,
     /// Disable the debugger, keep executing.
@@ -85,7 +85,7 @@ pub enum Action {
 /// An instruction, which is relevant to the debugger, specifically the "finish" and "continue"
 /// commands.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum SignificantInstr {
+pub(super) enum SignificantInstr {
     /// Return from a subroutine. `RET` or `RETS`.
     ///
     /// Used by "finish".
@@ -115,7 +115,7 @@ impl TryFrom<u16> for SignificantInstr {
 impl Debugger {
     /// Must only be called *once* per process.
     pub(super) fn new(
-        opts: DebuggerOptions,
+        opts: Options,
         initial_state: RunState,
         breakpoints: impl Into<Breakpoints>,
         ast: Vec<AsmLine>,
@@ -317,14 +317,12 @@ impl Debugger {
             Command::Quit => return Some(Action::StopDebugger),
             Command::Exit => return Some(Action::ExitProgram),
 
+            Command::Help => print_help_message(),
+
             Command::Reset => {
                 *state = self.initial_state.clone();
                 self.should_echo_pc = true;
                 dprintln!(Sometimes, Warning, "Reset program to initial state.");
-            }
-
-            Command::Help => {
-                dprintln!(Always, Special, "\n{}", include_str!("./help.txt"));
             }
 
             Command::Continue => {
@@ -654,4 +652,9 @@ fn resolve_symbol_name(address: u16) -> Option<&'static str> {
         }
         None
     })
+}
+
+/// Print debugger information for `help` command or `--print-help` argument.
+pub fn print_help_message() {
+    dprintln!(Always, Special, "\n{}", include_str!("./help.txt"));
 }

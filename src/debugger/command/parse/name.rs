@@ -150,6 +150,7 @@ impl Arguments<'_> {
         }
     }
 
+    // TODO(doc)
     fn name_matches_with_subcommand(
         &mut self,
         command_name: &str,

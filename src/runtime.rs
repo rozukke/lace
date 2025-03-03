@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    debugger::{Action, Debugger, DebuggerOptions, SignificantInstr},
+    debugger::{Action, Debugger, Options, SignificantInstr},
     dprintln,
     output::{Condition, Output},
     Air,
@@ -68,7 +68,7 @@ pub(super) enum RunFlag {
 
 impl RunEnvironment {
     // Not generic because of miette error
-    pub fn try_from(air: Air, debugger_opts: Option<DebuggerOptions>) -> Result<RunEnvironment> {
+    pub fn try_from(air: Air, debugger_opts: Option<Options>) -> Result<RunEnvironment> {
         // TODO(refactor): Use constant for default origin ?
         let orig = air.orig().unwrap_or(0x3000);
         let mut air_array: Vec<u16> = Vec::with_capacity(air.len() + 1);
