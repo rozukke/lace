@@ -14,6 +14,7 @@ Available Commands:
 
     {35;1}step-out{0;35;2}(so){0}
         Continue execution until {1}HALT{0}, breakpoint, or end of current subroutine.
+        {3}Note:{0} Only supports 'well-formed' functions using {35}RET{0}.
 
     {35;1}continue{0;35;2}(c){0}
         Continue execution until {1}HALT{0} or breakpoint.
