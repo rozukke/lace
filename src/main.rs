@@ -157,7 +157,7 @@ fn main() -> miette::Result<()> {
                 run(&name, Some(debugger::Options { command }), minimal)
             }
             (None, true) => {
-                // TODO(fix): Respect `--minimal`
+                lace::set_minimal(minimal);
                 debugger::print_help_message();
                 Ok(())
             }
@@ -326,7 +326,7 @@ fn run(name: &PathBuf, debugger_opts: Option<debugger::Options>, minimal: bool) 
         bail!("File has no extension. Exiting...");
     };
 
-    program.set_minimal(minimal);
+    lace::set_minimal(minimal);
 
     message(MsgColor::Green, "Running", "emitted binary");
     program.run();
