@@ -87,3 +87,28 @@ fn debugs_hello_world() {
             ",
         ));
 }
+
+#[test]
+fn prints_help_message() {
+    let mut cmd = Command::cargo_bin("lace").unwrap();
+    cmd.arg("debug").arg("--print-help").arg("--minimal");
+
+    // Remove all `{...}`
+    let mut expected = String::new();
+    expected.push('\n');
+    let mut expected_raw = include_str!("../src/debugger/help.txt").chars();
+    while let Some(ch) = expected_raw.next() {
+        if ch != '{' {
+            expected.push(ch);
+            continue;
+        }
+        for ch in expected_raw.by_ref() {
+            if ch == '}' {
+                break;
+            }
+        }
+    }
+    expected.push('\n');
+
+    cmd.assert().success().stderr(diff(expected));
+}
