@@ -8,11 +8,11 @@ Available Commands:
         Execute next instruction or whole subroutine (including any nested
             subroutine calls).
 
-    {35;1}step-into{0;35;2}(si){0} {32;3}COUNT{2}?{0}
+    {35;1}step into{0;35;2}(si){0} {32;3}COUNT{2}?{0}
         Execute next instruction or jump into subroutine. Repeats {32;3}COUNT{0} times.
           {2}-{0} {3}COUNT{0}: {36}Integer{0} {3}(default: 1){0}
 
-    {35;1}step-out{0;35;2}(so){0}
+    {35;1}step out{0;35;2}(so){0}
         Continue execution until {1}HALT{0}, breakpoint, or end of current subroutine.
         {3}Note:{0} Only supports 'well-formed' functions using {35}RET{0}.
 

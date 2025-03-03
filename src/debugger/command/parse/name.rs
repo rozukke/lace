@@ -21,15 +21,6 @@ const COMMANDS: &'static [CommandNameEntry] = name_list![
     Help
         ["h", "help", "--help", "-h", ":h", "HELP", "man", "info", "wtf"]
         []
-    StepOver
-        ["s", "step"]
-        ["next", "step-over", "stepover"]
-    StepInto
-        ["si", "stepinto"]
-        ["into", "in", "stepin", "step-into", "step-in", "stepi", "step-i", "sin"]
-    StepOut
-        ["so", "stepout"]
-        ["finish", "fin", "out", "step-out", "stepo", "step-o", "sout"]
     Continue
         ["c", "continue", "cont"]
         ["con"]
@@ -63,6 +54,17 @@ const COMMANDS: &'static [CommandNameEntry] = name_list![
     Exit
         ["x", "exit", ":q", ":wq", "^C"]
         ["halt", "end", "stop"]
+
+    StepOver
+        []
+        ["next", "step-over", "stepover"]
+    StepInto
+        ["si", "stepinto"]
+        ["into", "in", "stepin", "step-into", "step-in", "stepi", "step-i", "sin"]
+    StepOut
+        ["so", "stepout"]
+        ["finish", "fin", "out", "step-out", "stepo", "step-o", "sout"]
+
     BreakList
         ["bl", "breaklist"]
         ["break-list", "break-ls", "blist", "bls"]
@@ -73,8 +75,9 @@ const COMMANDS: &'static [CommandNameEntry] = name_list![
         ["br", "breakremove"]
         ["break-remove", "break-rm", "bremove", "brm"]
 ];
-const BREAK_COMMAND: CandidateList = &["break", "b"];
-const BREAK_SUBCOMMANDS: &'static [CommandNameEntry] = name_list![
+const COMMAND_BREAK: CandidateList = &["break", "b"];
+const COMMAND_STEP: CandidateList = &["step", "s"];
+const SUBCOMMANDS_BREAK: &'static [CommandNameEntry] = name_list![
     BreakList
         ["l", "list"]
         ["print", "show", "display", "dump", "ls"]
@@ -84,6 +87,17 @@ const BREAK_SUBCOMMANDS: &'static [CommandNameEntry] = name_list![
     BreakRemove
         ["r", "remove"]
         ["delete", "rm"]
+];
+const SUBCOMMANDS_STEP: &'static [CommandNameEntry] = name_list![
+    StepOver
+        []
+        ["next"]
+    StepInto
+        ["i", "into"]
+        ["in"]
+    StepOut
+        ["o", "out"]
+        ["finish", "fin"]
 ];
 
 impl Arguments<'_> {
@@ -102,17 +116,36 @@ impl Arguments<'_> {
         // Command source should always return a string containing non-whitespace characters
         let command_name = command_name.expect("missing command name");
 
-        // "break" is currently the only command with subcommands, so it is treated specially
         // This could be written a bit nicer. But it doesn't seem necessary.
-        if name_matches(command_name, BREAK_COMMAND) {
+        if name_matches(command_name, COMMAND_BREAK) {
             // Normalize name and get as `'static`
             // Only used for errors
-            let command_name = BREAK_COMMAND[0]; // Array must be non-empty if this branch is being ran
+            let command_name = COMMAND_BREAK[0]; // Array must be non-empty if this branch is being ran
 
             let Some(subcommand_name) = self.next_token_str() else {
                 return Err(error::Command::MissingSubcommand { command_name });
             };
-            match find_name_match(subcommand_name, BREAK_SUBCOMMANDS) {
+            match find_name_match(subcommand_name, SUBCOMMANDS_BREAK) {
+                Ok(command) => return Ok(command),
+                Err(suggested) => {
+                    return Err(error::Command::InvalidSubcommand {
+                        command_name,
+                        subcommand_name: subcommand_name.to_string(),
+                        suggested,
+                    });
+                }
+            }
+        }
+
+        if name_matches(command_name, COMMAND_STEP) {
+            // Normalize name and get as `'static`
+            // Only used for errors
+            let command_name = COMMAND_STEP[0]; // Array must be non-empty if this branch is being ran
+
+            let Some(subcommand_name) = self.next_token_str() else {
+                return Ok(CommandName::StepOver);
+            };
+            match find_name_match(subcommand_name, SUBCOMMANDS_STEP) {
                 Ok(command) => return Ok(command),
                 Err(suggested) => {
                     return Err(error::Command::InvalidSubcommand {

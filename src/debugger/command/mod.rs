@@ -60,8 +60,8 @@ impl fmt::Display for CommandName {
         match self {
             Self::Help => write!(f, "help"),
             Self::StepOver => write!(f, "step"),
-            Self::StepInto => write!(f, "stepinto"),
-            Self::StepOut => write!(f, "stepout"),
+            Self::StepInto => write!(f, "step into"),
+            Self::StepOut => write!(f, "step out"),
             Self::Continue => write!(f, "continue"),
             Self::Registers => write!(f, "registers"),
             Self::Print => write!(f, "print"),
