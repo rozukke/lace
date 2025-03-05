@@ -4,11 +4,6 @@ use std::io::{BufReader, Read as _, Write as _};
 use std::iter::Peekable;
 use std::net::TcpStream;
 
-thread_local! {
-    /// Must only be mutated within `with_connection`.
-    static CONNECTION: RefCell<Option<Connection>> = const { RefCell::new(None) };
-}
-
 /// Interact with static connection to Minecraft server.
 ///
 /// Opens connection if not already open.
@@ -16,6 +11,9 @@ pub fn with_connection<F, R>(func: F) -> R
 where
     F: FnOnce(&mut Connection) -> R,
 {
+    thread_local! {
+        static CONNECTION: RefCell<Option<Connection>> = const { RefCell::new(None) };
+    }
     CONNECTION.with(|mc| {
         let mut mc = mc.borrow_mut();
         let mc = mc.get_or_insert_with(Connection::new);
@@ -135,10 +133,11 @@ impl<'a> Iterator for StreamIter<'a> {
 /// Parse an integer from an `Iterator`, byte-by-byte
 ///
 /// Only supports the most basic decimal syntax: `^[-+]?[0-9]+(\.[0-9]+)?$`.
-/// All characters after decimal point are taken into account when rounding down, but are otherwise
+/// Characters after decimal point are taken into account when rounding down, but are otherwise
 /// discarded.
 ///
-/// Consumes entire integer and following byte (which must be `b','` or `b'\n'`).
+/// Consumes entire integer and following byte (which must be `b','` or `b'\n'`, for `next` and
+/// `last` respectively).
 struct IntegerReader<I>
 where
     I: Iterator<Item = u8>,
@@ -179,6 +178,8 @@ where
     }
 
     /// See also: [`debugger::command::parse::integer`]
+    ///
+    /// Boolean flag is `true` if `b'\n'` was consumed (end of line).
     fn next_inner<T>(&mut self) -> (T, bool)
     where
         T: TryFrom<i32>,
@@ -254,6 +255,8 @@ where
 }
 
 /// Response byte, with `b','` and `b'\n'` converted to named variants.
+///
+/// `Byte::Some(b',')` and `Byte::Some(b'\n')` are both invalid and should never be constructed.
 #[derive(Clone, Copy, Debug)]
 enum Byte {
     Some(u8),
