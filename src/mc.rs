@@ -4,6 +4,8 @@ use std::io::{BufReader, Read as _, Write as _};
 use std::iter::Peekable;
 use std::net::TcpStream;
 
+use crate::runtime::{MemoryStr, RunState};
+
 /// Interact with static connection to Minecraft server.
 ///
 /// Opens connection if not already open.
@@ -47,17 +49,16 @@ impl Connection {
             fatal(Error::Send);
         }
     }
-
+    /// Create `[IntegerReader]` to stream read and deserialize response from server.
     fn recv(&mut self) -> IntegerReader<StreamIter> {
         IntegerReader::new(StreamIter::new(&mut self.stream).peekable())
     }
 
     /// Sends a message to the in-game chat, does not require a joined player.
     ///
-    /// **WARNING**: Assumes string has *already* been sanitized! Characters such as '\n' will not
-    /// be accepted by the server!
-    pub fn post_to_chat(&mut self, message: impl AsRef<str>) {
-        self.send(format_args!("chat.post({})\n", message.as_ref()));
+    /// Only accepts [`CleanMemoryStr`] to ensure string sanitization.
+    pub fn post_to_chat(&mut self, message: CleanMemoryStr) {
+        self.send(format_args!("chat.post({})\n", message));
     }
 
     /// Returns a coordinate representing player position (block position of lower half of
@@ -278,6 +279,34 @@ impl From<Option<u8>> for Byte {
 impl From<Option<&u8>> for Byte {
     fn from(byte: Option<&u8>) -> Self {
         byte.copied().into()
+    }
+}
+
+/// On [`fmt::Display::fmt`], uses [`crate::runtime::MemoryStr`] to read non-packed string from
+/// memory, replacing or omitting invalid characters such as `'\n'`.
+///
+/// Must implement [`fmt::Display::fmt`] (not [`Iterator`]) to be used as an request argument in
+/// [`Connection`]. Note that `fmt` cannot mutate `self`, so [`CleanMemoryStr`] must construct
+/// [`MemoryStr`] on each format (which is cheap anyway).
+pub struct CleanMemoryStr<'a> {
+    state: &'a RunState,
+    start: u16,
+}
+impl<'a> CleanMemoryStr<'a> {
+    pub fn new(start: u16, state: &'a RunState) -> Self {
+        Self { start, state }
+    }
+}
+impl<'a> fmt::Display for CleanMemoryStr<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for chr in MemoryStr::new(self.start, self.state) {
+            match chr {
+                '\n' | '\t' => write!(f, " ")?,
+                '\x20'..='\x7e' => write!(f, "{}", chr)?,
+                _ => (),
+            }
+        }
+        Ok(())
     }
 }
 

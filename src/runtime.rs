@@ -7,7 +7,8 @@ use std::{
 
 use crate::{
     debugger::{Action, Debugger, DebuggerOptions, SignificantInstr},
-    dprintln, env, mc,
+    dprintln, env,
+    mc::{self, CleanMemoryStr},
     output::{Condition, Output},
     Air,
 };
@@ -507,14 +508,8 @@ impl RunState {
             }
             // puts
             0x22 => {
-                // could probably rewrite with iterators but idk if worth
-                for addr in self.reg(0).. {
-                    let chr_raw = self.mem(addr);
-                    let chr_ascii = (chr_raw & 0xFF) as u8 as char;
-                    if chr_ascii == '\0' {
-                        break;
-                    }
-                    Output::Normal.print(chr_ascii);
+                for chr in MemoryStr::new(self.reg(0), self) {
+                    Output::Normal.print(chr);
                 }
                 stdout().flush().unwrap();
             }
@@ -527,15 +522,8 @@ impl RunState {
             }
             // putsp
             0x24 => {
-                'string: for addr in self.reg(0).. {
-                    let chr_raw = self.mem(addr);
-                    for chr in [chr_raw >> 8, chr_raw & 0xFF] {
-                        let chr_ascii = chr as u8 as char;
-                        if chr_ascii == '\0' {
-                            break 'string;
-                        }
-                        Output::Normal.print(chr_ascii);
-                    }
+                for chr in MemoryStr::new_packed(self.reg(0), self) {
+                    Output::Normal.print(chr);
                 }
                 stdout().flush().unwrap();
             }
@@ -557,23 +545,9 @@ impl RunState {
 
             // chat
             0x28 => {
-                // Requires copy so string can be sanitized
-                // Technically could be avoided by creating a struct which implements `Display`
-                let mut message = String::new();
-                for addr in self.reg(0).. {
-                    let chr_raw = self.mem(addr);
-                    let chr_ascii = (chr_raw & 0xFF) as u8 as char;
-                    if chr_ascii == '\0' {
-                        break;
-                    }
-                    match chr_ascii {
-                        '\n' => message.push(' '),
-                        '\t' | '\x20'..='\x7e' => message.push(chr_ascii),
-                        _ => (),
-                    }
-                }
+                let message = CleanMemoryStr::new(self.reg(0), self);
                 mc::with_connection(|mc| {
-                    mc.post_to_chat(&message);
+                    mc.post_to_chat(message);
                 });
             }
             // getp
@@ -621,6 +595,77 @@ impl RunState {
                 "called a trap with an unknown vector of 0x{:02x}",
                 trap_vect
             ),
+        }
+    }
+}
+
+/// Read string from [`RunState`] memory.
+///
+/// String may be packed. A packed string uses a single byte for each character, so each word is
+/// read as two bytes.
+///
+/// Packed strings are read in big-endian.
+///
+/// String must be null-terminated. Null terminator is `0x0000` for non-packed strings, and `0x00`
+/// for packed strings (null byte may be either high or low byte in word).
+///
+/// See also: [`mc::CleanMemoryStr`].
+pub(super) struct MemoryStr<'a> {
+    state: &'a RunState,
+    /// Address of next word. Note that if string is packed, this only gets incremented after the
+    /// second (low) byte is consumed.
+    addr: u16,
+    /// `None`: Bytes are not packed, 1 word == 1 character.
+    /// `Some(is_second_byte)`: Bytes are packed, 1 word == 2 characters.
+    ///
+    /// `is_second_byte` is `true` if first byte of current word was already yielded.
+    packed: Option<bool>,
+}
+impl<'a> MemoryStr<'a> {
+    pub fn new(start: u16, state: &'a RunState) -> Self {
+        Self {
+            state,
+            addr: start,
+            packed: None,
+        }
+    }
+    pub fn new_packed(start: u16, state: &'a RunState) -> Self {
+        Self {
+            state,
+            addr: start,
+            packed: Some(false),
+        }
+    }
+}
+impl<'a> Iterator for MemoryStr<'a> {
+    type Item = char;
+
+    fn next(&mut self) -> Option<char> {
+        let word = self.state.mem(self.addr);
+
+        let byte = match self.packed {
+            // Not packed
+            None => {
+                self.addr += 1;
+                word & 0xFF
+            }
+            // Packed, on first byte
+            Some(false) => {
+                self.packed = Some(true);
+                word >> 8
+            }
+            // Packed, on second byte
+            Some(true) => {
+                self.packed = Some(false);
+                self.addr += 1;
+                word & 0xFF
+            }
+        };
+
+        if byte == 0x00 {
+            None
+        } else {
+            Some(byte as u8 as char)
         }
     }
 }
