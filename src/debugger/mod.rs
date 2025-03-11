@@ -381,7 +381,6 @@ impl Debugger {
             }
 
             Command::Print { location } => match location {
-                // TODO(feat): Print as hex ALWAYS: 0x1234 or x1234
                 Location::Register(register) => {
                     dprintln!(Sometimes, Info, "Register R{}:", register as u16);
                     Output::Debugger(Condition::Always, Default::default())
@@ -505,7 +504,7 @@ impl Debugger {
 
                     if Output::is_minimal() {
                         for breakpoint in &self.breakpoints {
-                            dprintln!(Always, Info, "0x{:04x}", breakpoint.address);
+                            dprintln!(Always, Info, "x{:04x}", breakpoint.address);
                         }
                     } else {
                         Output::Debugger(Condition::Always, Default::default())
@@ -556,10 +555,13 @@ impl Debugger {
 
         let Some(stmt) = self.asm_source.show_line_context(address) else {
             dprintln!(
-                Always,
+                Alternate,
                 Error,
-                "Address 0x{:04x} does not correspond to an instruction",
-                address,
+                "Assembly::NotAnInstruction",
+                [
+                    "Address 0x{:04x} does not correspond to an instruction",
+                    address
+                ],
             );
             return;
         };

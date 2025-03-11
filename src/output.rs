@@ -212,10 +212,10 @@ impl Output {
     pub fn print_registers(&self, state: &RunState) {
         if Self::is_minimal() {
             for i in 0..8 {
-                self.print(format_args!("R{} 0x{:04x}\n", i, state.reg(i)));
+                self.print(format_args!("R{} x{:04x}\n", i, state.reg(i)));
             }
-            self.print(format_args!("PC 0x{:04x}\n", state.pc()));
-            self.print(format_args!("CC 0b{:03b}\n", state.flag() as u8));
+            self.print(format_args!("PC x{:04x}\n", state.pc()));
+            self.print(format_args!("CC {:03b}\n", state.flag() as u8));
             return;
         }
 
@@ -337,8 +337,7 @@ impl Output {
     /// table.
     pub fn print_integer(&self, value: u16) {
         if Self::is_minimal() {
-            self.print_decimal(value);
-            self.print('\n');
+            self.print_fmt(format_args!("x{:04x}\n", value));
             return;
         }
         self.print("\x1b[2m┌───────────────────────────────┐\x1b[0m\n");
