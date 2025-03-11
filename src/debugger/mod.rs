@@ -381,6 +381,7 @@ impl Debugger {
             }
 
             Command::Print { location } => match location {
+                // TODO(feat): Print as hex ALWAYS: 0x1234 or x1234
                 Location::Register(register) => {
                     dprintln!(Sometimes, Info, "Register R{}:", register as u16);
                     Output::Debugger(Condition::Always, Default::default())

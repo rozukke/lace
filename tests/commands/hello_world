@@ -1,0 +1,15 @@
+echo lea
+assembly
+registers
+
+step
+echo puts
+assembly
+reg
+
+step
+echo halt
+assembly
+reg
+
+continue

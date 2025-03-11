@@ -19,80 +19,33 @@ fn debugs_hello_world() {
         .arg("tests/files/hw.asm")
         .arg("--minimal")
         .arg("--command")
-        .arg(
-            "
-            echo lea
-            assembly
-            registers
-
-            step
-            echo puts
-            assembly
-            reg
-
-            step
-            echo halt
-            assembly
-            reg
-
-            continue
-        ",
-        );
+        .arg(include_str!("commands/hello_world"));
 
     cmd.assert()
         .success()
         .stdout(contains("Hello, world!"))
         .stdout(contains("Halted"))
-        .stderr(diff(
-            // Empty line is where "Hello, world!" is printed to stdout
-            "\
-                [lea]\n\
-                lea r0 hw\n\
-                R0 0x0000\n\
-                R1 0x0000\n\
-                R2 0x0000\n\
-                R3 0x0000\n\
-                R4 0x0000\n\
-                R5 0x0000\n\
-                R6 0x0000\n\
-                R7 0xfdff\n\
-                PC 0x3000\n\
-                CC 0b000\n\
-                [puts]\n\
-                puts\n\
-                R0 0x3003\n\
-                R1 0x0000\n\
-                R2 0x0000\n\
-                R3 0x0000\n\
-                R4 0x0000\n\
-                R5 0x0000\n\
-                R6 0x0000\n\
-                R7 0xfdff\n\
-                PC 0x3001\n\
-                CC 0b001\n\
-                \n\
-                Reached HALT. Pausing execution.\n\
-                [halt]\n\
-                halt\n\
-                R0 0x3003\n\
-                R1 0x0000\n\
-                R2 0x0000\n\
-                R3 0x0000\n\
-                R4 0x0000\n\
-                R5 0x0000\n\
-                R6 0x0000\n\
-                R7 0xfdff\n\
-                PC 0x3002\n\
-                CC 0b001\n\
-            ",
-        ));
+        .stderr(diff(include_str!("expected/hello_world")));
 }
 
 #[test]
 fn prints_help_message() {
     let mut cmd = Command::cargo_bin("lace").unwrap();
     cmd.arg("debug").arg("--print-help").arg("--minimal");
+    cmd.assert().success().stderr(diff(minimal_help_message()));
 
+    let mut cmd = Command::cargo_bin("lace").unwrap();
+    cmd.arg("debug")
+        .arg("tests/files/hw.asm")
+        .arg("--minimal")
+        .arg("--command")
+        .arg("help");
+    cmd.assert()
+        .success()
+        .stderr(diff(minimal_help_message() + "\n"));
+}
+
+fn minimal_help_message() -> String {
     // Remove all `{...}`
     let mut expected = String::new();
     expected.push('\n');
@@ -109,6 +62,5 @@ fn prints_help_message() {
         }
     }
     expected.push('\n');
-
-    cmd.assert().success().stderr(diff(expected));
+    expected
 }
