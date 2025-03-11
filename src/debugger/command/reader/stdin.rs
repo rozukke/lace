@@ -1,6 +1,6 @@
 use std::io::{self, Read as _};
 
-use super::Read;
+use super::{Read, INITIAL_BUFFER_CAPACITY};
 
 /// Stdin which is not attached to a terminal, i.e. piped.
 #[derive(Debug)]
@@ -14,7 +14,7 @@ impl Stdin {
     pub fn from(stdin: io::Stdin) -> Self {
         Self {
             stdin,
-            buffer: String::new(),
+            buffer: String::with_capacity(INITIAL_BUFFER_CAPACITY),
         }
     }
 

@@ -4,12 +4,15 @@ use std::{fs::File, io::BufReader};
 
 use crossterm::{cursor, execute, terminal};
 
-use super::{Read, PROMPT};
+use super::{Read, INITIAL_BUFFER_CAPACITY, PROMPT};
 use crate::dprintln;
 use crate::{
     output::{debugger_colors, Output},
     term::{self, Key},
 };
+
+// TODO(opt): Use cyclic buffer for history
+// TODO(opt): Use fixed-size strings for history items ?
 
 /// Interactive unbuffered terminal.
 #[derive(Debug)]
@@ -38,7 +41,7 @@ impl Terminal {
     pub fn new() -> Self {
         Self {
             stderr: io::stderr(),
-            buffer: String::new(),
+            buffer: String::with_capacity(INITIAL_BUFFER_CAPACITY),
             cursor: 0,
             visible_cursor: 0,
             history: TerminalHistory::new(),

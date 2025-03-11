@@ -12,6 +12,9 @@ use crate::{dprint, dprintln};
 /// Must be ASCII to ensure `.len() == .chars().count()`
 const PROMPT: &str = "DEBUGGER> ";
 
+/// Initial capacity of a command buffer.
+const INITIAL_BUFFER_CAPACITY: usize = 64;
+
 /// Read from argument first, if `Some`. Then read from stream.
 #[derive(Debug)]
 pub struct CommandReader {
