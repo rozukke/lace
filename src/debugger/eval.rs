@@ -26,9 +26,10 @@ fn eval_inner(state: &mut RunState, line: &'static str) -> Result<()> {
         // are not executed
         AirStmt::Branch { .. } => {
             dprintln!(
-                Always,
+                Alternate,
                 Error,
-                "Simulating `BR*` instructions is not permitted."
+                "DisallowedInstruction::Branch",
+                ["Simulating `BR*` instructions is not permitted."],
             );
             dprintln!(Sometimes, Error, "Consider using `jump` command instead.");
             return Ok(());
@@ -38,9 +39,10 @@ fn eval_inner(state: &mut RunState, line: &'static str) -> Result<()> {
         // Since it can only be used in supervisor mode, and it is unimplemented regardless
         AirStmt::Interrupt => {
             dprintln!(
-                Always,
+                Alternate,
                 Error,
-                "Simulating `RTI` instruction is not permitted."
+                "DisallowedInstruction::Interrupt",
+                ["Simulating `RTI` instruction is not permitted."],
             );
             dprintln!(Sometimes, Error, "Don't even think about it.");
             return Ok(());
@@ -50,9 +52,10 @@ fn eval_inner(state: &mut RunState, line: &'static str) -> Result<()> {
         // Since `HALT` is treated specially by debugger
         AirStmt::Trap { trap_vect: 0x25 } => {
             dprintln!(
-                Always,
+                Alternate,
                 Error,
-                "Simulating `HALT` trap instruction is not permitted."
+                "DisallowedInstruction::Halt",
+                ["Simulating `HALT` trap instruction is not permitted."],
             );
             dprintln!(Sometimes, Error, "Consider using `exit` command instead.");
             return Ok(());
@@ -60,11 +63,13 @@ fn eval_inner(state: &mut RunState, line: &'static str) -> Result<()> {
 
         // Don't allow unknown/invalid trap instructions
         // To prevent exception and program exit
+        // WARNING: If custom traps are implemented, this condition should be changed!!
         AirStmt::Trap { trap_vect } if !(0x20..=0x27).contains(&trap_vect) => {
             dprintln!(
-                Always,
+                Alternate,
                 Error,
-                "Simulating invalid or unknown trap instructions is not permitted."
+                "DisallowedInstruction::UnknownTrap",
+                ["Simulating invalid or unknown trap instructions is not permitted."],
             );
             dprintln!(Sometimes, Error, "What are you even trying to do?");
             return Ok(());

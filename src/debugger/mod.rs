@@ -156,19 +156,25 @@ impl Debugger {
             Ordering::Less => {
                 // This can probably only happen with a bad `BR*` instruction
                 dprintln!(
-                    Always,
+                    Alternate,
                     Error,
-                    "Out of bounds of user program memory (PC < 0x{:04x}). Pausing execution.",
-                    self.orig(),
+                    "OutOfBounds::ProgramCounter",
+                    [
+                        "Out of bounds of user program memory (PC < 0x{:04x}). Pausing execution.",
+                        self.orig(),
+                    ],
                 );
                 self.status = Status::WaitForAction;
             }
             Ordering::Greater if state.pc() != HALT_ADDRESS => {
                 dprintln!(
-                    Always,
+                    Alternate,
                     Error,
-                    "Out of bounds of user program memory (PC >= 0x{:04X}). Pausing execution.",
-                    USER_MEMORY_END,
+                    "OutOfBounds::ProgramCounter",
+                    [
+                        "Out of bounds of user program memory (PC >= 0x{:04X}). Pausing execution.",
+                        USER_MEMORY_END,
+                    ]
                 );
                 self.status = Status::WaitForAction;
             }
@@ -194,9 +200,10 @@ impl Debugger {
                         // As opposed to a single instruction
                         if self.instruction_count > 1 {
                             dprintln!(
-                                Always,
+                                Alternate,
                                 Warning,
-                                "Reached end of subroutine. Pausing execution."
+                                "Reached::SubroutineEnd",
+                                ["Reached end of subroutine. Pausing execution."],
                             );
                         }
                         self.status = Status::WaitForAction;
@@ -221,9 +228,10 @@ impl Debugger {
                 Status::Finish => {
                     if instr == Some(SignificantInstr::Return) {
                         dprintln!(
-                            Always,
+                            Alternate,
                             Warning,
-                            "Reached end of subroutine. Pausing execution."
+                            "Reached::SubroutineEnd",
+                            ["Reached end of subroutine. Pausing execution."],
                         );
                         // Program counter has already been incremented
                         // So immediately break execution now
@@ -251,15 +259,17 @@ impl Debugger {
         {
             if breakpoint.is_predefined {
                 dprintln!(
-                    Always,
+                    Alternate,
                     Warning,
-                    "Reached preset breakpoint. Pausing execution."
+                    "Reached::Breakpoint",
+                    ["Reached preset breakpoint. Pausing execution."]
                 );
             } else {
                 dprintln!(
-                    Always,
+                    Alternate,
                     Warning,
-                    "Reached runtime breakpoint. Pausing execution."
+                    "Reached::Breakpoint",
+                    ["Reached runtime breakpoint. Pausing execution."]
                 );
             }
             self.current_breakpoint = Some(pc);
@@ -269,7 +279,12 @@ impl Debugger {
 
         // Always break on `HALT` (unlike breakpoints)
         if instr == Some(SignificantInstr::Halt) {
-            dprintln!(Always, Warning, "Reached HALT. Pausing execution.");
+            dprintln!(
+                Alternate,
+                Warning,
+                "Reached::Halt",
+                ["Reached HALT. Pausing execution."],
+            );
             self.status = Status::WaitForAction;
             return;
         }
@@ -304,7 +319,7 @@ impl Debugger {
 
         // Read and parse next command
         let command = Command::read_from(&mut self.command_reader, |error| {
-            dprintln!(Always, Error, "{}", error);
+            dprintln!(Alternate, Error, "CommandError", ["{}", error]);
             dprintln!(Sometimes, Error, "Type `help` for a list of commands.");
         })
         .unwrap_or(Command::Quit); // "quit" on EOF
@@ -347,11 +362,15 @@ impl Debugger {
             }
 
             Command::StepOut => {
-                if features::stack() {
+                if !features::stack() {
                     dprintln!(
-                        Always,
+                        Alternate,
                         Error,
-                        "Using `stepout` while 'stack' feature is enabled is not permitted.\n    Run without `-f stack` or consider using breakpoints instead."
+                        "MissingFeature::Stack",
+                        [concat!(
+                            "Using `stepout` while 'stack' feature is enabled is not permitted.\n",
+                            "    Run without `-f stack` or consider using breakpoints instead."
+                        )],
                     );
                 } else {
                     Self::check_halt(instr)?;
@@ -442,10 +461,10 @@ impl Debugger {
                     is_predefined: false,
                 }) {
                     dprintln!(
-                        Always,
+                        Alternate,
                         Error,
-                        "Breakpoint already exists at 0x{:04x}.",
-                        address
+                        "Breakpoints::AlreadyExists",
+                        ["Breakpoint already exists at 0x{:04x}.", address],
                     );
                 } else {
                     dprintln!(Sometimes, Warning, "Added breakpoint at 0x{:04x}.", address);
@@ -463,13 +482,23 @@ impl Debugger {
                         address
                     );
                 } else {
-                    dprintln!(Always, Error, "No breakpoint exists at 0x{:04x}.", address);
+                    dprintln!(
+                        Alternate,
+                        Error,
+                        "Breakpoints::NotFound",
+                        ["No breakpoint exists at 0x{:04x}.", address],
+                    );
                 }
             }
 
             Command::BreakList => {
                 if self.breakpoints.is_empty() {
-                    dprintln!(Sometimes, Info, "No breakpoints exist.");
+                    dprintln!(
+                        Alternate,
+                        Info,
+                        "Breakpoints::Empty",
+                        ["No breakpoints exist."],
+                    );
                 } else {
                     dprintln!(Sometimes, Info, "Breakpoints:");
 
@@ -502,7 +531,12 @@ impl Debugger {
     /// message.
     fn check_halt(instr: Option<SignificantInstr>) -> Option<()> {
         if instr == Some(SignificantInstr::Halt) {
-            dprintln!(Sometimes, Warning, "Already at HALT. Unable to continue.");
+            dprintln!(
+                Alternate,
+                Warning,
+                "Reached::Halt",
+                ["Already at HALT. Unable to continue."]
+            );
             None
         } else {
             Some(())
@@ -552,9 +586,10 @@ impl Debugger {
     fn resolve_pc_offset(&self, pc: u16, offset: i16) -> Option<u16> {
         let Some(address) = self.add_address_offset(pc, offset) else {
             dprintln!(
-                Always,
+                Alternate,
                 Error,
-                "Program counter + offset is out of bounds of memory."
+                "OutOfBounds::Address",
+                ["Program counter + offset is out of bounds of memory."],
             );
             return None;
         };
@@ -567,9 +602,10 @@ impl Debugger {
 
         let Some(address) = self.add_address_offset(address + self.orig(), label.offset) else {
             dprintln!(
-                Always,
+                Alternate,
                 Error,
-                "Label address + offset is out of bounds of memory."
+                "OutOfBounds::Address",
+                ["Label address + offset is out of bounds of memory."],
             );
             return None;
         };
@@ -601,11 +637,14 @@ impl Debugger {
             return Some(());
         }
         dprintln!(
-            Always,
+            Alternate,
             Error,
-            "Address is not in user address space. Must be in range [0x{:04x}, 0x{:04x}).",
-            self.orig(),
-            USER_MEMORY_END,
+            "OutOfBounds::Address",
+            [
+                "Address is not in user address space. Must be in range [0x{:04x}, 0x{:04x}).",
+                self.orig(),
+                USER_MEMORY_END,
+            ],
         );
         None
     }
@@ -624,7 +663,12 @@ fn resolve_symbol_address(label: &str) -> Option<u16> {
             return Some(addr - 1);
         }
 
-        dprintln!(Always, Error, "Label not found named `{}`.", label);
+        dprintln!(
+            Alternate,
+            Error,
+            "Labels::NotFound",
+            ["Label not found named `{}`.", label],
+        );
         // Check for case-*insensitive* match
         for key in sym.keys() {
             if key.eq_ignore_ascii_case(label) {

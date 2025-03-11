@@ -15,6 +15,10 @@ pub mod debugger_colors {
 /// Print to debugger output.
 #[macro_export]
 macro_rules! dprint {
+    ( Alternate $(, $($tt:tt)* )? ) => {{
+        compile_error!("cannot use `Alternate` with `dprint`. use `dprintln` instead");
+    }};
+
     // `$fmt:expr` is required to allow `concat!` macro to be accepted
     ( $condition:expr, $category:expr, $fmt:expr $(, $($tt:tt)* )? ) => {{
         // This is not very hygenic. But makes macro more ergonomic to use.
@@ -43,6 +47,30 @@ macro_rules! dprint {
 /// Print to debugger output, with a newline.
 #[macro_export]
 macro_rules! dprintln {
+    // Choose message depending on `Output::is_minimal`
+    ( Alternate, $category:expr,
+      $minimal:literal,                         // If minimal
+      [ $fmt:expr $(, $($tt:tt)* )? ] $(,)? // Otherwise
+    ) => {{
+        if $crate::output::Output::is_minimal() {
+            $crate::dprint!(Always, $category, concat!($minimal, "\n"));
+        } else {
+            $crate::dprint!(Always, $category, $fmt $(, $($tt)* )?);
+        }
+    }};
+
+    ( Alternate, $category:expr,
+      [ $fmt_a:expr $(, $($tt_a:tt)* )? ] $(,)?
+    ) => {{
+        compile_error!("requires two format groups");
+    }};
+    ( Alternate, $category:expr $(, $($tt:tt)* )? ) => {{
+        compile_error!("requires two format groups");
+    }};
+    ( Alternate $(, $($tt:tt)* )? ) => {{
+        compile_error!("requires category and two format groups");
+    }};
+
     ( $condition:expr $(,)? ) => {{
         $crate::dprint!(
             $condition,

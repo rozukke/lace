@@ -544,6 +544,10 @@ impl RunState {
                 Output::Normal.start_new_line();
                 Output::Normal.print_registers(self);
             }
+
+            // Note that if custom traps are implemented, `src/debugger/eval.rs` must be modified
+            // to explicitely allow `eval` to simulate the traps
+
             // unknown
             _ => exception!(
                 "called a trap with an unknown vector of 0x{:02x}",
