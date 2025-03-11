@@ -196,7 +196,7 @@ impl Terminal {
             }
             Key::CtrlRight => {
                 self.visible_cursor =
-                    find_word_start(self.get_current(), self.visible_cursor, false);
+                    find_word_next(self.get_current(), self.visible_cursor, false);
             }
 
             // Back/forth through history
@@ -286,104 +286,6 @@ impl Read for Terminal {
     }
 }
 
-fn find_word_start(string: &str, cursor: usize, full_word: bool) -> usize {
-    let mut chars = string.char_indices().skip(cursor);
-    // At end of line (covers empty string case)
-    let Some((_, first)) = chars.next() else {
-        return string.len();
-    };
-    if first.is_whitespace() {
-        // On a space
-        // Look for first non-space character
-        for (i, ch) in chars.by_ref() {
-            if !ch.is_whitespace() {
-                return i;
-            }
-        }
-    } else {
-        // On non-space
-        let alnum = first.is_alphanumeric();
-        while let Some((i, ch)) = chars.next() {
-            // Space found
-            // Look for first non-space character
-            if ch.is_whitespace() {
-                for (i, ch) in chars.by_ref() {
-                    if !ch.is_whitespace() {
-                        return i;
-                    }
-                }
-            }
-            // First punctuation after word
-            // OR first word after punctuation
-            // (If distinguishing words and punctuation)
-            if !full_word && ch.is_alphanumeric() != alnum {
-                return i;
-            }
-        }
-    }
-    // No next word found
-    // Go to end of line
-    string.len()
-}
-
-// TODO(refactor/opt): Rewrite to be more idiomaticly Rust
-fn find_word_back(string: &str, mut cursor: usize, full_word: bool) -> usize {
-    // At start of line
-    if cursor <= 1 {
-        return 0;
-    }
-    // Start at previous character
-    cursor -= 1;
-    // On a sequence of spaces (>=1)
-    // Look for end of previous word, start from there instead
-    while cursor > 0 && string.chars().nth(cursor).unwrap().is_whitespace() {
-        cursor -= 1;
-    }
-    // Now on a non-space
-    let alnum = string.chars().nth(cursor).unwrap().is_alphanumeric();
-    while cursor > 0 {
-        cursor -= 1;
-        // Space found
-        // OR first punctuation before word
-        // OR first word before punctuation
-        // Word starts at next index
-        // (If distinguishing words and punctuation)
-        if string.chars().nth(cursor).unwrap().is_whitespace()
-            || (!full_word && string.chars().nth(cursor).unwrap().is_alphanumeric() != alnum)
-        {
-            return cursor + 1;
-        }
-    }
-    // No previous word found
-    // Go to start of line
-    0
-}
-
-/// Insert a character at a character index.
-fn insert_char_index(string: &mut String, char_index: usize, ch: char) {
-    let (byte_index, char_count) = count_chars_bytes(string, char_index);
-    assert!(char_index <= char_count, "out-of-bounds char index");
-    string.insert(byte_index, ch)
-}
-/// Remove a character at a character index.
-fn remove_char_index(string: &mut String, char_index: usize) -> char {
-    let (byte_index, char_count) = count_chars_bytes(string, char_index);
-    assert!(char_index < char_count, "out-of-bounds char index");
-    string.remove(byte_index)
-}
-/// Returns the byte index from a character index, and the total character count.
-fn count_chars_bytes(string: &str, char_index: usize) -> (usize, usize) {
-    let mut byte_index = string.len();
-    let mut char_count = 0;
-    for (i, (j, _)) in string.char_indices().enumerate() {
-        if i == char_index {
-            byte_index = j;
-        }
-        char_count += 1;
-    }
-    (byte_index, char_count)
-}
-
 impl TerminalHistory {
     const FILE_NAME: &str = "lace-debugger-history";
 
@@ -441,7 +343,7 @@ impl TerminalHistory {
         let file_path = parent_dir.join(Self::FILE_NAME);
         if file_path.exists() && !file_path.is_file() {
             Self::report_error(format_args!(
-                "File exists but is not a file: {}",
+                "File exists but is not a regular file: {}",
                 file_path.display(),
             ));
             return None;
@@ -469,4 +371,114 @@ impl TerminalHistory {
             message,
         );
     }
+}
+
+/// Return character index of start of the word to the left of cursor. Uses Vim rules.
+///
+/// - If `full_word == true`, then it considers a word boundary to only be between whitespace and
+/// non-whitespace characters. Eg. `abc def` has word boundaries directly before and after the
+/// whitespace character.
+/// - If `full_word == false`, then it additionally considers a word boundary
+/// to be between alphanumeric characters and non-alphanumeric characters. Eg: `abc+def` has word
+/// boundaries directly before and after the `+` character.
+fn find_word_next(string: &str, cursor: usize, full_word: bool) -> usize {
+    let mut chars = string.char_indices().skip(cursor);
+    // At end of line (covers empty string case)
+    let Some((_, first)) = chars.next() else {
+        return string.len();
+    };
+    if first.is_whitespace() {
+        // On a space
+        // Look for first non-space character
+        for (i, ch) in chars.by_ref() {
+            if !ch.is_whitespace() {
+                return i;
+            }
+        }
+    } else {
+        // On non-space
+        let alnum = first.is_alphanumeric();
+        while let Some((i, ch)) = chars.next() {
+            // Space found
+            // Look for first non-space character
+            if ch.is_whitespace() {
+                for (i, ch) in chars.by_ref() {
+                    if !ch.is_whitespace() {
+                        return i;
+                    }
+                }
+            }
+            // First punctuation after word
+            // OR first word after punctuation
+            // (If distinguishing words and punctuation)
+            if !full_word && ch.is_alphanumeric() != alnum {
+                return i;
+            }
+        }
+    }
+    // No next word found
+    // Go to end of line
+    string.len()
+}
+
+/// Return character index of end of the word to the right of cursor. Uses Vim rules.
+///
+/// See [`find_word_start`]
+// TODO(refactor/opt): Rewrite to be more idiomaticly Rust
+fn find_word_back(string: &str, mut cursor: usize, full_word: bool) -> usize {
+    // At start of line
+    if cursor <= 1 {
+        return 0;
+    }
+    // Start at previous character
+    cursor -= 1;
+    // On a sequence of spaces (>=1)
+    // Look for end of previous word, start from there instead
+    while cursor > 0 && string.chars().nth(cursor).unwrap().is_whitespace() {
+        cursor -= 1;
+    }
+    // Now on a non-space
+    let alnum = string.chars().nth(cursor).unwrap().is_alphanumeric();
+    while cursor > 0 {
+        cursor -= 1;
+        // Space found
+        // OR first punctuation before word
+        // OR first word before punctuation
+        // Word starts at next index
+        // (If distinguishing words and punctuation)
+        if string.chars().nth(cursor).unwrap().is_whitespace()
+            || (!full_word && string.chars().nth(cursor).unwrap().is_alphanumeric() != alnum)
+        {
+            return cursor + 1;
+        }
+    }
+    // No previous word found
+    // Go to start of line
+    0
+}
+
+/// Insert a character at a character index.
+fn insert_char_index(string: &mut String, char_index: usize, ch: char) {
+    let (byte_index, char_count) = count_chars_bytes(string, char_index);
+    assert!(char_index <= char_count, "out-of-bounds char index");
+    string.insert(byte_index, ch)
+}
+/// Remove a character at a character index.
+fn remove_char_index(string: &mut String, char_index: usize) -> char {
+    let (byte_index, char_count) = count_chars_bytes(string, char_index);
+    assert!(char_index < char_count, "out-of-bounds char index");
+    string.remove(byte_index)
+}
+
+/// Returns the byte index from a character index, and the total character count.
+fn count_chars_bytes(string: &str, char_index: usize) -> (usize, usize) {
+    let mut byte_index = string.len();
+    let mut char_count = 0;
+    for (i, (j, _)) in string.char_indices().enumerate() {
+        if i == char_index {
+            byte_index = j;
+        }
+        char_count += 1;
+    }
+    (byte_index, char_count)
 }
