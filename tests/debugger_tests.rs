@@ -25,7 +25,9 @@ fn debugs_hello_world() {
         .success()
         .stdout(contains("Hello, world!"))
         .stdout(contains("Halted"))
-        .stderr(diff(include_str!("expected/hello_world")));
+        .stderr(diff(
+            include_str!("expected/hello_world").replace("\r\n", "\n"),
+        ));
 }
 
 #[test]
@@ -78,5 +80,7 @@ fn check_every_command() {
     cmd.assert()
         .success()
         .stdout(contains("Hello, world!"))
-        .stderr(diff(include_str!("expected/check_every_command")));
+        .stderr(diff(
+            include_str!("expected/check_every_command").replace("\r\n", "\n"),
+        ));
 }
