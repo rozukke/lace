@@ -11,8 +11,9 @@ use crate::{
     term::{self, Key},
 };
 
-// TODO(opt): Use cyclic buffer for history
-// TODO(opt): Use fixed-size strings for history items ?
+// Note: `TerminalHistory` could use a cyclic fixed-size buffer and store fixed-size strings, but
+// the performance benifits have not been deemed great enough, considering this only affects the
+// interactive terminal reading mode.
 
 /// Interactive unbuffered terminal.
 #[derive(Debug)]
