@@ -64,3 +64,19 @@ fn minimal_help_message() -> String {
     expected.push('\n');
     expected
 }
+
+#[test]
+fn check_every_command() {
+    // Except `quit`, `help`
+    let mut cmd = Command::cargo_bin("lace").unwrap();
+    cmd.arg("debug")
+        .arg("tests/files/hw.asm")
+        .arg("--minimal")
+        .arg("--command")
+        .arg(include_str!("commands/check_every_command"));
+
+    cmd.assert()
+        .success()
+        .stdout(contains("Hello, world!"))
+        .stderr(diff(include_str!("expected/check_every_command")));
+}

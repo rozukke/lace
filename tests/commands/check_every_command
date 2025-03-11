@@ -1,0 +1,66 @@
+echo a
+a
+echo step
+step
+echo s
+s
+echo step into
+step into
+echo reset
+reset
+echo s i 3
+s i 3
+echo si
+si
+echo step out
+step out
+echo s o
+s o
+echo so
+so
+echo continue
+continue
+echo z
+z
+echo print ^
+print ^
+echo c
+c
+echo registers
+registers
+echo r
+r
+echo print r0
+print r0
+echo move r1 #23
+move r1 #23
+echo m x3100 -4
+m x3100 -4
+echo print r1
+print r1
+echo e add r1, r1, #1
+e add r1, r1, #1
+echo print r1
+print r1
+echo print x3100
+print x3100
+echo goto x3001
+goto x3001
+echo assembly
+assembly
+echo break list
+break list
+echo break add ^
+break add ^
+echo b a x3200
+b a x3200
+echo break remove x3200
+break remove x3200
+echo br #23
+br #23
+echo b l
+b l
+echo eval reg
+eval reg
+echo exit
+exit

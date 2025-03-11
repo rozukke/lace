@@ -1,0 +1,75 @@
+[a]
+lea r0 hw
+[step]
+[s]
+
+Reached::Halt
+[step into]
+Reached::Halt
+[reset]
+[s i 3]
+
+Reached::Halt
+[si]
+Reached::Halt
+[step out]
+MissingFeature::Stack
+[s o]
+MissingFeature::Stack
+[so]
+MissingFeature::Stack
+[continue]
+Reached::Halt
+[z]
+[print ^]
+xe002
+[c]
+
+Reached::Halt
+[registers]
+R0 x3003
+R1 x0000
+R2 x0000
+R3 x0000
+R4 x0000
+R5 x0000
+R6 x0000
+R7 xfdff
+PC x3002
+CC 001
+[r]
+R0 x3003
+R1 x0000
+R2 x0000
+R3 x0000
+R4 x0000
+R5 x0000
+R6 x0000
+R7 xfdff
+PC x3002
+CC 001
+[print r0]
+x3003
+[move r1 #23]
+[m x3100 -4]
+[print r1]
+x0017
+[e add r1, r1, #1]
+[print r1]
+x0018
+[print x3100]
+xfffc
+[goto x3001]
+[assembly]
+puts
+[break list]
+Breakpoints::Empty
+[break add ^]
+[b a x3200]
+[break remove x3200]
+[br #23]
+OutOfBounds::Address
+[b l]
+x3001
+[eval reg]
+[exit]
