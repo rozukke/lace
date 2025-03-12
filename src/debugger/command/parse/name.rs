@@ -19,32 +19,32 @@ macro_rules! name_list {
 }
 const COMMANDS: &'static [CommandNameEntry] = name_list![
     Help
-        ["h", "help", "--help", "-h", ":h", "HELP", "man", "info", "wtf"]
+        ["h", "help", "--help", "-h", ":h", "man", "info", "wtf"]
         []
     Continue
         ["c", "continue", "cont"]
-        ["con"]
+        ["con", "proceed"]
     Print
         ["p", "print"]
-        ["get", "show", "display"]
+        ["get", "show", "display", "put", "puts", "out"]
     Move
         ["m", "move"]
-        ["set", "mov", "mv"]
+        ["set", "mov", "mv", "assign"]
     Registers
         ["r", "registers", "reg"]
         ["dump", "register", "regs"]
     Goto
         ["g", "goto"]
-        ["jump", "jsr", "jsrr", "call", "go"]
+        ["jump", "call", "go", "go-to", "jsr", "jsrr", "br", "brn", "brz", "brp", "brnz", "brnp", "brzp", "brnzp"]
     Assembly
         ["a", "assembly", "asm"]
-        ["source", "src", "inspect"]
+        ["source", "src", "ass", "inspect"]
     Eval
-        ["e", "eval", "evil"]
-        ["run", "exec", "execute", "sim", "simulate"]
+        ["e", "eval", "evil", "evaluate"]
+        ["run", "exec", "execute", "sim", "simulate", "instruction", "instr"]
     Reset
         ["z", "reset"]
-        ["restart"]
+        ["restart", "refresh", "reboot"]
     Echo // Not included in help
         ["echo"]
         []
@@ -67,13 +67,13 @@ const COMMANDS: &'static [CommandNameEntry] = name_list![
 
     BreakList
         ["bl", "breaklist"]
-        ["break-list", "break-ls", "blist", "bls"]
+        ["break-list", "break-ls", "blist", "bls", "bp", "breakpoint", "breakpointlist", "breakpoint-list"]
     BreakAdd
         ["ba", "breakadd"]
-        ["break-add", "badd"]
+        ["break-add", "badd", "breakpointadd", "breakpoint-add"]
     BreakRemove
         ["br", "breakremove"]
-        ["break-remove", "break-rm", "bremove", "brm"]
+        ["break-remove", "break-rm", "bremove", "brm", "breakpointremove", "breakpoint-remove"]
 ];
 const COMMAND_STEP: CandidateList = &["step", "s"];
 const SUBCOMMANDS_STEP: &'static [CommandNameEntry] = name_list![
@@ -87,7 +87,7 @@ const SUBCOMMANDS_STEP: &'static [CommandNameEntry] = name_list![
         ["o", "out"]
         ["finish", "fin"]
 ];
-const COMMAND_BREAK: CandidateList = &["break", "b"];
+const COMMAND_BREAK: CandidateList = &["b", "break"];
 const SUBCOMMANDS_BREAK: &'static [CommandNameEntry] = name_list![
     BreakList
         ["l", "list"]
