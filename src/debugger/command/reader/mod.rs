@@ -10,7 +10,7 @@ use self::terminal::Terminal;
 use crate::{dprint, dprintln};
 
 /// Must be ASCII to ensure `.len() == .chars().count()`
-const PROMPT: &str = "DEBUGGER> ";
+const PROMPT: &str = "lace~ ";
 
 /// Initial capacity of a command buffer.
 const INITIAL_BUFFER_CAPACITY: usize = 64;
