@@ -140,6 +140,18 @@ impl Span {
     pub fn end(&self) -> usize {
         self.offs.0 + self.len
     }
+
+    /// Create new [`Span`] which minimally covers both input spans.
+    ///
+    /// - Argument order does not matter.
+    /// - One span may completely contain the other span.
+    /// - There may be a space between the end of one span and the offset the other.
+    pub fn join(&self, other: Span) -> Span {
+        let offs = self.offs().min(other.offs());
+        let end = self.end().max(other.end());
+        let len = end - offs; // Underflow should be impossible
+        Span::new(SrcOffset(offs), len)
+    }
 }
 
 // Used for miette conversion
@@ -274,6 +286,7 @@ pub enum DirKind {
     Stringz,
     Blkw,
     Fill,
+    Break,
 }
 
 /// Newtype representing an offset from a particular address.

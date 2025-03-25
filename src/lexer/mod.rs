@@ -25,15 +25,22 @@ impl Token {
         Token { kind, span }
     }
 
-    pub fn byte(val: u16) -> Self {
+    pub fn byte(val: u16, span: Span) -> Self {
         Token {
             kind: TokenKind::Byte(val),
-            span: Span::dummy(),
+            span,
         }
     }
 
-    pub fn nullbyte() -> Self {
-        Token::byte(0)
+    pub fn nullbyte(span: Span) -> Self {
+        Token::byte(0, span)
+    }
+
+    pub fn breakpoint(span: Span) -> Self {
+        Token {
+            kind: TokenKind::Breakpoint,
+            span,
+        }
     }
 }
 
@@ -57,6 +64,7 @@ pub enum TokenKind {
     Reg(Register),
     /// Preprocessor raw values
     Byte(u16),
+    Breakpoint,
     Whitespace,
     Comment,
     Eof,
@@ -71,29 +79,16 @@ impl Display for TokenKind {
             TokenKind::Lit(_) => "literal",
             TokenKind::Dir(_) => "preprocessor directive",
             TokenKind::Reg(_) => "register",
-            TokenKind::Whitespace | TokenKind::Comment | TokenKind::Eof | TokenKind::Byte(_) => {
-                unreachable!("whitespace, comment, eof, byte attempted to be displayed")
+            TokenKind::Whitespace
+            | TokenKind::Comment
+            | TokenKind::Eof
+            | TokenKind::Byte(_)
+            | TokenKind::Breakpoint => {
+                unreachable!("whitespace, comment, eof, byte, breakpoint attempted to be displayed")
             }
         };
         f.write_str(lit)
     }
-}
-
-#[allow(dead_code)]
-pub fn tokenize(input: &'static str) -> impl Iterator<Item = Result<Token>> + '_ {
-    let mut cursor = Cursor::new(input);
-    std::iter::from_fn(move || loop {
-        let token = cursor.advance_token();
-        if let Ok(inner) = &token {
-            if inner.kind == TokenKind::Whitespace {
-                continue;
-            }
-            if inner.kind == TokenKind::Eof {
-                return None;
-            }
-        }
-        return Some(token);
-    })
 }
 
 /// Test if a character is considered to be whitespace, including commas.
@@ -306,6 +301,7 @@ impl Cursor<'_> {
             ".stringz" => Some(Dir(Stringz)),
             ".blkw" => Some(Dir(Blkw)),
             ".fill" => Some(Dir(Fill)),
+            ".break" => Some(Dir(Break)),
             _ => None,
         }
     }

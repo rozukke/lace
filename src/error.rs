@@ -143,11 +143,12 @@ pub fn parse_generic_unexpected(src: &'static str, expected: &str, found: Token)
 }
 
 pub fn parse_eof(src: &'static str) -> Report {
+    let offset = src.len().checked_sub(1).unwrap_or(0);
     miette!(
         severity = Severity::Error,
         code = "parse::unexpected_eof",
         help = "you may be missing operands in your last statement",
-        labels = vec![LabeledSpan::at_offset(src.len() - 1, "here")],
+        labels = vec![LabeledSpan::at_offset(offset, "here")],
         "Unexpected end of file",
     )
     .with_source_code(src)

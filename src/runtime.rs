@@ -5,11 +5,23 @@ use std::{
     u16, u32, u8, usize,
 };
 
-use crate::{features, Air};
+use crate::{
+    debugger::{Action, Debugger, Options, SignificantInstr},
+    dprintln,
+    output::{Condition, Output},
+    Air,
+};
+use crate::{features, term};
 use colored::Colorize;
-use console::Term;
 use miette::Result;
 
+/// First address which is out of bounds of user memory.
+pub const USER_MEMORY_END: u16 = 0xFE00;
+/// Sentinel value, which the PC is set to when a `HALT` is encountered.
+pub const HALT_ADDRESS: u16 = 0xFFFF;
+
+/// CPU exception.
+/// A fatal error has occurred in the program, such as an invalid instruction.
 macro_rules! exception {
     ( $fmt:literal $($tt:tt)* ) => {{
         eprintln!(
@@ -21,10 +33,16 @@ macro_rules! exception {
 }
 
 /// LC3 can address 128KB of memory.
-const MEMORY_MAX: usize = 0x10000;
+pub(crate) const MEMORY_MAX: usize = 0x10000;
+
+pub struct RunEnvironment {
+    state: RunState,
+    debugger: Option<Debugger>,
+}
 
 /// Represents complete program state during runtime.
-pub struct RunState {
+#[derive(Clone)]
+pub(super) struct RunState {
     /// System memory - 128KB in size.
     /// Need to figure out if this would cause problems with the stack.
     mem: Box<[u16; MEMORY_MAX]>,
@@ -36,30 +54,46 @@ pub struct RunState {
     flag: RunFlag,
     /// Processor status register
     _psr: u16,
+    /// Origin address (usually 0x3000)
+    orig: u16,
 }
 
 #[derive(Clone, Copy)]
-enum RunFlag {
+pub(super) enum RunFlag {
     N = 0b100,
     Z = 0b010,
     P = 0b001,
     Uninit = 0b000,
 }
 
-impl RunState {
+impl RunEnvironment {
     // Not generic because of miette error
-    pub fn try_from(air: Air) -> Result<RunState> {
+    pub fn try_from(air: Air, debugger_opts: Option<Options>) -> Result<RunEnvironment> {
+        // TODO(refactor): Use constant for default origin ?
         let orig = air.orig().unwrap_or(0x3000);
         let mut air_array: Vec<u16> = Vec::with_capacity(air.len() + 1);
 
         air_array.push(orig);
-        for stmt in air {
+        for stmt in &air {
             air_array.push(stmt.emit()?);
         }
-        RunState::from_raw(air_array.as_slice())
+
+        let mut env = RunEnvironment::from_raw(air_array.as_slice())?;
+
+        if let Some(debugger_opts) = debugger_opts {
+            env.debugger = Some(Debugger::new(
+                debugger_opts,
+                env.state.clone(),
+                air.breakpoints.with_orig(env.state.pc), // Add orig to each breakpoint
+                air.ast,
+                air.src,
+            ));
+        }
+
+        return Ok(env);
     }
 
-    pub fn from_raw(raw: &[u16]) -> Result<RunState> {
+    pub fn from_raw(raw: &[u16]) -> Result<RunEnvironment> {
         if raw.len() == 0 {
             exception!("provided file is empty");
         }
@@ -77,13 +111,90 @@ impl RunState {
         // Prevents PC running through no-ops to the end of memory
         mem[orig + raw.len()] = 0xF025;
 
-        Ok(RunState {
-            mem: Box::new(mem),
-            pc: orig as u16,
-            reg: [0, 0, 0, 0, 0, 0, 0, 0xFDFF],
-            flag: RunFlag::Uninit,
-            _psr: 0,
+        Ok(RunEnvironment {
+            state: RunState {
+                mem: Box::new(mem),
+                pc: orig as u16,
+                // Stack pointer (R7) initalized to last address in user memory
+                reg: [0, 0, 0, 0, 0, 0, 0, USER_MEMORY_END - 1],
+                flag: RunFlag::Uninit,
+                _psr: 0,
+                orig: orig as u16,
+            },
+            debugger: None,
         })
+    }
+
+    /// Run with preset memory
+    pub fn run(&mut self) {
+        loop {
+            if let Some(debugger) = &mut self.debugger {
+                Output::Debugger(Condition::Always, Default::default()).start_new_line();
+
+                match debugger.next_action(&mut self.state) {
+                    Action::Proceed => (),
+                    Action::StopDebugger => {
+                        dprintln!(Sometimes, Warning, "Stopping debugger.");
+                        // Go to start of next loop iteration, without debugger
+                        self.debugger = None;
+                        continue;
+                    }
+                    Action::ExitProgram => {
+                        dprintln!(Sometimes, Warning, "Exiting program.");
+                        return;
+                    }
+                }
+
+                // If still stuck on HALT
+                // Never *execute* HALT while debugger is active
+                // Wait for pc to change, such as "reset", "exit", or "quit"
+                if SignificantInstr::try_from(self.state.mem[self.state.pc as usize])
+                    == Ok(SignificantInstr::Halt)
+                {
+                    continue;
+                }
+                // Debugger should catch this on next loop, and warn
+                if self.state.check_pc_bounds() != Ordering::Equal {
+                    continue;
+                }
+                // From this point, next instruction will always be executed
+                // (Unless debugger is "quit", making this counter irrelevant anyway)
+                debugger.increment_instruction_count();
+            }
+
+            if self.state.pc == u16::MAX {
+                debug_assert!(
+                    self.debugger.is_none(),
+                    "halt should be caught if debugger is active",
+                );
+                break; // Halt was triggered
+            }
+
+            // Debugger should have already checked these (if currently active)
+            match self.state.check_pc_bounds() {
+                Ordering::Less => {
+                    exception!("entered protected memory area < 0x{:04x}", self.state.orig)
+                }
+                Ordering::Greater => {
+                    exception!("entered protected memory area >= 0x{:04x}", USER_MEMORY_END)
+                }
+                _ => (),
+            }
+
+            let instr = self.state.mem[self.state.pc as usize];
+            // PC incremented before instruction is performed
+            self.state.pc += 1;
+            self.state.execute(instr);
+        }
+
+        Output::Normal.start_new_line();
+    }
+}
+
+impl RunState {
+    pub fn execute(&mut self, instr: u16) {
+        let opcode = (instr >> 12) as usize;
+        RunState::OP_TABLE[opcode](self, instr);
     }
 
     const OP_TABLE: [fn(&mut RunState, u16); 16] = [
@@ -105,45 +216,51 @@ impl RunState {
         Self::trap,  // 0xF
     ];
 
-    /// Run with preset memory
-    pub fn run(&mut self) {
-        loop {
-            if self.pc == u16::MAX {
-                break; // Halt was triggered
-            }
-            if self.pc >= 0xFE00 {
-                exception!("entered protected memory area >= 0xFE00");
-            }
-            let instr = self.mem[self.pc as usize];
-            let opcode = (instr >> 12) as usize;
-            // PC incremented before instruction is performed
-            self.pc += 1;
-            Self::OP_TABLE[opcode](self, instr);
-        }
-    }
-
     #[inline]
-    fn reg(&self, reg: u16) -> u16 {
+    pub(super) fn reg(&self, reg: u16) -> u16 {
         debug_assert!(reg < 8, "tried to access invalid register 'r{}'", reg);
         // SAFETY: Should only be indexed with values that are & 0b111
         unsafe { *self.reg.get_unchecked(reg as usize) }
     }
     #[inline]
-    fn reg_mut(&mut self, reg: u16) -> &mut u16 {
+    pub(super) fn reg_mut(&mut self, reg: u16) -> &mut u16 {
         debug_assert!(reg < 8, "tried to access invalid register 'r{}'", reg);
         // SAFETY: Should only be indexed with values that are & 0b111
         unsafe { self.reg.get_unchecked_mut(reg as usize) }
     }
 
     #[inline]
-    fn mem(&self, addr: u16) -> u16 {
+    pub(super) fn mem(&self, addr: u16) -> u16 {
         // SAFETY: memory fits any u16 index
         unsafe { *self.mem.get_unchecked(addr as usize) }
     }
     #[inline]
-    fn mem_mut(&mut self, addr: u16) -> &mut u16 {
+    pub(super) fn mem_mut(&mut self, addr: u16) -> &mut u16 {
         // SAFETY: memory fits any u16 index
         unsafe { self.mem.get_unchecked_mut(addr as usize) }
+    }
+
+    #[inline]
+    pub(super) fn pc(&self) -> u16 {
+        self.pc
+    }
+    #[inline]
+    pub(super) fn pc_mut(&mut self) -> &mut u16 {
+        &mut self.pc
+    }
+
+    #[inline]
+    pub(super) fn flag(&self) -> RunFlag {
+        self.flag
+    }
+
+    pub(super) fn memory_equals(&self, other: &RunState, start: u16, end: u16) -> bool {
+        for addr in start..=end {
+            if self.mem(addr) != other.mem(addr) {
+                return false;
+            }
+        }
+        true
     }
 
     #[inline]
@@ -165,6 +282,18 @@ impl RunState {
             Ordering::Less => RunFlag::N,
             Ordering::Equal => RunFlag::Z,
             Ordering::Greater => RunFlag::P,
+        }
+    }
+
+    /// Returns `Ordering::Equal` if current program counter is within user address space.
+    /// Returns `Ordering::Less` or `Ordering::Greater` if PC `<` ORIG or PC `>=` [`USER_MEMORY_END`] respectively.
+    pub fn check_pc_bounds(&self) -> Ordering {
+        if self.pc < self.orig {
+            Ordering::Less
+        } else if self.pc >= USER_MEMORY_END {
+            Ordering::Greater
+        } else {
+            Ordering::Equal
         }
     }
 
@@ -358,12 +487,12 @@ impl RunState {
         match trap_vect {
             // getc
             0x20 => {
-                *self.reg_mut(0) = read_input() as u16;
+                *self.reg_mut(0) = read_char() as u16;
             }
             // out
             0x21 => {
                 let chr = (self.reg(0) & 0xFF) as u8 as char;
-                print!("{chr}");
+                Output::Normal.print(chr);
                 stdout().flush().unwrap();
             }
             // puts
@@ -375,15 +504,15 @@ impl RunState {
                     if chr_ascii == '\0' {
                         break;
                     }
-                    print!("{}", chr_ascii);
+                    Output::Normal.print(chr_ascii);
                 }
                 stdout().flush().unwrap();
             }
             // in
             0x23 => {
-                let ch = read_input();
+                let ch = read_char();
                 *self.reg_mut(0) = ch as u16;
-                print!("{}", ch);
+                Output::Normal.print(ch as char);
                 stdout().flush().unwrap();
             }
             // putsp
@@ -395,30 +524,30 @@ impl RunState {
                         if chr_ascii == '\0' {
                             break 'string;
                         }
-                        print!("{}", chr_ascii);
+                        Output::Normal.print(chr_ascii);
                     }
                 }
                 stdout().flush().unwrap();
             }
             // halt
             0x25 => {
-                self.pc = u16::MAX;
+                self.pc = HALT_ADDRESS;
                 println!("\n{:>12}", "Halted".cyan());
             }
             // putn
             0x26 => {
                 let val = self.reg(0);
-                println!("{val}");
+                Output::Normal.print_decimal(val);
             }
             // reg
             0x27 => {
-                println!("\n------ Registers ------");
-                for (i, reg) in self.reg.iter().enumerate() {
-                    println!("r{i}: {reg:.>#19}");
-                    // println!("r{i}: {reg:.>#19b}");
-                }
-                println!("-----------------------");
+                Output::Normal.start_new_line();
+                Output::Normal.print_registers(self);
             }
+
+            // Note that if custom traps are implemented, `src/debugger/eval.rs` must be modified
+            // to explicitely allow `eval` to simulate the traps
+
             // unknown
             _ => exception!(
                 "called a trap with an unknown vector of 0x{:02x}",
@@ -428,26 +557,41 @@ impl RunState {
     }
 }
 
-// Read one byte from stdin or unbuffered terminal
-fn read_input() -> u8 {
-    if stdin().is_terminal() {
-        let cons = Term::stdout();
-        let ch = cons
-            .read_char()
-            .expect("read from interactive terminal should not fail");
-        ch as u8
+// Read one byte from stdin or interactive terminal.
+fn read_char() -> char {
+    /// '�'
+    const REPLACEMENT_CHAR: char = '\u{FFFD}';
+
+    let stdin = stdin();
+    let byte = if stdin.is_terminal() {
+        term::read_byte()
     } else {
-        let mut buf = [0; 1];
-        if let Err(err) = stdin().read_exact(&mut buf) {
-            if let io::ErrorKind::UnexpectedEof = err.kind() {
-                eprintln!("unexpected end of input file stream.");
-                std::process::exit(1);
-            } else {
-                panic!("failed to read character from stdin: {:?}", err)
-            }
-        }
-        buf[0]
+        Some(read_byte_stdin(stdin))
+    };
+    // Replace with marker character if non-ASCII
+    match byte {
+        Some(byte) if byte.is_ascii() => byte as char,
+        _ => REPLACEMENT_CHAR,
     }
+}
+
+/// Read one byte from stdin.
+///
+/// Handles `UnexpectedEof` by printing error minimally and exiting.
+/// Panics on any other error.
+fn read_byte_stdin(mut stdin: io::Stdin) -> u8 {
+    let mut buf = [0; 1];
+    if let Err(err) = stdin.read_exact(&mut buf) {
+        if let io::ErrorKind::UnexpectedEof = err.kind() {
+            // This should NOT use `exception!`: it is an error with the
+            // emulator, not the CPU
+            eprintln!("unexpected end of input file stream.");
+            std::process::exit(1);
+        } else {
+            panic!("failed to read character from stdin: {:?}", err)
+        }
+    }
+    buf[0]
 }
 
 #[cfg(test)]

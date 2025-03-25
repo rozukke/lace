@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::thread::sleep;
 use std::time::Duration;
 
-use clap::{Parser, Subcommand};
+use clap::{ArgGroup, Parser, Subcommand};
 use colored::Colorize;
 use hotwatch::notify::Event;
 use hotwatch::{
@@ -14,8 +14,8 @@ use hotwatch::{
 use miette::{bail, IntoDiagnostic, Result};
 
 use lace::features::Features;
-use lace::reset_state;
-use lace::{Air, RunState, StaticSource};
+use lace::{debugger, reset_state};
+use lace::{Air, RunEnvironment, StaticSource};
 
 /// Lace is a complete & convenient assembler toolchain for the LC3 assembly language.
 #[derive(Parser)]
@@ -26,6 +26,9 @@ struct Args {
 
     /// Quickly provide a `.asm` file to run
     path: Option<PathBuf>,
+    /// Produce minimal output, suited for blackbox tests
+    #[arg(short, long)]
+    minimal: bool,
     #[command(flatten)]
     run_options: RunOptions,
 }
@@ -34,10 +37,35 @@ struct Args {
 enum Command {
     /// Run text `.asm` or binary `.lc3` file directly and output to terminal
     Run {
-        /// .asm file to run
+        /// `.asm` or `.lc3` file to run
         name: PathBuf,
+        /// Produce minimal output, suited for blackbox tests
+        #[arg(short, long)]
+        minimal: bool,
         #[command(flatten)]
         run_options: RunOptions,
+    },
+    /// Run and debug text `.asm` file directly
+    ///
+    /// For information on commands, run `lace debug --print-help` or type `help` in the debugger prompt
+    #[clap(group(ArgGroup::new("name_or_help").required(true)))]
+    Debug {
+        /// `.asm` file to run and debug
+        #[arg(group("name_or_help"))]
+        name: Option<PathBuf>,
+        /// Read debugger commands from argument
+        #[arg(short, long)]
+        command: Option<String>,
+        /// Produce minimal output, suited for blackbox tests
+        #[arg(short, long)]
+        minimal: bool,
+        #[command(flatten)]
+        run_options: RunOptions,
+        /// Print information on debugger commands (without reading any file)
+        ///
+        /// Similar to `lace debug <file> --command 'help'`
+        #[arg(short, long, group("name_or_help"))]
+        print_help: bool,
     },
     /// Create binary `.lc3` file to run later or view compiled data
     Compile {
@@ -88,125 +116,151 @@ fn main() -> miette::Result<()> {
     use MsgColor::*;
     let args = Args::parse();
 
-    if let Some(command) = args.command {
-        match command {
-            Command::Run {
-                name,
-                run_options: RunOptions { features },
-            } => {
-                lace::features::init(features);
-                run(&name)?;
+    miette::set_hook(Box::new(|_| {
+        Box::new(
+            miette::MietteHandlerOpts::new() //
+                .context_lines(lace::DIAGNOSTIC_CONTEXT_LINES)
+                .build(),
+        )
+    }))?;
+
+    match args.command {
+        None => {
+            if let Some(path) = args.path {
+                lace::features::init(args.run_options.features);
+                run(&path, None, args.minimal)?;
                 Ok(())
+            } else {
+                println!("\n~ lace v{VERSION} - Copyright (c) 2024 Artemis Rosman ~");
+                println!("{}", LOGO.truecolor(255, 183, 197).bold());
+                println!("{SHORT_INFO}");
+                std::process::exit(0);
             }
-            Command::Compile {
-                name,
-                dest,
-                run_options: RunOptions { features },
-            } => {
-                lace::features::init(features);
-                file_message(Green, "Assembling", &name);
-                let contents = StaticSource::new(fs::read_to_string(&name).into_diagnostic()?);
-                let air = assemble(&contents)?;
-
-                let out_file_name =
-                    dest.unwrap_or(name.with_extension("lc3").file_name().unwrap().into());
-                let mut file = File::create(&out_file_name).unwrap();
-
-                // Deal with .orig
-                if let Some(orig) = air.orig() {
-                    let _ = file.write(&orig.to_be_bytes());
-                } else {
-                    let _ = file.write(&0x3000u16.to_be_bytes());
-                }
-
-                // Write lines
-                for stmt in air {
-                    let _ = file.write(&stmt.emit()?.to_be_bytes());
-                }
-
-                message(Green, "Finished", "emit binary");
-                file_message(Green, "Saved", &out_file_name);
-                Ok(())
-            }
-            Command::Check { name } => {
-                file_message(Green, "Checking", &name);
-                let contents = StaticSource::new(fs::read_to_string(&name).into_diagnostic()?);
-                let _ = assemble(&contents)?;
-                message(Green, "Success", "no errors found!");
-                Ok(())
-            }
-            Command::Clean { name: _ } => todo!("There are no debug files implemented to clean!"),
-            Command::Watch { name } => {
-                if !name.exists() {
-                    bail!("File does not exist. Exiting...")
-                }
-                // Vim breaks if watching a single file
-                let folder_path = match name.parent() {
-                    Some(pth) if pth.is_dir() => pth.to_path_buf(),
-                    _ => Path::new(".").to_path_buf(),
-                };
-
-                // Clear screen and move cursor to top left
-                print!("\x1B[2J\x1B[2;1H");
-                file_message(Green, "Watching", &name);
-                message(Cyan, "Help", "press CTRL+C to exit");
-
-                let mut watcher = Hotwatch::new_with_custom_delay(Duration::from_millis(500))
-                    .into_diagnostic()?;
-
-                watcher
-                    .watch(folder_path, move |event: Event| match event.kind {
-                        // Watch remove for vim changes
-                        EventKind::Modify(_) | EventKind::Remove(_) => {
-                            // Clear screen
-                            print!("\x1B[2J\x1B[2;1H");
-                            file_message(Green, "Watching", &name);
-                            message(Green, "Re-checking", "file change detected");
-                            message(Cyan, "Help", "press CTRL+C to exit");
-
-                            // Now we are developing software (makes reruns more obvious)
-                            sleep(Duration::from_millis(50));
-
-                            let mut contents = StaticSource::new(match fs::read_to_string(&name) {
-                                Ok(cts) => cts,
-                                Err(e) => {
-                                    eprintln!("{e}. Exiting...");
-                                    std::process::exit(1)
-                                }
-                            });
-                            let _ = match assemble(&contents) {
-                                Ok(_) => {
-                                    message(Green, "Success", "no errors found!");
-                                }
-                                Err(e) => {
-                                    println!("\n{:?}", e);
-                                }
-                            };
-
-                            reset_state();
-                            // To avoid leaking memory
-                            contents.reclaim();
-                            Flow::Continue
-                        }
-                        _ => Flow::Continue,
-                    })
-                    .into_diagnostic()?;
-                watcher.run();
-                Ok(())
-            }
-            Command::Fmt { name: _ } => todo!("Formatting is not currently implemented"),
         }
-    } else {
-        if let Some(path) = args.path {
-            lace::features::init(args.run_options.features);
-            run(&path)?;
+        Some(Command::Run {
+            name,
+            minimal,
+            run_options: RunOptions { features },
+        }) => {
+            lace::features::init(features);
+            run(&name, None, minimal)
+        }
+        Some(Command::Debug {
+            name,
+            command,
+            minimal,
+            run_options: RunOptions { features },
+            print_help,
+        }) => match (name, print_help) {
+            (Some(name), false) => {
+                lace::features::init(features);
+                run(&name, Some(debugger::Options { command }), minimal)
+            }
+            (None, true) => {
+                lace::set_minimal(minimal);
+                debugger::print_help_message();
+                Ok(())
+            }
+            // Should never happen due to argument group
+            _ => panic!("command-line parsing is broken. expected `name` XOR `--print-help`."),
+        },
+        Some(Command::Compile {
+            name,
+            dest,
+            run_options: RunOptions { features },
+        }) => {
+            lace::features::init(features);
+            file_message(Green, "Assembling", &name);
+            let contents = StaticSource::new(fs::read_to_string(&name).into_diagnostic()?);
+            let air = assemble(&contents)?;
+
+            let out_file_name =
+                dest.unwrap_or(name.with_extension("lc3").file_name().unwrap().into());
+            let mut file = File::create(&out_file_name).unwrap();
+
+            // Deal with .orig
+            if let Some(orig) = air.orig() {
+                let _ = file.write(&orig.to_be_bytes());
+            } else {
+                let _ = file.write(&0x3000u16.to_be_bytes());
+            }
+
+            // Write lines
+            for stmt in &air {
+                let _ = file.write(&stmt.emit()?.to_be_bytes());
+            }
+
+            message(Green, "Finished", "emit binary");
+            file_message(Green, "Saved", &out_file_name);
             Ok(())
-        } else {
-            println!("\n~ lace v{VERSION} - Copyright (c) 2024 Artemis Rosman ~");
-            println!("{}", LOGO.truecolor(255, 183, 197).bold());
-            println!("{SHORT_INFO}");
-            std::process::exit(0);
         }
+        Some(Command::Check { name }) => {
+            file_message(Green, "Checking", &name);
+            let contents = StaticSource::new(fs::read_to_string(&name).into_diagnostic()?);
+            let _ = assemble(&contents)?;
+            message(Green, "Success", "no errors found!");
+            Ok(())
+        }
+        Some(Command::Clean { name: _ }) => todo!("There are no debug files implemented to clean!"),
+        Some(Command::Watch { name }) => {
+            if !name.exists() {
+                bail!("File does not exist. Exiting...")
+            }
+            // Vim breaks if watching a single file
+            let folder_path = match name.parent() {
+                Some(pth) if pth.is_dir() => pth.to_path_buf(),
+                _ => Path::new(".").to_path_buf(),
+            };
+
+            // Clear screen and move cursor to top left
+            print!("\x1B[2J\x1B[2;1H");
+            file_message(Green, "Watching", &name);
+            message(Cyan, "Help", "press CTRL+C to exit");
+
+            let mut watcher =
+                Hotwatch::new_with_custom_delay(Duration::from_millis(500)).into_diagnostic()?;
+
+            watcher
+                .watch(folder_path, move |event: Event| match event.kind {
+                    // Watch remove for vim changes
+                    EventKind::Modify(_) | EventKind::Remove(_) => {
+                        // Clear screen
+                        print!("\x1B[2J\x1B[2;1H");
+                        file_message(Green, "Watching", &name);
+                        message(Green, "Re-checking", "file change detected");
+                        message(Cyan, "Help", "press CTRL+C to exit");
+
+                        // Now we are developing software (makes reruns more obvious)
+                        sleep(Duration::from_millis(50));
+
+                        let mut contents = StaticSource::new(match fs::read_to_string(&name) {
+                            Ok(cts) => cts,
+                            Err(e) => {
+                                eprintln!("{e}. Exiting...");
+                                std::process::exit(1)
+                            }
+                        });
+                        let _ = match assemble(&contents) {
+                            Ok(_) => {
+                                message(Green, "Success", "no errors found!");
+                            }
+                            Err(e) => {
+                                println!("\n{:?}", e);
+                            }
+                        };
+
+                        reset_state();
+                        // To avoid leaking memory
+                        contents.reclaim();
+                        Flow::Continue
+                    }
+                    _ => Flow::Continue,
+                })
+                .into_diagnostic()?;
+            watcher.run();
+            Ok(())
+        }
+        Some(Command::Fmt { name: _ }) => todo!("Formatting is not currently implemented"),
     }
 }
 
@@ -234,11 +288,15 @@ where
     println!("{left:>12} {right}");
 }
 
-fn run(name: &PathBuf) -> Result<()> {
+fn run(name: &PathBuf, debugger_opts: Option<debugger::Options>, minimal: bool) -> Result<()> {
     file_message(MsgColor::Green, "Assembling", &name);
     let mut program = if let Some(ext) = name.extension() {
         match ext.to_str().unwrap() {
             "lc3" | "obj" => {
+                if debugger_opts.is_some() {
+                    bail!("Cannot use debugger on non-assembly file");
+                }
+
                 // Read to byte buffer
                 let mut file = File::open(&name).into_diagnostic()?;
                 let f_size = file.metadata().unwrap().len();
@@ -253,12 +311,12 @@ fn run(name: &PathBuf) -> Result<()> {
                     .chunks_exact(2)
                     .map(|word| u16::from_be_bytes([word[0], word[1]]))
                     .collect();
-                RunState::from_raw(&u16_buf)?
+                RunEnvironment::from_raw(&u16_buf)?
             }
             "asm" => {
                 let contents = StaticSource::new(fs::read_to_string(&name).into_diagnostic()?);
                 let air = assemble(&contents)?;
-                RunState::try_from(air)?
+                RunEnvironment::try_from(air, debugger_opts)?
             }
             _ => {
                 bail!("File has unknown extension. Exiting...")
@@ -267,6 +325,8 @@ fn run(name: &PathBuf) -> Result<()> {
     } else {
         bail!("File has no extension. Exiting...");
     };
+
+    lace::set_minimal(minimal);
 
     message(MsgColor::Green, "Running", "emitted binary");
     program.run();

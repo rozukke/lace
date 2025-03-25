@@ -1,4 +1,6 @@
-use std::{cell::RefCell, fmt};
+use std::cell::RefCell;
+use std::fmt;
+use std::str::FromStr;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Features {
@@ -38,7 +40,7 @@ where
     })
 }
 
-impl std::str::FromStr for Features {
+impl FromStr for Features {
     type Err = String;
     fn from_str(string: &str) -> Result<Self, Self::Err> {
         let mut features = Self::default();
