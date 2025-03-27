@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::fmt::{self, Write as _};
 
-use crate::runtime::RunState;
+use crate::runtime::{RunFlag, RunState};
 
 /// Colors used by [`Output::Debugger`].
 ///
@@ -235,10 +235,16 @@ impl Output {
         self.print("\x1b[2m│\x1b[0m");
         self.print("    \x1b[1mPC\x1b[0m");
         self.print(format_args!(" 0x{:04x}", state.pc()));
-        self.print("\x1b[2m    │    \x1b[0m");
+        self.print("\x1b[2m    │  \x1b[0m");
         self.print(" \x1b[1mCC\x1b[0m");
-        self.print(format_args!("  {:03b}", state.flag() as u8));
-        self.print("     \x1b[2m│\x1b[0m\n");
+        self.print(" ");
+        self.print(match state.flag() {
+            RunFlag::N /*.*/=> "NEGATIVE",
+            RunFlag::Z /*.*/=> "  ZERO  ",
+            RunFlag::P /*.*/=> "POSITIVE",
+            RunFlag::Uninit => " ****** ",
+        });
+        self.print("   \x1b[2m│\x1b[0m\n");
 
         self.print("\x1b[2m└─────────────────┴─────────────────┘\x1b[0m\n");
     }
