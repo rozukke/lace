@@ -6,9 +6,8 @@ use std::{
 };
 
 use crate::{
-    debugger::{Action, Debugger, DebuggerOptions, SignificantInstr},
     debugger::{Action, Debugger, Options, SignificantInstr},
-    dprintln, dprintln, env,
+    dprintln,
     mc::{self, CleanMemoryStr},
     output::{Condition, Output},
     Air,
