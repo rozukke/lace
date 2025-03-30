@@ -60,7 +60,7 @@ pub fn lex_stack_extension_not_enabled(instr: &str, span: Span, src: &'static st
         code = "lex::stack_extension_not_enabled",
         help = "\
         this instruction requires the non-standard 'stack' extension\n\
-        run with `LACE_STACK=1` to enable\n\
+        run with `-f stack` to enable feature\n\
         note: this identifier cannot be used as a label\
         ",
         labels = vec![LabeledSpan::at(span, "non-standard instruction")],

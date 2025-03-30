@@ -1,49 +1,24 @@
-use std::fmt;
-use std::fs::{self, File};
-use std::io::{self, BufRead as _, BufReader, IsTerminal as _, Read as _, Write as _};
+use std::io::{BufRead as _, Write as _};
+use std::{fmt, fs, io};
+use std::{fs::File, io::BufReader};
 
-use console::Key;
+use crossterm::{cursor, execute, terminal};
 
-use crate::output::debugger_colors;
-use crate::{dprint, dprintln, output::Output};
+use super::{Read, INITIAL_BUFFER_CAPACITY, PROMPT};
+use crate::dprintln;
+use crate::{
+    output::{debugger_colors, Output},
+    term::{self, Key},
+};
 
-// TODO(feat): UTF-8 support for `Stdin`
-
-/// Read from argument first, if `Some`. Then read from stream.
-#[derive(Debug)]
-pub struct CommandReader {
-    argument: Option<Argument>,
-    stream: Stream,
-}
-
-/// Command-line argument.
-#[derive(Debug)]
-struct Argument {
-    buffer: String,
-    /// Byte index.
-    cursor: usize,
-}
-
-/// Stdin or interactive terminal.
-#[derive(Debug)]
-enum Stream {
-    Stdin(Stdin),
-    Terminal(Terminal),
-}
-
-/// Stdin which is not attached to a terminal, i.e. piped.
-#[derive(Debug)]
-struct Stdin {
-    stdin: io::Stdin,
-    /// Command must be stored somewhere to be referenced.
-    buffer: String,
-}
+// Note: `TerminalHistory` could use a cyclic fixed-size buffer and store fixed-size strings, but
+// the performance benifits have not been deemed great enough, considering this only affects the
+// interactive terminal reading mode.
 
 /// Interactive unbuffered terminal.
-// TODO(feat): Support CTRL+Arrow keybinds
 #[derive(Debug)]
-struct Terminal {
-    term: console::Term,
+pub struct Terminal {
+    stderr: io::Stderr,
     buffer: String,
     /// Byte index.
     cursor: usize,
@@ -63,168 +38,18 @@ struct TerminalHistory {
     file: Option<File>,
 }
 
-const PROMPT: &str = "DEBUGGER> ";
-
-/// Print prompt and command.
-fn echo_command(command: Option<&str>) {
-    if command.is_some_and(|command| command.trim().is_empty()) {
-        return;
-    }
-    // Equivalent code found in `Terminal`
-    dprint!(Sometimes, Normal, "\x1b[1m{}", PROMPT);
-    dprintln!(
-        Sometimes,
-        Normal,
-        "{}",
-        command.unwrap_or("\x1b[3m(end of input)").trim()
-    );
-}
-
-/// A trait for objects which can yield a command, by iterating a string or reading a file.
-pub trait Read {
-    /// `None` indicates EOF.
-    /// Returned string slice MAY include leading or trailing whitespace.
-    fn read(&mut self) -> Option<&str>;
-}
-
-impl CommandReader {
-    pub fn from(argument: Option<String>) -> Self {
-        Self {
-            argument: argument.map(Argument::from),
-            stream: Stream::new(),
-        }
-    }
-}
-
-impl Read for CommandReader {
-    fn read(&mut self) -> Option<&str> {
-        // Always try to read from argument first
-        // If argument is `None`, or if read from argument returns `None`, then read from stream
-        // Note that `self.argument` cannot then be set to `None`, due to lifetime of returned value
-        if let Some(argument) = &mut self.argument {
-            if let Some(command) = argument.read() {
-                echo_command(Some(command));
-                return Some(command);
-            }
-        }
-        self.stream.read()
-    }
-}
-
-impl Argument {
-    pub fn from(source: String) -> Self {
-        Self {
-            buffer: source,
-            cursor: 0,
-        }
-    }
-}
-
-impl Read for Argument {
-    fn read(&mut self) -> Option<&str> {
-        // EOF
-        if self.cursor >= self.buffer.len() {
-            return None;
-        }
-
-        // Take characters until delimiter
-        let start = self.cursor;
-        let mut chars = self.buffer[self.cursor..].chars();
-        while let Some(ch) = chars.next().filter(|ch| *ch != '\n' && *ch != ';') {
-            self.cursor += ch.len_utf8();
-        }
-
-        let end = self.cursor;
-        self.cursor += 1; // sizeof('\n' or ';')
-
-        let command = self
-            .buffer
-            .get(start..end)
-            .expect("calculated incorrect character indexes");
-        Some(command)
-    }
-}
-
-impl Stream {
-    pub fn new() -> Self {
-        let stdin = io::stdin();
-        if stdin.is_terminal() {
-            Self::Terminal(Terminal::new())
-        } else {
-            Self::Stdin(Stdin::from(stdin))
-        }
-    }
-}
-
-impl Read for Stream {
-    fn read(&mut self) -> Option<&str> {
-        match self {
-            Self::Stdin(stdin) => {
-                let command = stdin.read();
-                echo_command(command);
-                command
-            }
-            Self::Terminal(terminal) => terminal.read(),
-        }
-    }
-}
-
-impl Stdin {
-    pub fn from(stdin: io::Stdin) -> Self {
-        Self {
-            stdin,
-            buffer: String::new(),
-        }
-    }
-
-    /// `None` indicates EOF.
-    fn read_char(&mut self) -> Option<char> {
-        let mut buffer = [0; 1];
-        let bytes_read = self
-            .stdin
-            .read(&mut buffer)
-            .expect("failed to read character from stdin");
-        if bytes_read == 0 {
-            return None;
-        }
-        Some(buffer[0] as char)
-    }
-}
-
-impl Read for Stdin {
-    fn read(&mut self) -> Option<&str> {
-        self.buffer.clear();
-
-        // Take characters until delimiter
-        loop {
-            let Some(ch) = self.read_char() else {
-                if self.buffer.is_empty() {
-                    return None; // First character is EOF
-                }
-                break;
-            };
-            if ch == '\n' || ch == ';' {
-                break;
-            }
-            self.buffer.push(ch);
-        }
-
-        Some(&self.buffer)
-    }
-}
-
 impl Terminal {
     pub fn new() -> Self {
         Self {
-            term: console::Term::stdout(),
-            buffer: String::new(),
+            stderr: io::stderr(),
+            buffer: String::with_capacity(INITIAL_BUFFER_CAPACITY),
             cursor: 0,
             visible_cursor: 0,
             history: TerminalHistory::new(),
         }
     }
 
-    /// Returns `true` if current command is a new command, rather than a focused history item.
+    /// Returns `true` if current line is a new line, rather than a focused history item.
     fn is_next(&self) -> bool {
         debug_assert!(
             self.history.index <= self.history.list.len(),
@@ -248,7 +73,7 @@ impl Terminal {
         self.history.index = self.history.list.len();
     }
 
-    /// Get next or historic command, from index.
+    /// Get next or historic line, from history index.
     fn get_current(&self) -> &str {
         if self.is_next() {
             &self.buffer
@@ -260,24 +85,34 @@ impl Terminal {
         }
     }
 
+    /// Clear current line, draw REPL prompt and current input, and set cursor position.
     fn print_prompt(&mut self) {
-        // Clear line, print prompt, set cursor position
-        self.term.clear_line().unwrap();
+        // Don't use `dprint(ln)!` in this function: we already have a handle to `stderr` and want
+        // to have control over conditions and attributes for printing.
+
+        // Equivalent to `write!(... "\r")`
+        execute!(
+            self.stderr,
+            terminal::Clear(terminal::ClearType::CurrentLine),
+            cursor::MoveToColumn(0),
+        )
+        .expect("failed to clear line and move cursor");
 
         // Print prompt and current input
         // Equivalent code found in non-terminal source
         if Output::is_minimal() {
-            write!(&mut self.term, "{}", PROMPT).unwrap();
+            write!(&self.stderr, "{}", PROMPT)
         } else {
             write!(
-                &mut self.term,
+                &self.stderr,
                 "\x1b[1;{}m{}\x1b[0m",
                 debugger_colors::PRIMARY,
-                PROMPT,
+                PROMPT
             )
-            .unwrap();
         }
+        .expect("failed to print debugger prompt");
 
+        // Print current input
         // Inline `self.get_current()` due to borrowing issues
         let current = if self.is_next() {
             &self.buffer
@@ -287,25 +122,23 @@ impl Terminal {
                 .get(self.history.index)
                 .expect("checked above")
         };
-        write!(self.term, "{}", current).unwrap();
+        write!(self.stderr, "{}", current).expect("failed to print debugger input");
 
-        self.term
-            .move_cursor_left(
-                self.get_current()
-                    .chars()
-                    .count()
-                    .saturating_sub(self.visible_cursor),
-            )
-            .unwrap();
+        // Set final cursor position
+        execute!(
+            self.stderr,
+            cursor::MoveToColumn((PROMPT.len() + self.visible_cursor) as u16),
+        )
+        .expect("failed to move cursor");
 
-        self.term.flush().unwrap();
+        // Previous `execute!` call flushed output already
     }
 
-    // Return of `true` indicates to break loop.
-    fn read_key(&mut self) -> bool {
-        let key = self.term.read_key().unwrap();
+    // Returns `true` indicates to break loop (EOL). Only occurs on `Key::Enter` when buffer
+    // is non-empty.
+    fn handle_key(&mut self, key: Key) -> bool {
         match key {
-            Key::Enter | Key::Char('\n') => {
+            Key::Enter => {
                 if self.is_next() && self.buffer.trim().is_empty() {
                     self.buffer.clear();
                     self.visible_cursor = 0;
@@ -338,42 +171,66 @@ impl Terminal {
                     remove_char_index(&mut self.buffer, self.visible_cursor);
                 }
             }
-            Key::Del => {
+            Key::Delete => {
                 self.update_next();
                 if self.visible_cursor < self.get_current().chars().count() {
                     remove_char_index(&mut self.buffer, self.visible_cursor);
                 }
             }
 
-            // Left/right in current input
-            Key::ArrowLeft => {
+            // Left/right single character in input
+            Key::Left => {
                 if self.visible_cursor > 0 {
                     self.visible_cursor -= 1;
                 }
             }
-            Key::ArrowRight => {
+            Key::Right => {
                 if self.visible_cursor < self.get_current().chars().count() {
                     self.visible_cursor += 1;
                 }
             }
 
+            // Left/right entire word in input
+            Key::CtrlLeft => {
+                self.visible_cursor =
+                    find_word_back(self.get_current(), self.visible_cursor, false);
+            }
+            Key::CtrlRight => {
+                self.visible_cursor =
+                    find_word_next(self.get_current(), self.visible_cursor, false);
+            }
+
             // Back/forth through history
-            Key::ArrowUp => {
+            Key::Up => {
                 if self.history.index > 0 {
                     self.history.index -= 1;
                     self.visible_cursor = self.get_current().chars().count();
                 }
             }
-            Key::ArrowDown => {
+            Key::Down => {
                 if self.history.index < self.history.list.len() {
                     self.history.index += 1;
                     self.visible_cursor = self.get_current().chars().count();
                 }
             }
-
-            _ => (),
         }
         false
+    }
+
+    /// Read keys until newline.
+    fn read_line_raw(&mut self) {
+        term::enable_raw_mode();
+        loop {
+            // Technically redrawing of prompt could be avoided, but this method makes it much
+            // simpler and less error-prone
+            self.print_prompt();
+            let key = term::read_key();
+            if self.handle_key(key) {
+                break; // EOL
+            }
+        }
+        term::disable_raw_mode();
+        println!();
     }
 
     /// Read entire (multi-command) line from terminal.
@@ -381,21 +238,13 @@ impl Terminal {
         self.buffer.clear();
         self.visible_cursor = 0;
 
-        // Read keys until newline
-        loop {
-            self.print_prompt();
-            if self.read_key() {
-                break;
-            }
-        }
-        println!();
-
+        self.read_line_raw();
         debug_assert!(
             !self.buffer.trim().is_empty(),
-            "should have looped until non-empty"
+            "should have read characters until non-empty"
         );
 
-        // Push to history if different to last command
+        // Push to history if different to last line
         if self
             .history
             .list
@@ -404,7 +253,7 @@ impl Terminal {
         {
             self.history.push(self.buffer.clone());
         }
-        // Always reset index to next command
+        // Always reset index to next line
         self.history.index = self.history.list.len();
     }
 
@@ -438,31 +287,6 @@ impl Read for Terminal {
     }
 }
 
-/// Insert a character at a character index.
-fn insert_char_index(string: &mut String, char_index: usize, ch: char) {
-    let (byte_index, char_count) = count_chars_bytes(string, char_index);
-    assert!(char_index <= char_count, "out-of-bounds char index");
-    string.insert(byte_index, ch)
-}
-/// Remove a character at a character index.
-fn remove_char_index(string: &mut String, char_index: usize) -> char {
-    let (byte_index, char_count) = count_chars_bytes(string, char_index);
-    assert!(char_index < char_count, "out-of-bounds char index");
-    string.remove(byte_index)
-}
-/// Returns the byte index from a character index, and the total character count.
-fn count_chars_bytes(string: &str, char_index: usize) -> (usize, usize) {
-    let mut byte_index = string.len();
-    let mut char_count = 0;
-    for (i, (j, _)) in string.char_indices().enumerate() {
-        if i == char_index {
-            byte_index = j;
-        }
-        char_count += 1;
-    }
-    (byte_index, char_count)
-}
-
 impl TerminalHistory {
     const FILE_NAME: &str = "lace-debugger-history";
 
@@ -473,14 +297,14 @@ impl TerminalHistory {
         Self { list, index, file }
     }
 
-    /// Push command into list and write to file.
-    pub fn push(&mut self, command: String) {
+    /// Push line into list and write to file.
+    pub fn push(&mut self, line: String) {
         if let Some(file) = &mut self.file {
-            if writeln!(file, "{}", command).is_err() {
+            if writeln!(file, "{}", line).is_err() {
                 Self::report_error("Failed to write to file");
             }
         }
-        self.list.push(command);
+        self.list.push(line);
     }
 
     /// Returns empty vector if failed to read.
@@ -520,7 +344,7 @@ impl TerminalHistory {
         let file_path = parent_dir.join(Self::FILE_NAME);
         if file_path.exists() && !file_path.is_file() {
             Self::report_error(format_args!(
-                "File exists but is not a file: {}",
+                "File exists but is not a regular file: {}",
                 file_path.display(),
             ));
             return None;
@@ -548,4 +372,114 @@ impl TerminalHistory {
             message,
         );
     }
+}
+
+/// Return character index of start of the word to the left of cursor. Uses Vim rules.
+///
+/// - If `full_word == true`, then it considers a word boundary to only be between whitespace and
+/// non-whitespace characters. Eg. `abc def` has word boundaries directly before and after the
+/// whitespace character.
+/// - If `full_word == false`, then it additionally considers a word boundary
+/// to be between alphanumeric characters and non-alphanumeric characters. Eg: `abc+def` has word
+/// boundaries directly before and after the `+` character.
+fn find_word_next(string: &str, cursor: usize, full_word: bool) -> usize {
+    let mut chars = string.char_indices().skip(cursor);
+    // At end of line (covers empty string case)
+    let Some((_, first)) = chars.next() else {
+        return string.len();
+    };
+    if first.is_whitespace() {
+        // On a space
+        // Look for first non-space character
+        for (i, ch) in chars.by_ref() {
+            if !ch.is_whitespace() {
+                return i;
+            }
+        }
+    } else {
+        // On non-space
+        let alnum = first.is_alphanumeric();
+        while let Some((i, ch)) = chars.next() {
+            // Space found
+            // Look for first non-space character
+            if ch.is_whitespace() {
+                for (i, ch) in chars.by_ref() {
+                    if !ch.is_whitespace() {
+                        return i;
+                    }
+                }
+            }
+            // First punctuation after word
+            // OR first word after punctuation
+            // (If distinguishing words and punctuation)
+            if !full_word && ch.is_alphanumeric() != alnum {
+                return i;
+            }
+        }
+    }
+    // No next word found
+    // Go to end of line
+    string.len()
+}
+
+/// Return character index of end of the word to the right of cursor. Uses Vim rules.
+///
+/// See [`find_word_start`]
+// TODO(refactor/opt): Rewrite to be more idiomaticly Rust
+fn find_word_back(string: &str, mut cursor: usize, full_word: bool) -> usize {
+    // At start of line
+    if cursor <= 1 {
+        return 0;
+    }
+    // Start at previous character
+    cursor -= 1;
+    // On a sequence of spaces (>=1)
+    // Look for end of previous word, start from there instead
+    while cursor > 0 && string.chars().nth(cursor).unwrap().is_whitespace() {
+        cursor -= 1;
+    }
+    // Now on a non-space
+    let alnum = string.chars().nth(cursor).unwrap().is_alphanumeric();
+    while cursor > 0 {
+        cursor -= 1;
+        // Space found
+        // OR first punctuation before word
+        // OR first word before punctuation
+        // Word starts at next index
+        // (If distinguishing words and punctuation)
+        if string.chars().nth(cursor).unwrap().is_whitespace()
+            || (!full_word && string.chars().nth(cursor).unwrap().is_alphanumeric() != alnum)
+        {
+            return cursor + 1;
+        }
+    }
+    // No previous word found
+    // Go to start of line
+    0
+}
+
+/// Insert a character at a character index.
+fn insert_char_index(string: &mut String, char_index: usize, ch: char) {
+    let (byte_index, char_count) = count_chars_bytes(string, char_index);
+    assert!(char_index <= char_count, "out-of-bounds char index");
+    string.insert(byte_index, ch)
+}
+/// Remove a character at a character index.
+fn remove_char_index(string: &mut String, char_index: usize) -> char {
+    let (byte_index, char_count) = count_chars_bytes(string, char_index);
+    assert!(char_index < char_count, "out-of-bounds char index");
+    string.remove(byte_index)
+}
+
+/// Returns the byte index from a character index, and the total character count.
+fn count_chars_bytes(string: &str, char_index: usize) -> (usize, usize) {
+    let mut byte_index = string.len();
+    let mut char_count = 0;
+    for (i, (j, _)) in string.char_indices().enumerate() {
+        if i == char_index {
+            byte_index = j;
+        }
+        char_count += 1;
+    }
+    (byte_index, char_count)
 }

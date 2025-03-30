@@ -8,10 +8,10 @@ pub use air::Air;
 mod runtime;
 pub use runtime::RunEnvironment;
 #[macro_use]
-mod debugger;
-pub use debugger::DebuggerOptions;
+pub mod debugger;
 mod mc;
 mod output;
+mod term;
 
 // Reset global state for watch
 mod symbol;
@@ -20,7 +20,11 @@ pub use symbol::{reset_state, StaticSource};
 mod error;
 mod lexer;
 
-pub mod env;
+pub mod features;
 
 /// Amount of lines to show as context, each side of focus line (line containing span).
 pub const DIAGNOSTIC_CONTEXT_LINES: usize = 8;
+
+pub fn set_minimal(minimal: bool) {
+    output::Output::set_minimal(minimal);
+}

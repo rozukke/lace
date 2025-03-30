@@ -1,33 +1,103 @@
 use super::{error, Arguments, CommandName};
 
-// TODO(feat): Add more aliases (such as undocumented typo aliases)
-#[rustfmt::skip]
-const COMMANDS: CommandNameList = &[
-    (CommandName::Help,        &["help", "--help", "h", "-h"]),
-    (CommandName::Continue,    &["continue", "cont", "c"]), // or 'proceed'
-    (CommandName::Finish,      &["finish", "fin", "f"]),
-    (CommandName::Exit,        &["exit"]),
-    (CommandName::Quit,        &["quit", "q"]),
-    (CommandName::Registers,   &["registers", "reg", "r"]),
-    (CommandName::Reset,       &["reset"]),
-    (CommandName::Step,        &["progress", "p"]), // or 'advance'
-    (CommandName::Next,        &["next", "n"]),
-    (CommandName::Get,         &["get", "g"]),
-    (CommandName::Set,         &["set", "s"]),
-    (CommandName::Jump,        &["jump", "j"]),
-    (CommandName::Source,      &["assembly", "asm", "a"]), // or 'source'
-    (CommandName::Eval,        &["eval", "e"]),
-    (CommandName::BreakList,   &["breaklist", "bl"]),
-    (CommandName::BreakAdd,    &["breakadd", "ba"]),
-    (CommandName::BreakRemove, &["breakremove", "br"]),
-    // "break" is treated specially
+macro_rules! name_list {
+    [
+        $(
+            $name:ident
+            [ $( $candidate:literal ),* $(,)? ]
+            [ $( $misspellings:literal ),* $(,)? ]
+        )*
+    ] => {
+        &[
+            $( CommandNameEntry {
+                name: CommandName::$name,
+                candidates: &[ $($candidate,)* ],
+                misspellings: &[ $($misspellings,)* ],
+            }, )*
+        ]
+    };
+}
+const COMMANDS: &'static [CommandNameEntry] = name_list![
+    Help
+        ["h", "help", "--help", "-h", ":h", "man", "info", "wtf"]
+        []
+    Continue
+        ["c", "continue", "cont"]
+        ["con", "proceed"]
+    Print
+        ["p", "print"]
+        ["get", "show", "display", "put", "puts", "out"]
+    Move
+        ["m", "move"]
+        ["set", "mov", "mv", "assign"]
+    Registers
+        ["r", "registers", "reg"]
+        ["dump", "register", "regs"]
+    Goto
+        ["g", "goto"]
+        ["jump", "call", "go", "go-to", "jsr", "jsrr", "br", "brn", "brz", "brp", "brnz", "brnp", "brzp", "brnzp"]
+    Assembly
+        ["a", "assembly", "asm"]
+        ["source", "src", "ass", "inspect"]
+    Eval
+        ["e", "eval", "evil", "evaluate"]
+        ["run", "exec", "execute", "sim", "simulate", "instruction", "instr"]
+    Reset
+        ["z", "reset"]
+        ["restart", "refresh", "reboot"]
+    Echo // Not included in help
+        ["echo"]
+        []
+    Quit
+        ["q", "quit"]
+        []
+    Exit
+        ["x", "exit", ":q", ":wq", "^C"]
+        ["halt", "end", "stop"]
+
+    StepOver
+        []
+        ["next", "step-over", "stepover"]
+    StepInto
+        ["si", "stepinto"]
+        ["into", "in", "stepin", "step-into", "step-in", "stepi", "step-i", "sin"]
+    StepOut
+        ["so", "stepout"]
+        ["finish", "fin", "out", "step-out", "stepo", "step-o", "sout"]
+
+    BreakList
+        ["bl", "breaklist"]
+        ["break-list", "break-ls", "blist", "bls", "bp", "breakpoint", "breakpointlist", "breakpoint-list"]
+    BreakAdd
+        ["ba", "breakadd"]
+        ["break-add", "badd", "breakpointadd", "breakpoint-add"]
+    BreakRemove
+        ["br", "breakremove"]
+        ["break-remove", "break-rm", "bremove", "brm", "breakpointremove", "breakpoint-remove"]
 ];
-const BREAK_COMMAND: CandidateList = &["break", "b"];
-#[rustfmt::skip]
-const BREAK_SUBCOMMANDS: CommandNameList = &[
-    (CommandName::BreakList,   &["list", "l"]),
-    (CommandName::BreakAdd,    &["add", "a"]),
-    (CommandName::BreakRemove, &["remove", "r"]),
+const COMMAND_STEP: CandidateList = &["step", "s"];
+const SUBCOMMANDS_STEP: &'static [CommandNameEntry] = name_list![
+    StepOver
+        []
+        ["next"]
+    StepInto
+        ["i", "into"]
+        ["in"]
+    StepOut
+        ["o", "out"]
+        ["finish", "fin"]
+];
+const COMMAND_BREAK: CandidateList = &["b", "break"];
+const SUBCOMMANDS_BREAK: &'static [CommandNameEntry] = name_list![
+    BreakList
+        ["l", "list"]
+        ["print", "show", "display", "dump", "ls"]
+    BreakAdd
+        ["a", "add"]
+        ["set", "move"]
+    BreakRemove
+        ["r", "remove"]
+        ["delete", "rm"]
 ];
 
 impl Arguments<'_> {
@@ -46,57 +116,120 @@ impl Arguments<'_> {
         // Command source should always return a string containing non-whitespace characters
         let command_name = command_name.expect("missing command name");
 
-        if let Some(command) = find_name_match(command_name, COMMANDS) {
+        // Subcommands for `step`
+        if let Some(command) = self.name_matches_with_subcommand(
+            command_name,
+            COMMAND_STEP,
+            SUBCOMMANDS_STEP,
+            Some(CommandName::StepOver),
+        )? {
             return Ok(command);
+        }
+        // Subcommands for `break`
+        if let Some(command) =
+            self.name_matches_with_subcommand(command_name, COMMAND_BREAK, SUBCOMMANDS_BREAK, None)?
+        {
+            return Ok(command);
+        }
+
+        match find_name_match(command_name, COMMANDS) {
+            Ok(command) => return Ok(command),
+
+            Err(suggested) => {
+                // User clearly wants return to bash
+                if command_name == "sudo" {
+                    println!("Goodbye");
+                    std::process::exit(0);
+                }
+
+                return Err(error::Command::InvalidCommand {
+                    command_name: command_name.to_string(),
+                    suggested,
+                });
+            }
+        }
+    }
+
+    // TODO(doc)
+    fn name_matches_with_subcommand(
+        &mut self,
+        command_name: &str,
+        commands: CandidateList,
+        subcommands: &'static [CommandNameEntry],
+        default: Option<CommandName>,
+    ) -> Result<Option<CommandName>, error::Command> {
+        // This could be written a bit nicer. But it doesn't seem necessary.
+        if !name_matches(command_name, commands) {
+            return Ok(None);
+        }
+
+        // Normalize name and get as `'static`
+        // Only used for errors
+        let command_name = commands[0]; // Array must be non-empty if this branch is being ran
+
+        let Some(subcommand_name) = self.next_token_str() else {
+            match default {
+                Some(command) => return Ok(Some(command)),
+                None => return Err(error::Command::MissingSubcommand { command_name }),
+            }
         };
 
-        // "break" is currently the only command with subcommands, so it is treated specially
-        // This could be written a bit nicer. But it doesn't seem necessary.
-        if name_matches(command_name, BREAK_COMMAND) {
-            // Normalize name and get as `'static`
-            // Only used for errors
-            let command_name = BREAK_COMMAND[0]; // Array must be non-empty if this branch is being ran
-
-            let Some(subcommand_name) = self.next_token_str() else {
-                return Err(error::Command::MissingSubcommand { command_name });
-            };
-            let Some(command) = find_name_match(subcommand_name, BREAK_SUBCOMMANDS) else {
+        match find_name_match(subcommand_name, subcommands) {
+            Ok(command) => return Ok(Some(command)),
+            Err(suggested) => {
                 return Err(error::Command::InvalidSubcommand {
                     command_name,
                     subcommand_name: subcommand_name.to_string(),
+                    suggested,
                 });
-            };
-            return Ok(command);
+            }
         }
-
-        Err(error::Command::InvalidCommand {
-            command_name: command_name.to_string(),
-        })
     }
 }
 
-/// A [`CommandName`] with a list of name candidates.
-type CommandNameList<'a> = &'a [(CommandName, CandidateList<'a>)];
+/// A [`CommandName`] with a list of name candidates and misspellings which should trigger a
+/// suggestion.
+struct CommandNameEntry {
+    name: CommandName,
+    candidates: CandidateList,
+    misspellings: CandidateList,
+}
+
 /// List of single-word aliases for a command or subcommand.
-type CandidateList<'a> = &'a [&'a str];
+type CandidateList = &'static [&'static str];
 
-/// Returns the first [`CommandName`], which has a corresponding candidate which matches `name`
-/// (case insensitive).
+/// Returns the first [`CommandName`], which has a corresponding candidate which matches the
+/// `provided` command name (case insensitive).
 ///
-/// Returns `None` if no match was found.
-fn find_name_match(name: &str, commands: CommandNameList) -> Option<CommandName> {
-    for (command, candidates) in commands {
-        if name_matches(name, candidates) {
-            return Some(*command);
+/// Returns `Err(_)` if no match was found, with an optional 'suggested' command name.
+fn find_name_match(
+    provided: &str,
+    entries: &'static [CommandNameEntry],
+) -> Result<CommandName, Option<CommandName>> {
+    for CommandNameEntry {
+        name, candidates, ..
+    } in entries
+    {
+        if name_matches(provided, candidates) {
+            return Ok(*name);
         }
     }
-    None
+    for CommandNameEntry {
+        name, misspellings, ..
+    } in entries
+    {
+        if name_matches(provided, misspellings) {
+            return Err(Some(*name));
+        }
+    }
+    Err(None)
 }
 
-/// Returns `true` if `name` matchs any item of `candidates` (case insensitive).
-fn name_matches(name: &str, candidates: CandidateList) -> bool {
+/// Returns `true` if the `provided` command name matchs any item of `candidates` (case
+/// insensitive).
+fn name_matches(provided: &str, candidates: CandidateList) -> bool {
     for candidate in candidates {
-        if name.eq_ignore_ascii_case(candidate) {
+        if provided.eq_ignore_ascii_case(candidate) {
             return true;
         }
     }

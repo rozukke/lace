@@ -7,13 +7,14 @@ use std::{
 
 use crate::{
     debugger::{Action, Debugger, DebuggerOptions, SignificantInstr},
-    dprintln, env,
+    debugger::{Action, Debugger, Options, SignificantInstr},
+    dprintln, dprintln, env,
     mc::{self, CleanMemoryStr},
     output::{Condition, Output},
     Air,
 };
+use crate::{features, term};
 use colored::Colorize;
-use console::Term;
 use miette::Result;
 
 /// First address which is out of bounds of user memory.
@@ -69,36 +70,29 @@ pub(super) enum RunFlag {
 
 impl RunEnvironment {
     // Not generic because of miette error
-    pub fn try_from(air: &Air) -> Result<RunEnvironment> {
+    pub fn try_from(air: Air, debugger_opts: Option<Options>) -> Result<RunEnvironment> {
+        // TODO(refactor): Use constant for default origin ?
         let orig = air.orig().unwrap_or(0x3000);
         let mut air_array: Vec<u16> = Vec::with_capacity(air.len() + 1);
 
         air_array.push(orig);
-        for stmt in air {
+        for stmt in &air {
             air_array.push(stmt.emit()?);
         }
 
-        RunEnvironment::from_raw(air_array.as_slice())
-    }
+        let mut env = RunEnvironment::from_raw(air_array.as_slice())?;
 
-    pub fn try_from_with_debugger(
-        air: Air, // Takes ownership of breakpoints
-        debugger_opts: DebuggerOptions,
-    ) -> Result<RunEnvironment> {
-        let mut env = Self::try_from(&air)?;
+        if let Some(debugger_opts) = debugger_opts {
+            env.debugger = Some(Debugger::new(
+                debugger_opts,
+                env.state.clone(),
+                air.breakpoints.with_orig(env.state.pc), // Add orig to each breakpoint
+                air.ast,
+                air.src,
+            ));
+        }
 
-        // Add orig to each breakpoint
-        let breakpoints = air.breakpoints.with_orig(env.state.pc);
-
-        env.debugger = Some(Debugger::new(
-            debugger_opts,
-            env.state.clone(),
-            breakpoints,
-            air.ast,
-            air.src,
-        ));
-
-        Ok(env)
+        return Ok(env);
     }
 
     pub fn from_raw(raw: &[u16]) -> Result<RunEnvironment> {
@@ -123,17 +117,14 @@ impl RunEnvironment {
             state: RunState {
                 mem: Box::new(mem),
                 pc: orig as u16,
-                reg: [0, 0, 0, 0, 0, 0, 0, 0xFDFF],
+                // Stack pointer (R7) initalized to last address in user memory
+                reg: [0, 0, 0, 0, 0, 0, 0, USER_MEMORY_END - 1],
                 flag: RunFlag::Uninit,
                 _psr: 0,
                 orig: orig as u16,
             },
             debugger: None,
         })
-    }
-
-    pub fn set_minimal(&mut self, minimal: bool) {
-        Output::set_minimal(minimal);
     }
 
     /// Run with preset memory
@@ -309,11 +300,11 @@ impl RunState {
     }
 
     fn stack(&mut self, instr: u16) {
-        if !env::is_stack_enabled() {
+        if !features::stack() {
             eprintln!(
                 "\
                 You called a reserved instruction.\n\
-                Note: Run with `LACE_STACK=1` to enable stack features.\n\
+                Note: Run with `-f stack` to enable stack extension feature.\n\
                 Halting...\
                 "
             );
@@ -348,8 +339,8 @@ impl RunState {
 
     fn push_val(&mut self, val: u16) {
         debug_assert!(
-            env::is_stack_enabled(),
-            "caller should have ensured stack features are enabled",
+            features::stack(),
+            "caller should have ensured stack feature is enabled",
         );
         // Decrement stack
         *self.reg_mut(7) -= 1;
@@ -360,8 +351,8 @@ impl RunState {
 
     fn pop_val(&mut self) -> u16 {
         debug_assert!(
-            env::is_stack_enabled(),
-            "caller should have ensured stack features are enabled",
+            features::stack(),
+            "caller should have ensured stack feature is enabled",
         );
         let sp = self.reg(7);
         let val = self.mem(sp);
@@ -498,7 +489,7 @@ impl RunState {
         match trap_vect {
             // getc
             0x20 => {
-                *self.reg_mut(0) = read_input() as u16;
+                *self.reg_mut(0) = read_char() as u16;
             }
             // out
             0x21 => {
@@ -515,7 +506,7 @@ impl RunState {
             }
             // in
             0x23 => {
-                let ch = read_input();
+                let ch = read_char();
                 *self.reg_mut(0) = ch as u16;
                 Output::Normal.print(ch as char);
                 stdout().flush().unwrap();
@@ -589,6 +580,9 @@ impl RunState {
                 let height = mc::with_connection(|mc| mc.get_height(x, z));
                 *self.reg_mut(1) = height as u16;
             }
+
+            // Note that if custom traps are implemented, `src/debugger/eval.rs` must be modified
+            // to explicitely allow `eval` to simulate the traps
 
             // unknown
             _ => exception!(
@@ -670,26 +664,41 @@ impl<'a> Iterator for MemoryStr<'a> {
     }
 }
 
-// Read one byte from stdin or unbuffered terminal
-fn read_input() -> u8 {
-    if stdin().is_terminal() {
-        let cons = Term::stdout();
-        let ch = cons
-            .read_char()
-            .expect("read from interactive terminal should not fail");
-        ch as u8
+// Read one byte from stdin or interactive terminal.
+fn read_char() -> char {
+    /// '�'
+    const REPLACEMENT_CHAR: char = '\u{FFFD}';
+
+    let stdin = stdin();
+    let byte = if stdin.is_terminal() {
+        term::read_byte()
     } else {
-        let mut buf = [0; 1];
-        if let Err(err) = stdin().read_exact(&mut buf) {
-            if let io::ErrorKind::UnexpectedEof = err.kind() {
-                eprintln!("unexpected end of input file stream.");
-                std::process::exit(1);
-            } else {
-                panic!("failed to read character from stdin: {:?}", err)
-            }
-        }
-        buf[0]
+        Some(read_byte_stdin(stdin))
+    };
+    // Replace with marker character if non-ASCII
+    match byte {
+        Some(byte) if byte.is_ascii() => byte as char,
+        _ => REPLACEMENT_CHAR,
     }
+}
+
+/// Read one byte from stdin.
+///
+/// Handles `UnexpectedEof` by printing error minimally and exiting.
+/// Panics on any other error.
+fn read_byte_stdin(mut stdin: io::Stdin) -> u8 {
+    let mut buf = [0; 1];
+    if let Err(err) = stdin.read_exact(&mut buf) {
+        if let io::ErrorKind::UnexpectedEof = err.kind() {
+            // This should NOT use `exception!`: it is an error with the
+            // emulator, not the CPU
+            eprintln!("unexpected end of input file stream.");
+            std::process::exit(1);
+        } else {
+            panic!("failed to read character from stdin: {:?}", err)
+        }
+    }
+    buf[0]
 }
 
 #[cfg(test)]

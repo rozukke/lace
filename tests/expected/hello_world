@@ -1,0 +1,39 @@
+[lea]
+lea r0 hw
+R0 x0000
+R1 x0000
+R2 x0000
+R3 x0000
+R4 x0000
+R5 x0000
+R6 x0000
+R7 xfdff
+PC x3000
+CC 000
+[puts]
+puts
+R0 x3003
+R1 x0000
+R2 x0000
+R3 x0000
+R4 x0000
+R5 x0000
+R6 x0000
+R7 xfdff
+PC x3001
+CC 001
+
+Reached::Halt
+[halt]
+halt
+R0 x3003
+R1 x0000
+R2 x0000
+R3 x0000
+R4 x0000
+R5 x0000
+R6 x0000
+R7 xfdff
+PC x3002
+CC 001
+Reached::Halt

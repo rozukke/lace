@@ -57,7 +57,7 @@ struct Prefix {
     leading_zeros: bool,
 }
 
-impl<'a> TryParse<'a> for Integer {
+impl TryParse<'_> for Integer {
     /// Parse argument string as an [`Integer`].
     ///
     /// Extremely liberal in accepted syntax.
@@ -93,8 +93,8 @@ impl Integer {
     }
 
     /// Try to convert into `i16`.
-    pub fn as_i16(self) -> Result<i16, error::Value> {
-        (*self)
+    pub fn as_i16(&self) -> Result<i16, error::Value> {
+        (**self)
             .try_into()
             .map_err(|_| error::Value::IntegerTooLarge {
                 max: i16::MAX as u16,
@@ -102,15 +102,15 @@ impl Integer {
     }
 
     /// Try to convert into `u16`.
-    pub fn as_u16(self) -> Result<u16, error::Value> {
-        (*self)
+    pub fn as_u16(&self) -> Result<u16, error::Value> {
+        (**self)
             .try_into()
             .map_err(|_| error::Value::IntegerTooLarge { max: u16::MAX })
     }
 
     /// Try to convert into `u16`, casting negative values.
-    pub fn as_u16_cast(self) -> Result<u16, error::Value> {
-        if *self < 0 {
+    pub fn as_u16_cast(&self) -> Result<u16, error::Value> {
+        if **self < 0 {
             Ok(self.as_i16()? as u16)
         } else {
             self.as_u16()
@@ -285,8 +285,6 @@ fn take_prefix(chars: &mut CharIter) -> Result<PrefixResult, error::Value> {
     // Only take ONE leading zero here
     // Disallow "00x..." etc.
     let leading_zeros = chars.next_if_eq(&'0').is_some();
-
-    println!("AWOIDJOADW");
 
     // Take optional prefix
     let mut consume_char = true;

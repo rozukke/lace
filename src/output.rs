@@ -15,6 +15,10 @@ pub mod debugger_colors {
 /// Print to debugger output.
 #[macro_export]
 macro_rules! dprint {
+    ( Alternate $(, $($tt:tt)* )? ) => {{
+        compile_error!("cannot use `Alternate` with `dprint`. use `dprintln` instead");
+    }};
+
     // `$fmt:expr` is required to allow `concat!` macro to be accepted
     ( $condition:expr, $category:expr, $fmt:expr $(, $($tt:tt)* )? ) => {{
         // This is not very hygenic. But makes macro more ergonomic to use.
@@ -24,9 +28,9 @@ macro_rules! dprint {
         $crate::output::Output::Debugger($crate::output::Condition::Sometimes, $category)
             .print_category($category);
         $crate::output::Output::Debugger($condition, $category)
-            .print(format_args!($fmt $(, $($tt)* )?)
-        );
-        eprint!("\x1b[0m"); // This is not ideal here
+            .print(format_args!($fmt $(, $($tt)* )?));
+        $crate::output::Output::Debugger($condition, $category)
+            .reset_style();
     }};
 
     ( $fmt:literal $($tt:tt)* ) => {{
@@ -43,6 +47,30 @@ macro_rules! dprint {
 /// Print to debugger output, with a newline.
 #[macro_export]
 macro_rules! dprintln {
+    // Choose message depending on `Output::is_minimal`
+    ( Alternate, $category:expr,
+      $minimal:literal,                         // If minimal
+      [ $fmt:expr $(, $($tt:tt)* )? ] $(,)? // Otherwise
+    ) => {{
+        if $crate::output::Output::is_minimal() {
+            $crate::dprint!(Always, $category, concat!($minimal, "\n"));
+        } else {
+            $crate::dprint!(Always, $category, $fmt $(, $($tt)* )?);
+        }
+    }};
+
+    ( Alternate, $category:expr,
+      [ $fmt_a:expr $(, $($tt_a:tt)* )? ] $(,)?
+    ) => {{
+        compile_error!("requires two format groups");
+    }};
+    ( Alternate, $category:expr $(, $($tt:tt)* )? ) => {{
+        compile_error!("requires two format groups");
+    }};
+    ( Alternate $(, $($tt:tt)* )? ) => {{
+        compile_error!("requires category and two format groups");
+    }};
+
     ( $condition:expr $(,)? ) => {{
         $crate::dprint!(
             $condition,
@@ -136,7 +164,12 @@ impl Output {
     /// not track the state.
     pub fn start_new_line(&self) {
         if !LineTracker::is_line_start() {
-            self.print('\n');
+            // Do not use `dprintln` or `self.print` or anything
+            // No attributes should be applied
+            eprintln!();
+            LineTracker
+                .write_str("\n")
+                .expect("`LineTracker::write_str` should never fail");
         }
     }
 
@@ -152,7 +185,7 @@ impl Output {
 
     /// Print a decoration symbol, to indicate the purpose of the next message printed.
     ///
-    /// Only works for [`Output::Debugger`].
+    /// Must only be called on [`Output::Debugger`].
     pub fn print_category(&self, category: Category) {
         debug_assert!(
             matches!(self, Self::Debugger(..)),
@@ -179,9 +212,9 @@ impl Output {
     pub fn print_registers(&self, state: &RunState) {
         if Self::is_minimal() {
             for i in 0..8 {
-                self.print(format_args!("R{} {}\n", i, state.reg(i)));
+                self.print(format_args!("R{} x{:04x}\n", i, state.reg(i)));
             }
-            self.print(format_args!("PC {}\n", state.pc()));
+            self.print(format_args!("PC x{:04x}\n", state.pc()));
             self.print(format_args!("CC {:03b}\n", state.flag() as u8));
             return;
         }
@@ -198,92 +231,101 @@ impl Output {
         }
 
         // PC, CC
+        self.print("\x1b[2m├─────────────────┬─────────────────┤\x1b[0m\n");
         self.print("\x1b[2m│\x1b[0m");
-        self.print(" \x1b[1mPC\x1b[0m");
-        self.print(format_args!("  0x{:04x}", state.pc()));
-        self.print("                ");
+        self.print("    \x1b[1mPC\x1b[0m");
+        self.print(format_args!(" 0x{:04x}", state.pc()));
+        self.print("\x1b[2m    │    \x1b[0m");
         self.print(" \x1b[1mCC\x1b[0m");
-        self.print(format_args!(" {:03b}", state.flag() as u8));
-        self.print(" \x1b[2m│\x1b[0m\n");
+        self.print(format_args!("  {:03b}", state.flag() as u8));
+        self.print("     \x1b[2m│\x1b[0m\n");
 
-        self.print("\x1b[2m└───────────────────────────────────┘\x1b[0m\n");
+        self.print("\x1b[2m└─────────────────┴─────────────────┘\x1b[0m\n");
     }
 
-    /// Print 2-column table of any number of rows.
+    /// Print table of breakpoints: three columns and any number of rows.
     ///
     /// `row` argument will be called with values `0..` until `None` is returned.
     ///
-    /// Values in left (key) column are printed as unsigned hexadecimal integers.
+    /// Addresses (left column) are printed as unsigned hexadecimal integers.
     ///
-    /// Values in right (value) column are printed as strings, and are truncated if their length
-    /// exceeds the column width.
+    /// Label and instruction values are printed in the next two columns, truncated if their length
+    /// exceeds their respective column width.
     ///
-    /// Currently only used to print breakpoints ("break list").
-    pub fn print_key_value_table<'a, F>(&self, row: F)
+    /// Must only be called on [`Output::Debugger`].
+    /// Must NOT be called if `Output::is_minimal()`.
+    pub fn print_breakpoint_table<'a, F>(&self, row: F)
     where
-        F: Fn(usize) -> Option<(u16, &'a str)>,
+        F: Fn(usize) -> Option<(u16, &'a str, &'a str)>,
     {
         debug_assert!(
             matches!(self, Self::Debugger(..)),
-            "`Output::print_key_value_table()` called on `Output::Normal`"
+            "`Output::print_breakpoint_table()` called on `Output::Normal`"
         );
         debug_assert!(
             !Self::is_minimal(),
-            "`print_key_value_table` should not be called if `--minimal`"
+            "`Output::print_breakpoint_table()` should not be called if `--minimal`"
         );
 
-        const LEFT_WIDTH: usize = " 0x1234 ".len(); // Note the whitespace
-        const RIGHT_WIDTH: usize = 40; // Arbitrary
+        const WIDTH_ADDRESS: usize = " 0x1234 ".len(); // Note the whitespace
+        const WIDTH_LABEL: usize = 14; // Arbitrary
+        const WIDTH_LINE: usize = 28; // Arbitrary
 
-        let print_line =
-            |char_line: char, char_left: char, char_middle: char, char_right: char| -> () {
-                self.print(char_left);
-                for _ in 0..LEFT_WIDTH {
-                    self.print(char_line);
-                }
-                self.print(char_middle);
-                for _ in 0..RIGHT_WIDTH {
-                    self.print(char_line);
-                }
-                self.print(char_right);
-                self.print('\n');
-            };
+        let print_line = |char_line: char, char_left: char, char_middle: char, char_right: char| {
+            self.print(char_left);
+            for _ in 0..WIDTH_ADDRESS {
+                self.print(char_line);
+            }
+            self.print(char_middle);
+            for _ in 0..WIDTH_LABEL {
+                self.print(char_line);
+            }
+            self.print(char_middle);
+            for _ in 0..WIDTH_LINE {
+                self.print(char_line);
+            }
+            self.print(char_right);
+            self.print('\n');
+        };
 
         self.print("\x1b[2m");
         print_line('─', '┌', '┬', '┐');
 
+        // Print cell value with max length
+        // Replace final ' ' with ellipsis if length exceeds max
+        let print_cell = |text: &str, width: usize| {
+            let mut len = 0;
+            for (i, ch) in text.chars().enumerate() {
+                len += 1;
+                if i > width - 3 {
+                    self.print('…');
+                    break;
+                }
+                self.print(ch);
+            }
+            for _ in len..width - 1 {
+                self.print(' ');
+            }
+        };
+
         for i in 0.. {
-            let Some((key, value)) = row(i) else {
+            let Some((address, label, line)) = row(i) else {
                 break;
             };
             if i > 0 {
                 print_line('─', '├', '┼', '┤');
             }
 
-            self.print("│ ");
-            self.print("\x1b[0m");
-            self.print(format_args!("0x{:04x}", key));
-            self.print("\x1b[2m");
-            self.print(" │ ");
-            self.print("\x1b[0m");
+            self.print("│ \x1b[0;1m");
+            self.print(format_args!("0x{:04x}", address));
 
-            // Print line with max length
-            // Replace final ' ' with ellipsis if length exceeds max
-            let mut len = 0;
-            for (i, ch) in value.chars().enumerate() {
-                len += 1;
-                if i > RIGHT_WIDTH - 3 {
-                    self.print("…");
-                    break;
-                }
-                self.print(ch);
-            }
-            for _ in len..RIGHT_WIDTH - 1 {
-                self.print(" ");
-            }
+            self.print("\x1b[0;2m │ \x1b[0m");
+            print_cell(label, WIDTH_LABEL);
 
-            self.print("\x1b[2m");
-            self.print("│"); // No whitespace here: it (or ellipsis) was printed above
+            self.print("\x1b[2m│ \x1b[0m");
+            print_cell(line, WIDTH_LINE);
+
+            self.print("\x1b[2m│");
             self.print('\n');
         }
 
@@ -295,8 +337,7 @@ impl Output {
     /// table.
     pub fn print_integer(&self, value: u16) {
         if Self::is_minimal() {
-            self.print_decimal(value);
-            self.print('\n');
+            self.print_fmt(format_args!("x{:04x}\n", value));
             return;
         }
         self.print("\x1b[2m┌───────────────────────────────┐\x1b[0m\n");
@@ -327,10 +368,12 @@ impl Output {
     /// - Printable ASCII characters are displayed normally.
     /// - Any other ASCII character is printed as `───`
     /// - Any non-ASCII (UTF-16) character is displayed as `┄┄┄`
+    ///
+    /// Must NOT be called if `Output::is_minimal()`.
     fn print_char_display(&self, value: u16) {
         debug_assert!(
             !Self::is_minimal(),
-            "`print_display` should not be called if `--minimal`"
+            "`Output::print_display()` should not be called if `--minimal`"
         );
         if Self::is_minimal() {
             return;
@@ -369,7 +412,9 @@ impl Output {
         let minimal = Self::is_minimal();
         match self {
             Self::Normal => {
-                NormalWriter { minimal }.write_fmt(args).unwrap();
+                NormalWriter { minimal }
+                    .write_fmt(args)
+                    .expect("`NormalWriter::write_fmt` should never fail");
             }
             Self::Debugger(condition, category) => {
                 if minimal && condition == &Condition::Sometimes {
@@ -380,9 +425,24 @@ impl Output {
                     category: *category,
                 }
                 .write_fmt(args)
-                .unwrap();
+                .expect("`DebuggerWriter::write_fmt` should never fail");
             }
         }
+    }
+
+    /// Resets all ANSI color/style attributes for debugger output.
+    ///
+    /// Must only be called on [`Output::Debugger`].
+    pub fn reset_style(&self) {
+        debug_assert!(
+            matches!(self, Self::Debugger(..)),
+            "`Output::reset_style()` called on `Output::Normal`"
+        );
+        if Self::is_minimal() {
+            return;
+        }
+        // Bypass debugger writer
+        eprint!("\x1b[0m");
     }
 }
 
@@ -391,13 +451,16 @@ struct NormalWriter {
     minimal: bool,
 }
 impl fmt::Write for NormalWriter {
+    /// Must never fail.
     fn write_str(&mut self, string: &str) -> fmt::Result {
         if self.minimal {
             print!("{}", Decolored::new(string));
         } else {
             print!("{}", string);
         }
-        LineTracker.write_str(string).unwrap();
+        LineTracker
+            .write_str(string)
+            .expect("`LineTracker::write_str` should never fail");
         Ok(())
     }
 }
@@ -410,6 +473,7 @@ struct DebuggerWriter {
     category: Category,
 }
 impl fmt::Write for DebuggerWriter {
+    /// Must never fail.
     fn write_str(&mut self, string: &str) -> fmt::Result {
         let color = match self.category {
             Category::Normal => debugger_colors::PRIMARY,
@@ -459,18 +523,22 @@ impl fmt::Write for DebuggerWriter {
                     }
                 }
 
-                LineTracker.write_str(string).unwrap();
+                LineTracker
+                    .write_str(string)
+                    .expect("`LineTracker::write_str` should never fail");
                 return Ok(());
             }
         };
 
         if self.minimal {
             eprint!("{}", Decolored::new(string));
-            return Ok(());
+        } else {
+            eprint!("{}", Colored::new(color, string));
         }
 
-        eprint!("{}", Colored::new(color, string));
-        LineTracker.write_str(string).unwrap();
+        LineTracker
+            .write_str(string)
+            .expect("`LineTracker::write_str` should never fail");
         Ok(())
     }
 }
@@ -504,6 +572,7 @@ impl LineTracker {
     }
 }
 impl fmt::Write for LineTracker {
+    /// Must never fail.
     fn write_str(&mut self, string: &str) -> fmt::Result {
         let mut chars = string.chars();
         while let Some(ch) = chars.next() {

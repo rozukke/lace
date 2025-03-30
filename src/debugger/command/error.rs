@@ -13,6 +13,7 @@ pub enum Command {
     #[allow(clippy::enum_variant_names)]
     InvalidCommand {
         command_name: String,
+        suggested: Option<CommandName>,
     },
     MissingSubcommand {
         command_name: &'static str,
@@ -20,6 +21,7 @@ pub enum Command {
     InvalidSubcommand {
         command_name: &'static str,
         subcommand_name: String,
+        suggested: Option<CommandName>,
     },
     InvalidArgument {
         command_name: CommandName,
@@ -73,21 +75,31 @@ impl Error for Value {}
 impl fmt::Display for Command {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidCommand { command_name } => {
+            Self::InvalidCommand {
+                command_name,
+                suggested,
+            } => {
                 write!(f, "Not a command: `{}`", command_name)?;
+                if let Some(suggested) = suggested {
+                    write!(f, "\n    Did you mean `{}`?", suggested)?;
+                }
             }
             Self::InvalidSubcommand {
                 command_name,
                 subcommand_name,
+                suggested,
             } => {
                 write!(
                     f,
                     "Invalid subcommand: `{} {}`",
                     command_name, subcommand_name
                 )?;
+                if let Some(suggested) = suggested {
+                    write!(f, "\n    Did you mean `{}`?", suggested)?;
+                }
             }
             Self::MissingSubcommand { command_name } => {
-                write!(f, "Missing subcommand: `{} ?`", command_name)?;
+                write!(f, "Missing subcommand: `{} (...)`", command_name)?;
             }
             Self::InvalidArgument {
                 command_name,

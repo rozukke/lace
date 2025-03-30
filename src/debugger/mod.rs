@@ -8,20 +8,20 @@ use std::cmp::Ordering;
 use self::asm::AsmSource;
 use self::command::{Command, CommandReader, Label, Location, MemoryLocation};
 use crate::air::AsmLine;
-use crate::dprintln;
 use crate::output::{Condition, Output};
 use crate::runtime::{RunState, HALT_ADDRESS, USER_MEMORY_END};
 use crate::symbol::with_symbol_table;
+use crate::{dprintln, features};
 
 pub use self::breakpoint::{Breakpoint, Breakpoints};
 
 /// Leave this as a struct, in case more options are added in the future. Plus it is more explicit.
 #[derive(Debug)]
-pub struct DebuggerOptions {
+pub struct Options {
     pub command: Option<String>,
 }
 
-pub struct Debugger {
+pub(super) struct Debugger {
     /// Must not be mutated.
     initial_state: RunState,
     /// Must not be mutated.
@@ -49,20 +49,20 @@ enum Status {
     /// Keep executing user commands, until one changes the debugger status.
     #[default]
     WaitForAction,
-    /// Execute `count` instructions.
-    ///
-    /// Stop execution early if breakpoint or `HALT` is reached.
-    ///
-    /// Subroutines are not treated specially; `JSR|JSRR|CALL` and `RET`|`RETS` instructions are
-    /// treated as any other instruction is.
-    Step { count: u16 },
     /// Execute the next instruction, or the whole subroutine if next instruction is
     /// `JSR|JSRR|CALL`.
     ///
     /// Stop execution early if breakpoint or `HALT` is reached.
     ///
     /// Return address is necessary to support nested subroutine calls.
-    Next { return_addr: u16 },
+    StepOver { return_addr: u16 },
+    /// Execute `count` instructions.
+    ///
+    /// Stop execution early if breakpoint or `HALT` is reached.
+    ///
+    /// Subroutines are not treated specially; `JSR|JSRR|CALL` and `RET`|`RETS` instructions are
+    /// treated as any other instruction is.
+    StepInto { count: u16 },
     /// Execute all instructions until breakpoint or `HALT` is reached.
     Continue,
     /// Execute all instructions until `RET`|`RETS` instruction, breakpoint, or `HALT` is reached.
@@ -73,7 +73,7 @@ enum Status {
 
 /// A message which the debugger passes to the runtime loop.
 #[derive(Debug)]
-pub enum Action {
+pub(super) enum Action {
     /// Keep executing as normal (with the debugger active).
     Proceed,
     /// Disable the debugger, keep executing.
@@ -85,7 +85,7 @@ pub enum Action {
 /// An instruction, which is relevant to the debugger, specifically the "finish" and "continue"
 /// commands.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum SignificantInstr {
+pub(super) enum SignificantInstr {
     /// Return from a subroutine. `RET` or `RETS`.
     ///
     /// Used by "finish".
@@ -115,7 +115,7 @@ impl TryFrom<u16> for SignificantInstr {
 impl Debugger {
     /// Must only be called *once* per process.
     pub(super) fn new(
-        opts: DebuggerOptions,
+        opts: Options,
         initial_state: RunState,
         breakpoints: impl Into<Breakpoints>,
         ast: Vec<AsmLine>,
@@ -156,19 +156,25 @@ impl Debugger {
             Ordering::Less => {
                 // This can probably only happen with a bad `BR*` instruction
                 dprintln!(
-                    Always,
+                    Alternate,
                     Error,
-                    "Out of bounds of user program memory (PC < 0x{:04x}). Pausing execution.",
-                    self.orig(),
+                    "OutOfBounds::ProgramCounter",
+                    [
+                        "Out of bounds of user program memory (PC < 0x{:04x}). Pausing execution.",
+                        self.orig(),
+                    ],
                 );
                 self.status = Status::WaitForAction;
             }
             Ordering::Greater if state.pc() != HALT_ADDRESS => {
                 dprintln!(
-                    Always,
+                    Alternate,
                     Error,
-                    "Out of bounds of user program memory (PC >= 0x{:04X}). Pausing execution.",
-                    USER_MEMORY_END,
+                    "OutOfBounds::ProgramCounter",
+                    [
+                        "Out of bounds of user program memory (PC >= 0x{:04X}). Pausing execution.",
+                        USER_MEMORY_END,
+                    ]
                 );
                 self.status = Status::WaitForAction;
             }
@@ -188,28 +194,29 @@ impl Debugger {
                     }
                 }
 
-                Status::Step { count } => {
-                    if *count > 0 {
-                        *count -= 1;
-                    } else {
-                        self.status = Status::WaitForAction;
-                    }
-                    return Action::Proceed;
-                }
-
-                Status::Next { return_addr } => {
+                Status::StepOver { return_addr } => {
                     if state.pc() == *return_addr {
                         // If subroutine was excecuted (for `JSR|JSRR|CALL` + `RET`|`RETS`)
                         // As opposed to a single instruction
                         if self.instruction_count > 1 {
                             dprintln!(
-                                Always,
+                                Alternate,
                                 Warning,
-                                "Reached end of subroutine. Pausing execution."
+                                "Reached::SubroutineEnd",
+                                ["Reached end of subroutine. Pausing execution."],
                             );
                         }
                         self.status = Status::WaitForAction;
                         continue;
+                    }
+                    return Action::Proceed;
+                }
+
+                Status::StepInto { count } => {
+                    if *count > 0 {
+                        *count -= 1;
+                    } else {
+                        self.status = Status::WaitForAction;
                     }
                     return Action::Proceed;
                 }
@@ -221,9 +228,10 @@ impl Debugger {
                 Status::Finish => {
                     if instr == Some(SignificantInstr::Return) {
                         dprintln!(
-                            Always,
+                            Alternate,
                             Warning,
-                            "Reached end of subroutine. Pausing execution."
+                            "Reached::SubroutineEnd",
+                            ["Reached end of subroutine. Pausing execution."],
                         );
                         // Program counter has already been incremented
                         // So immediately break execution now
@@ -236,11 +244,12 @@ impl Debugger {
     }
 
     /// An 'interrupt' here is a breakpoint or `HALT` trap.
+    ///
+    /// Always break from "continue|finish|progress|next" on a breakpoint or `HALT`.
+    ///
+    /// Breaking on `RET`/`RETS` (for "finish"), and at end of "progress" and "next" is handled
+    /// later.
     fn check_interrupts(&mut self, pc: u16, instr: Option<SignificantInstr>) {
-        // Always break from "continue|finish|progress|next" on a breakpoint or `HALT`
-        // Breaking on `RET`/`RETS` (for "finish"), and at end of "progress" and "next" is handled
-        // later
-
         // Remember if previous cycle paused on the same breakpoint
         // If so, don't break now
         if let Some(breakpoint) = self
@@ -250,15 +259,17 @@ impl Debugger {
         {
             if breakpoint.is_predefined {
                 dprintln!(
-                    Always,
+                    Alternate,
                     Warning,
-                    "Reached preset breakpoint. Pausing execution."
+                    "Reached::Breakpoint",
+                    ["Reached preset breakpoint. Pausing execution."]
                 );
             } else {
                 dprintln!(
-                    Always,
+                    Alternate,
                     Warning,
-                    "Reached runtime breakpoint. Pausing execution."
+                    "Reached::Breakpoint",
+                    ["Reached runtime breakpoint. Pausing execution."]
                 );
             }
             self.current_breakpoint = Some(pc);
@@ -268,7 +279,12 @@ impl Debugger {
 
         // Always break on `HALT` (unlike breakpoints)
         if instr == Some(SignificantInstr::Halt) {
-            dprintln!(Always, Warning, "Reached HALT. Pausing execution.");
+            dprintln!(
+                Alternate,
+                Warning,
+                "Reached::Halt",
+                ["Reached HALT. Pausing execution."],
+            );
             self.status = Status::WaitForAction;
             return;
         }
@@ -303,60 +319,75 @@ impl Debugger {
 
         // Read and parse next command
         let command = Command::read_from(&mut self.command_reader, |error| {
-            dprintln!(Always, Error, "{}", error);
+            dprintln!(Alternate, Error, "CommandError", ["{}", error]);
             dprintln!(Sometimes, Error, "Type `help` for a list of commands.");
         })
         .unwrap_or(Command::Quit); // "quit" on EOF
+
+        // Do not re-use `SignificantInstr` from caller
+        // Must be recalculated as this method is called in a loop
+        let instr = SignificantInstr::try_from(state.mem(state.pc())).ok();
 
         match command {
             Command::Quit => return Some(Action::StopDebugger),
             Command::Exit => return Some(Action::ExitProgram),
 
+            Command::Help => print_help_message(),
+
             Command::Reset => {
                 *state = self.initial_state.clone();
                 self.should_echo_pc = true;
-                // Other fields either:
-                // - Shouldn't be mutated/reset
-                // - Or would be redundant to do so
                 dprintln!(Sometimes, Warning, "Reset program to initial state.");
             }
 
-            Command::Help => {
-                dprintln!(Always, Special, "\n{}", include_str!("./help.txt"));
-            }
-
             Command::Continue => {
+                Self::check_halt(instr)?;
                 self.status = Status::Continue;
                 self.should_echo_pc = true;
                 dprintln!(Sometimes, Info, "Continuing...");
             }
 
-            Command::Finish => {
-                self.status = Status::Finish;
-                self.should_echo_pc = true;
-                dprintln!(Sometimes, Info, "Finishing subroutine...");
-            }
-
-            Command::Step { count } => {
-                self.status = Status::Step { count: count - 1 };
-                self.should_echo_pc = true;
-            }
-
-            Command::Next => {
-                self.status = Status::Next {
+            Command::StepOver => {
+                Self::check_halt(instr)?;
+                self.status = Status::StepOver {
                     return_addr: state.pc() + 1,
                 };
                 self.should_echo_pc = true;
             }
 
-            Command::Get { location } => match location {
+            Command::StepInto { count } => {
+                Self::check_halt(instr)?;
+                self.status = Status::StepInto { count: count - 1 };
+                self.should_echo_pc = true;
+            }
+
+            Command::StepOut => {
+                if !features::stack() {
+                    dprintln!(
+                        Alternate,
+                        Error,
+                        "MissingFeature::Stack",
+                        [concat!(
+                            "Using `stepout` while 'stack' feature is enabled is not permitted.\n",
+                            "    Run without `-f stack` or consider using breakpoints instead."
+                        )],
+                    );
+                } else {
+                    Self::check_halt(instr)?;
+                    self.status = Status::Finish;
+                    self.should_echo_pc = true;
+                    dprintln!(Sometimes, Info, "Finishing subroutine...");
+                }
+            }
+
+            Command::Print { location } => match location {
                 Location::Register(register) => {
                     dprintln!(Sometimes, Info, "Register R{}:", register as u16);
                     Output::Debugger(Condition::Always, Default::default())
                         .print_integer(state.reg(register as u16));
                 }
                 Location::Memory(location) => {
-                    let address = self.resolve_location_address(state, &location)?;
+                    let address = self.resolve_location(state, &location)?;
                     // Allow non-userspace addresses (it can't hurt)
                     dprintln!(Sometimes, Info, "Memory at address 0x{:04x}:", address);
                     Output::Debugger(Condition::Always, Default::default())
@@ -364,7 +395,7 @@ impl Debugger {
                 }
             },
 
-            Command::Set { location, value } => match location {
+            Command::Move { location, value } => match location {
                 Location::Register(register) => {
                     *state.reg_mut(register as u16) = value;
                     dprintln!(
@@ -375,9 +406,8 @@ impl Debugger {
                         value,
                     );
                 }
-                // TODO(feat): Check address is in userspace
                 Location::Memory(location) => {
-                    let address = self.resolve_location_address(state, &location)?;
+                    let address = self.resolve_location(state, &location)?;
                     self.expect_userspace_address(address)?;
                     *state.mem_mut(address) = value;
                     dprintln!(
@@ -395,8 +425,8 @@ impl Debugger {
                 Output::Debugger(Condition::Always, Default::default()).print_registers(state);
             }
 
-            Command::Jump { location } => {
-                let address = self.resolve_location_address(state, &location)?;
+            Command::Goto { location } => {
+                let address = self.resolve_location(state, &location)?;
                 self.expect_userspace_address(address)?;
                 *state.pc_mut() = address;
                 self.should_echo_pc = true;
@@ -413,24 +443,28 @@ impl Debugger {
                 self.should_echo_pc = true;
             }
 
-            Command::Source { location } => {
-                if let Some(address) = self.resolve_location_address(state, &location) {
+            Command::Echo { string } => {
+                dprintln!(Always, Normal, "[{}]", string);
+            }
+
+            Command::Assembly { location } => {
+                if let Some(address) = self.resolve_location(state, &location) {
                     self.show_assembly_source(state, address);
                 }
             }
 
             Command::BreakAdd { location } => {
-                let address = self.resolve_location_address(state, &location)?;
+                let address = self.resolve_location(state, &location)?;
                 self.expect_userspace_address(address)?;
                 if self.breakpoints.insert(Breakpoint {
                     address,
                     is_predefined: false,
                 }) {
                     dprintln!(
-                        Always,
+                        Alternate,
                         Error,
-                        "Breakpoint already exists at 0x{:04x}.",
-                        address
+                        "Breakpoints::AlreadyExists",
+                        ["Breakpoint already exists at 0x{:04x}.", address],
                     );
                 } else {
                     dprintln!(Sometimes, Warning, "Added breakpoint at 0x{:04x}.", address);
@@ -438,7 +472,7 @@ impl Debugger {
             }
 
             Command::BreakRemove { location } => {
-                let address = self.resolve_location_address(state, &location)?;
+                let address = self.resolve_location(state, &location)?;
                 self.expect_userspace_address(address)?;
                 if self.breakpoints.remove(address) {
                     dprintln!(
@@ -448,26 +482,38 @@ impl Debugger {
                         address
                     );
                 } else {
-                    dprintln!(Always, Error, "No breakpoint exists at 0x{:04x}.", address);
+                    dprintln!(
+                        Alternate,
+                        Error,
+                        "Breakpoints::NotFound",
+                        ["No breakpoint exists at 0x{:04x}.", address],
+                    );
                 }
             }
 
             Command::BreakList => {
                 if self.breakpoints.is_empty() {
-                    dprintln!(Sometimes, Info, "No breakpoints exist.");
+                    dprintln!(
+                        Alternate,
+                        Info,
+                        "Breakpoints::Empty",
+                        ["No breakpoints exist."],
+                    );
                 } else {
                     dprintln!(Sometimes, Info, "Breakpoints:");
 
                     if Output::is_minimal() {
                         for breakpoint in &self.breakpoints {
-                            dprintln!(Always, Info, "0x{:04x}", breakpoint.address);
+                            dprintln!(Always, Info, "x{:04x}", breakpoint.address);
                         }
                     } else {
                         Output::Debugger(Condition::Always, Default::default())
-                            .print_key_value_table(|i| {
+                            .print_breakpoint_table(|i| {
                                 let address = self.breakpoints.nth(i)?.address;
+                                let label =
+                                    resolve_symbol_name(address - self.orig()).unwrap_or("");
                                 let line = self.asm_source.get_single_line(address).unwrap_or("");
-                                Some((address, line))
+                                Some((address, label, line))
                             });
                     }
                 }
@@ -475,6 +521,26 @@ impl Debugger {
         }
 
         None
+    }
+
+    /// If instruction is `HALT`, then warn and return `None`.
+    ///
+    /// Caller should return early if `None`.
+    ///
+    /// Used to provide better feedback to user, instead of repeating same 'pausing execution'
+    /// message.
+    fn check_halt(instr: Option<SignificantInstr>) -> Option<()> {
+        if instr == Some(SignificantInstr::Halt) {
+            dprintln!(
+                Alternate,
+                Warning,
+                "Reached::Halt",
+                ["Already at HALT. Unable to continue."]
+            );
+            None
+        } else {
+            Some(())
+        }
     }
 
     /// Wrapper for [`AsmSource::get_source_statement`].
@@ -488,6 +554,15 @@ impl Debugger {
         }
 
         let Some(stmt) = self.asm_source.show_line_context(address) else {
+            dprintln!(
+                Alternate,
+                Error,
+                "Assembly::NotAnInstruction",
+                [
+                    "Address 0x{:04x} does not correspond to an instruction",
+                    address
+                ],
+            );
             return;
         };
 
@@ -502,11 +577,11 @@ impl Debugger {
     }
 
     /// Returns `None` if `location` is out of bounds or an invalid label.
-    fn resolve_location_address(&self, state: &RunState, location: &MemoryLocation) -> Option<u16> {
+    fn resolve_location(&self, state: &RunState, location: &MemoryLocation) -> Option<u16> {
         match location {
             MemoryLocation::Address(address) => Some(*address),
             MemoryLocation::PCOffset(offset) => self.resolve_pc_offset(state.pc(), *offset),
-            MemoryLocation::Label(label) => self.resolve_label_address(label),
+            MemoryLocation::Label(label) => self.resolve_label(label),
         }
     }
 
@@ -514,9 +589,10 @@ impl Debugger {
     fn resolve_pc_offset(&self, pc: u16, offset: i16) -> Option<u16> {
         let Some(address) = self.add_address_offset(pc, offset) else {
             dprintln!(
-                Always,
+                Alternate,
                 Error,
-                "Program counter + offset is out of bounds of memory."
+                "OutOfBounds::Address",
+                ["Program counter + offset is out of bounds of memory."],
             );
             return None;
         };
@@ -524,14 +600,15 @@ impl Debugger {
     }
 
     /// Returns `None` if `label` is out of bounds or an invalid label.
-    fn resolve_label_address(&self, label: &Label) -> Option<u16> {
-        let address = resolve_label_name_address(label.name)?;
+    fn resolve_label(&self, label: &Label) -> Option<u16> {
+        let address = resolve_symbol_address(label.name)?;
 
         let Some(address) = self.add_address_offset(address + self.orig(), label.offset) else {
             dprintln!(
-                Always,
+                Alternate,
                 Error,
-                "Label address + offset is out of bounds of memory."
+                "OutOfBounds::Address",
+                ["Label address + offset is out of bounds of memory."],
             );
             return None;
         };
@@ -557,32 +634,44 @@ impl Debugger {
         }
     }
 
+    /// If address is out of bounds of user memory, then warn and return `None`.
     fn expect_userspace_address(&self, address: u16) -> Option<()> {
         if (self.orig()..USER_MEMORY_END).contains(&address) {
             return Some(());
         }
         dprintln!(
-            Always,
+            Alternate,
             Error,
-            "Address is not in user address space. Must be in range [0x{:04x}, 0x{:04x}).",
-            self.orig(),
-            USER_MEMORY_END,
+            "OutOfBounds::Address",
+            [
+                "Address is not in user address space. Must be in range [0x{:04x}, 0x{:04x}).",
+                self.orig(),
+                USER_MEMORY_END,
+            ],
         );
         None
     }
 }
 
+/// Get address of symbol with given name.
+///
 /// Returns `None` if `label` is an invalid label.
 ///
 /// Label names are case-sensitive.
-/// Print a warning if the given name only has a case-insensitive match.
-fn resolve_label_name_address(label: &str) -> Option<u16> {
+/// Prints a warning if the given name only has a case-insensitive match.
+fn resolve_symbol_address(label: &str) -> Option<u16> {
     with_symbol_table(|sym| {
         if let Some(addr) = sym.get(label) {
-            // Account for PC being incremented before instruction is executed
-            return Some(addr + 1);
+            // -1 to account for PC being incremented before instruction is executed
+            return Some(addr - 1);
         }
-        dprintln!(Always, Error, "Label not found named `{}`.", label);
+
+        dprintln!(
+            Alternate,
+            Error,
+            "Labels::NotFound",
+            ["Label not found named `{}`.", label],
+        );
         // Check for case-*insensitive* match
         for key in sym.keys() {
             if key.eq_ignore_ascii_case(label) {
@@ -592,4 +681,27 @@ fn resolve_label_name_address(label: &str) -> Option<u16> {
         }
         None
     })
+}
+
+/// Get name of symbol with given address.
+///
+/// Returns `None` if no symbol exists at `address`.
+fn resolve_symbol_name(address: u16) -> Option<&'static str> {
+    with_symbol_table(|sym| {
+        for (label, symbol_address) in sym {
+            // +1 to account for PC being incremented before instruction is executed
+            if *symbol_address == address + 1 {
+                // SAFETY: Symbol table is statically allocated, and all keys will last until the
+                // end of the program lifetime
+                let label_static = unsafe { &*(label.as_str() as *const str) };
+                return Some(label_static);
+            }
+        }
+        None
+    })
+}
+
+/// Print debugger information for `help` command or `--print-help` argument.
+pub fn print_help_message() {
+    dprintln!(Always, Special, "\n{}", include_str!("./help.txt"));
 }

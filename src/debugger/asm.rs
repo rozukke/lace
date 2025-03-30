@@ -1,7 +1,7 @@
 use std::ops::Range;
 
 use crate::air::AsmLine;
-use crate::{dprint, dprintln, DIAGNOSTIC_CONTEXT_LINES};
+use crate::{dprint, DIAGNOSTIC_CONTEXT_LINES};
 
 /// Reference to assembly source code.
 ///
@@ -60,12 +60,6 @@ impl AsmSource {
     /// Used to access source code span.
     fn get_source_statement(&self, address: u16) -> Option<&AsmLine> {
         if address < self.orig || (address - self.orig) as usize >= self.ast.len() {
-            dprintln!(
-                Always,
-                Error,
-                "Address 0x{:04x} does not correspond to an instruction",
-                address
-            );
             return None;
         };
         let stmt = self
@@ -148,7 +142,7 @@ mod tests {
     use super::*;
     use crate::air::{AirStmt, AsmLine, ImmediateOrReg};
     use crate::symbol::{Register, Span, SrcOffset};
-    use crate::{env, AsmParser};
+    use crate::{features, AsmParser};
 
     #[test]
     fn get_context_lines() {
@@ -206,7 +200,7 @@ fib_inner:
             },
         };
 
-        env::init();
+        features::init("stack".parse().unwrap());
         let parser = AsmParser::new(src).unwrap();
         let mut air = parser.parse().unwrap();
         air.backpatch().unwrap();
