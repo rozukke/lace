@@ -64,7 +64,7 @@ fn eval_inner(state: &mut RunState, line: &'static str) -> Result<()> {
         // Don't allow unknown/invalid trap instructions
         // To prevent exception and program exit
         // WARNING: If custom traps are implemented, this condition should be changed!!
-        AirStmt::Trap { trap_vect } if !(0x20..=0x27).contains(&trap_vect) => {
+        AirStmt::Trap { trap_vect } if !(0x20..=0x2d).contains(&trap_vect) => {
             dprintln!(
                 Alternate,
                 Error,
