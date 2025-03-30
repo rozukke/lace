@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 use std::fmt::{self, Arguments};
-use std::io::{BufReader, Read as _, Write as _};
+use std::io::{Read as _, Write as _};
 use std::iter::Peekable;
 use std::net::TcpStream;
 
@@ -103,31 +103,41 @@ impl Connection {
     }
 }
 
+/// Large enough to hold the longest realistic response (3 floats), plus some extra space.
+///
+/// Default buffer size for `std::io::BufReader` is currently 8kiB.
+const READ_BUFFER_SIZE: usize = 96;
+
 /// Wrapper of `TcpStream` to read byte-by-byte as an `Iterator`.
 struct StreamIter<'a> {
-    stream: BufReader<&'a mut TcpStream>,
+    stream: &'a mut TcpStream,
+    buffer: [u8; READ_BUFFER_SIZE],
+    index: usize,
 }
-impl StreamIter<'_> {
-    /// Large enough to hold the longest realistic response (3 floats), plus some extra space.
-    ///
-    /// Default buffer size for `std::io::BufReader` is currently 8kiB.
-    const BUFFER_SIZE: usize = 96;
-}
+
 impl<'a> StreamIter<'a> {
     pub fn new(stream: &'a mut TcpStream) -> Self {
         Self {
-            stream: BufReader::with_capacity(Self::BUFFER_SIZE, stream),
+            stream,
+            buffer: [0u8; READ_BUFFER_SIZE],
+            // Ensure buffer is filled on first read call
+            index: usize::MAX,
         }
     }
 }
+
 impl<'a> Iterator for StreamIter<'a> {
     type Item = u8;
     fn next(&mut self) -> Option<Self::Item> {
-        let mut buffer = [0u8; 1];
-        if self.stream.read_exact(&mut buffer).is_err() {
-            fatal(Error::Recv)
+        if self.index >= self.buffer.len() {
+            if self.stream.read(&mut self.buffer).is_err() {
+                fatal(Error::Recv)
+            }
+            self.index = 0;
         }
-        Some(buffer[0])
+        let byte = self.buffer[self.index];
+        self.index += 1;
+        Some(byte)
     }
 }
 
