@@ -83,6 +83,13 @@ impl fmt::Display for Command {
                 if let Some(suggested) = suggested {
                     write!(f, "\n    Did you mean `{}`?", suggested)?;
                 }
+                if let Some(mnemonic) = is_mnemonic(command_name) {
+                    write!(
+                        f,
+                        "\n    To simulate an instruction, run `eval {} (...)`",
+                        mnemonic
+                    )?;
+                }
             }
             Self::InvalidSubcommand {
                 command_name,
@@ -210,4 +217,19 @@ impl Argument {
             error,
         }
     }
+}
+
+const MNEMONICS: &[&str] = &[
+    "add", "and", "br", "brnzp", "brnz", "brzp", "brnp", "brn", "brz", "brp", "jmp", "jsr", "jsrr",
+    "ld", "ldi", "ldr", "lea", "not", "ret", "rti", "st", "sti", "str", "pop", "push", "call",
+    "rets", "trap", "getc", "out", "puts", "in", "putsp", "halt", "putn", "reg",
+];
+
+fn is_mnemonic(command_name: &str) -> Option<&'static str> {
+    for mnemonic in MNEMONICS {
+        if mnemonic.eq_ignore_ascii_case(command_name) {
+            return Some(mnemonic);
+        }
+    }
+    None
 }
