@@ -49,13 +49,13 @@ macro_rules! dprint {
 macro_rules! dprintln {
     // Choose message depending on `Output::is_minimal`
     ( Alternate, $category:expr,
-      $minimal:literal,                         // If minimal
+      $minimal:literal,                     // If minimal
       [ $fmt:expr $(, $($tt:tt)* )? ] $(,)? // Otherwise
     ) => {{
         if $crate::output::Output::is_minimal() {
             $crate::dprint!(Always, $category, concat!($minimal, "\n"));
         } else {
-            $crate::dprint!(Always, $category, $fmt $(, $($tt)* )?);
+            $crate::dprint!(Always, $category, concat!($fmt, "\n") $(, $($tt)* )?);
         }
     }};
 
