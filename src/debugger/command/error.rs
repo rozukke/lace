@@ -79,14 +79,14 @@ impl fmt::Display for Command {
                 command_name,
                 suggested,
             } => {
-                write!(f, "Not a command: `{}`", command_name)?;
+                write!(f, "Not a command: `{}`.", command_name)?;
                 if let Some(suggested) = suggested {
                     write!(f, "\n    Did you mean `{}`?", suggested)?;
                 }
                 if let Some(mnemonic) = is_mnemonic(command_name) {
                     write!(
                         f,
-                        "\n    To simulate an instruction, run `eval {} (...)`",
+                        "\n    To simulate an instruction, run `eval {} (...)`.",
                         mnemonic
                     )?;
                 }
@@ -98,7 +98,7 @@ impl fmt::Display for Command {
             } => {
                 write!(
                     f,
-                    "Invalid subcommand: `{} {}`",
+                    "Invalid subcommand: `{} {}`.",
                     command_name, subcommand_name
                 )?;
                 if let Some(suggested) = suggested {
@@ -106,7 +106,7 @@ impl fmt::Display for Command {
                 }
             }
             Self::MissingSubcommand { command_name } => {
-                write!(f, "Missing subcommand: `{} (...)`", command_name)?;
+                write!(f, "Missing subcommand: `{} (...)`.", command_name)?;
             }
             Self::InvalidArgument {
                 command_name,
@@ -177,7 +177,7 @@ impl fmt::Display for Value {
                 expected_type,
                 actual_type,
             } => {
-                write!(f, "Incorrect value type")?;
+                write!(f, "Incorrect value type.")?;
                 write!(f, "\n        ")?;
                 write!(f, "Expected {}.", expected_type)?;
                 write!(f, "\n        ")?;
