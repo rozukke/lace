@@ -106,7 +106,7 @@ impl Connection {
 /// Large enough to hold the longest realistic response (3 floats), plus some extra space.
 ///
 /// Default buffer size for `std::io::BufReader` is currently 8kiB.
-const READ_BUFFER_SIZE: usize = 96;
+const READ_BUFFER_SIZE: usize = "12345.123456890,12345.123456890,12345.123456890\n".len() * 2;
 
 /// Wrapper of `TcpStream` to read byte-by-byte as an `Iterator`.
 struct StreamIter<'a> {
