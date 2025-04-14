@@ -197,12 +197,12 @@ where
     where
         T: TryFrom<i32>,
     {
-        let sign = match self.inner.peek().into() {
-            Byte::Some(b'-') => {
+        let sign = match self.inner.peek() {
+            Some(b'-') => {
                 self.inner.next();
                 -1
             }
-            Byte::Some(b'+') => {
+            Some(b'+') => {
                 self.inner.next();
                 1
             }
@@ -213,9 +213,9 @@ where
         let mut len = 0;
 
         // Take digits until any non-digit character is peeked
-        while let Byte::Some(byte) = self.inner.peek().into() {
+        while let Some(byte) = self.inner.peek().into() {
             let digit = match byte {
-                b'0'..=b'9' => (byte - b'0') as i32,
+                Some(byte) if (b'0'..=b'9').contains(byte) => (byte - b'0') as i32,
                 _ => break,
             };
             self.inner.next();
@@ -233,14 +233,14 @@ where
         integer *= sign;
 
         // Decimal point and following digits
-        if let Byte::Some(b'.') = self.inner.peek().into() {
+        if let Some(b'.') = self.inner.peek() {
             self.inner.next();
 
             let mut is_integer = true; // Whether all decimal digits are '0'
-            while let Byte::Some(byte) = self.inner.peek().into() {
-                match byte {
-                    b'0' => (),
-                    b'1'..=b'9' => is_integer = false,
+            loop {
+                match self.inner.peek() {
+                    Some(b'0') => (),
+                    Some(b'1'..=b'9') => is_integer = false,
                     _ => break,
                 }
                 self.inner.next();
@@ -253,10 +253,11 @@ where
         }
 
         // Check and consume byte following integer
-        let is_final = match self.inner.next().into() {
-            Byte::Some(_) => fatal(Error::ExpectedEndOfArgument),
-            Byte::EndOfArgument => false,
-            Byte::EndOfLine => true,
+        let is_final = match self.inner.next() {
+            Some(b',') => false,
+            Some(b'\n') => true,
+            Some(_) => fatal(Error::ExpectedEndOfArgument),
+            None => fatal(Error::UnexpectedEndOfFile),
         };
 
         let Ok(integer) = integer.try_into() else {
@@ -264,33 +265,6 @@ where
         };
 
         (integer, is_final)
-    }
-}
-
-/// Response byte, with `b','` and `b'\n'` converted to named variants.
-///
-/// `Byte::Some(b',')` and `Byte::Some(b'\n')` are both invalid and should never be constructed.
-#[derive(Clone, Copy, Debug)]
-enum Byte {
-    Some(u8),
-    /// `b','`
-    EndOfArgument,
-    /// `b'\n'`
-    EndOfLine,
-}
-impl From<Option<u8>> for Byte {
-    fn from(byte: Option<u8>) -> Self {
-        match byte {
-            Some(b',') => Byte::EndOfArgument,
-            Some(b'\n') => Byte::EndOfLine,
-            None => Byte::EndOfLine,
-            Some(byte) => Byte::Some(byte),
-        }
-    }
-}
-impl From<Option<&u8>> for Byte {
-    fn from(byte: Option<&u8>) -> Self {
-        byte.copied().into()
     }
 }
 
@@ -331,6 +305,7 @@ pub enum Error {
     ExpectedEndOfArgument,
     ExpectedEndOfLine,
     UnexpectedEndOfLine,
+    UnexpectedEndOfFile,
     IntegerTooLarge,
 }
 
@@ -350,6 +325,7 @@ impl fmt::Display for Error {
                     Self::ExpectedEndOfArgument => write!(f, "expected end of argument"),
                     Self::ExpectedEndOfLine => write!(f, "expected end of line"),
                     Self::UnexpectedEndOfLine => write!(f, "unexpected end of line"),
+                    Self::UnexpectedEndOfFile => write!(f, "unexpected end of file"),
                     Self::IntegerTooLarge => write!(f, "integer is too large"),
                 }
             }
