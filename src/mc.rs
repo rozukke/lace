@@ -226,7 +226,7 @@ where
         }
 
         if len == 0 {
-            // `^[-+]?$`
+            // `^[-+]?([^0-9]|$)`
             fatal(Error::ExpectedInteger);
         }
 
