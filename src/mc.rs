@@ -127,7 +127,7 @@ impl<'a> StreamIter<'a> {
     }
 }
 
-impl<'a> Iterator for StreamIter<'a> {
+impl Iterator for StreamIter<'_> {
     type Item = u8;
     fn next(&mut self) -> Option<Self::Item> {
         if self.index >= self.length {
@@ -215,7 +215,7 @@ where
         // Take digits until any non-digit character is peeked
         while let Some(byte) = self.inner.peek().into() {
             let digit = match byte {
-                Some(byte) if (b'0'..=b'9').contains(byte) => (byte - b'0') as i32,
+                Some(byte) if byte.is_ascii_digit() => (byte - b'0') as i32,
                 _ => break,
             };
             self.inner.next();
@@ -283,7 +283,7 @@ impl<'a> CleanMemoryStr<'a> {
         Self { start, state }
     }
 }
-impl<'a> fmt::Display for CleanMemoryStr<'a> {
+impl fmt::Display for CleanMemoryStr<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for chr in MemoryStr::new(self.start, self.state) {
             match chr {
