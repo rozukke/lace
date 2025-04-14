@@ -113,6 +113,7 @@ struct StreamIter<'a> {
     stream: &'a mut TcpStream,
     buffer: [u8; READ_BUFFER_SIZE],
     index: usize,
+    length: usize,
 }
 
 impl<'a> StreamIter<'a> {
@@ -120,8 +121,8 @@ impl<'a> StreamIter<'a> {
         Self {
             stream,
             buffer: [0u8; READ_BUFFER_SIZE],
-            // Ensure buffer is filled on first read call
-            index: usize::MAX,
+            index: 0,
+            length: 0,
         }
     }
 }
@@ -129,11 +130,12 @@ impl<'a> StreamIter<'a> {
 impl<'a> Iterator for StreamIter<'a> {
     type Item = u8;
     fn next(&mut self) -> Option<Self::Item> {
-        if self.index >= self.buffer.len() {
-            if self.stream.read(&mut self.buffer).is_err() {
+        if self.index >= self.length {
+            let Ok(bytes_read) = self.stream.read(&mut self.buffer) else {
                 fatal(Error::Recv)
-            }
+            };
             self.index = 0;
+            self.length = bytes_read;
         }
         let byte = self.buffer[self.index];
         self.index += 1;
