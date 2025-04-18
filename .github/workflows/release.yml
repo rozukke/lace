@@ -20,6 +20,9 @@ jobs:
           - os: windows-latest
             artifact_name: ${{ github.event.repository.name }}.exe
             asset_name: ${{ github.event.repository.name }}-windows-x64.exe
+          - os: macos-13
+            artifact_name: ${{ github.event.repository.name }}
+            asset_name: ${{ github.event.repository.name }}-macos-x64
           - os: macos-latest
             artifact_name: ${{ github.event.repository.name }}
             asset_name: ${{ github.event.repository.name }}-macos-arm64
