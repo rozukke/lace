@@ -367,6 +367,12 @@ impl Cursor<'_> {
             "halt" => Trap(Halt),
             "putn" => Trap(Putn),
             "reg" => Trap(Reg),
+            "chat" => Trap(Chat),
+            "getp" => Trap(Getp),
+            "setp" => Trap(Setp),
+            "getb" => Trap(Getb),
+            "setb" => Trap(Setb),
+            "geth" => Trap(Geth),
             _ => TokenKind::Label,
         }
     }
