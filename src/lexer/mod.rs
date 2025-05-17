@@ -191,7 +191,9 @@ impl Cursor<'_> {
     fn hex(&mut self) -> Result<TokenKind> {
         let start = self.abs_pos();
         let prefix = self.pos_in_token();
-        self.take_while(|c| c.is_numeric() || matches!(c.to_ascii_lowercase(), 'x' | '-' | 'a'..='f' ));
+        self.take_while(|c| {
+            c.is_numeric() || matches!(c.to_ascii_lowercase(), 'x' | '-' | 'a'..='f')
+        });
         let str_val = self.get_range(start..self.abs_pos());
         let value = match i16::from_str_radix(str_val, 16) {
             Ok(value) => value as u16,
