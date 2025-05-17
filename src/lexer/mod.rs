@@ -421,6 +421,13 @@ mod test {
         assert_eq!(res.kind, TokenKind::Label)
     }
 
+    #[test]
+    fn hex_comment() {
+        let mut lex = Cursor::new("0xa;");
+        let res = lex.advance_token().unwrap();
+        assert_eq!(res.kind, TokenKind::Lit(LiteralKind::Hex(0xa)))
+    }
+
     // DEC LIT TESTS
 
     #[test]
@@ -455,6 +462,13 @@ mod test {
         assert!(lex.advance_real().is_err());
     }
 
+    #[test]
+    fn dec_comment() {
+        let mut lex = Cursor::new("#-300;");
+        let res = lex.advance_token().unwrap();
+        assert!(res.kind == TokenKind::Lit(LiteralKind::Dec(-300)))
+    }
+
     // STR LIT TESTS
 
     #[test]
@@ -466,6 +480,12 @@ mod test {
     #[test]
     fn str_escaped() {
         let mut lex = Cursor::new(r#"there is an escaped \" in this str\n"#);
+        assert!(lex.advance_token().is_ok())
+    }
+
+    #[test]
+    fn str_comment() {
+        let mut lex = Cursor::new(r#"there is an escaped \" in this str\n;"#);
         assert!(lex.advance_token().is_ok())
     }
 
@@ -496,6 +516,15 @@ mod test {
         assert_eq!(
             lex.advance_real().unwrap().kind,
             TokenKind::Reg(Register::R7)
+        );
+    }
+
+    #[test]
+    fn register_comment() {
+        let mut lex = Cursor::new("R0");
+        assert_eq!(
+            lex.advance_real().unwrap().kind,
+            TokenKind::Reg(Register::R0)
         );
     }
 
