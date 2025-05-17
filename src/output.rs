@@ -220,7 +220,7 @@ impl Output {
         }
 
         self.print("\x1b[2m┌───────────────────────────────────┐\x1b[0m\n");
-        self.print("\x1b[2m│        \x1b[3mhex     int    uint    chr\x1b[0m\x1b[2m │\x1b[0m\n");
+        self.print("\x1b[2m│        \x1b[3mhex    uint     int    chr\x1b[0m\x1b[2m │\x1b[0m\n");
 
         // R0-7
         for i in 0..8 {
