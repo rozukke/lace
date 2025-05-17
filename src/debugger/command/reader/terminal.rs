@@ -424,7 +424,7 @@ fn find_word_next(string: &str, cursor: usize, full_word: bool) -> usize {
 
 /// Return character index of end of the word to the right of cursor. Uses Vim rules.
 ///
-/// See [`find_word_start`]
+/// See [`find_word_next`]
 // TODO(refactor/opt): Rewrite to be more idiomaticly Rust
 fn find_word_back(string: &str, mut cursor: usize, full_word: bool) -> usize {
     // At start of line

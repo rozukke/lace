@@ -21,7 +21,7 @@ pub struct Arguments<'a> {
 
     /// Amount of arguments requested (successfully or not).
     ///
-    /// Must only be incremented by [`Self::next_str`].
+    /// Must only be incremented by [`Self::next_argument_str`].
     arg_count: u8,
 }
 

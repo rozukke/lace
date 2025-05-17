@@ -5,7 +5,7 @@ use crossterm::{
     terminal,
 };
 
-/// Similar to [`crossterm::Event::KeyCode`] but only contains relevant information.
+/// Similar to [`crossterm::event::KeyCode`] but only contains relevant information.
 #[derive(Debug)]
 pub enum Key {
     Enter,

@@ -91,7 +91,8 @@ impl Display for TokenKind {
     }
 }
 
-/// Test if a character is considered to be whitespace, including commas.
+/// Test if a character is considered to be whitespace, including commas
+/// or colons but not semicolons
 pub(crate) fn is_whitespace(c: char) -> bool {
     char::is_ascii_whitespace(&c) || matches!(c, ',' | ':')
 }
@@ -149,7 +150,7 @@ impl Cursor<'_> {
                     self.take_while(is_reg_num);
                     if self.pos_in_token() == 2
                         && match self.first() {
-                            c if is_whitespace(c) => true,
+                            c if is_whitespace(c) || c == ';' => true,
                             '\0' => true,
                             _ => false,
                         }
@@ -191,7 +192,7 @@ impl Cursor<'_> {
     fn hex(&mut self) -> Result<TokenKind> {
         let start = self.abs_pos();
         let prefix = self.pos_in_token();
-        self.take_while(|c| !is_whitespace(c));
+        self.take_while(|c| !is_whitespace(c) && c != ';');
         let str_val = self.get_range(start..self.abs_pos());
         let value = match i16::from_str_radix(str_val, 16) {
             Ok(value) => value as u16,
@@ -216,7 +217,7 @@ impl Cursor<'_> {
     fn dec(&mut self) -> Result<TokenKind> {
         let start = self.abs_pos();
         let prefix = self.pos_in_token();
-        self.take_while(|c| !is_whitespace(c));
+        self.take_while(|c| !is_whitespace(c) && c != ';');
         let str_val = self.get_range(start..self.abs_pos());
 
         // i16 to handle negative values
@@ -420,6 +421,13 @@ mod test {
         assert_eq!(res.kind, TokenKind::Label)
     }
 
+    #[test]
+    fn hex_comment() {
+        let mut lex = Cursor::new("0xa;");
+        let res = lex.advance_token().unwrap();
+        assert_eq!(res.kind, TokenKind::Lit(LiteralKind::Hex(0xa)))
+    }
+
     // DEC LIT TESTS
 
     #[test]
@@ -454,6 +462,13 @@ mod test {
         assert!(lex.advance_real().is_err());
     }
 
+    #[test]
+    fn dec_comment() {
+        let mut lex = Cursor::new("#-300;");
+        let res = lex.advance_token().unwrap();
+        assert!(res.kind == TokenKind::Lit(LiteralKind::Dec(-300)))
+    }
+
     // STR LIT TESTS
 
     #[test]
@@ -464,7 +479,13 @@ mod test {
 
     #[test]
     fn str_escaped() {
-        let mut lex = Cursor::new(r#"there is an escaped \" in this str\n"#);
+        let mut lex = Cursor::new(r#""there is an escaped \" in this str\n""#);
+        assert!(lex.advance_token().is_ok())
+    }
+
+    #[test]
+    fn str_comment() {
+        let mut lex = Cursor::new(r#""there is an escaped \" in this str\n;""#);
         assert!(lex.advance_token().is_ok())
     }
 
@@ -495,6 +516,15 @@ mod test {
         assert_eq!(
             lex.advance_real().unwrap().kind,
             TokenKind::Reg(Register::R7)
+        );
+    }
+
+    #[test]
+    fn register_comment() {
+        let mut lex = Cursor::new("R0;");
+        assert_eq!(
+            lex.advance_token().unwrap().kind,
+            TokenKind::Reg(Register::R0)
         );
     }
 

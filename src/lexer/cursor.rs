@@ -1,5 +1,5 @@
 //! Heavily inspired and referenced from `rustc_lexer` and adapted to suit the project.
-//! See https://doc.rust-lang.org/beta/nightly-rustc/src/rustc_lexer/cursor.rs.html
+//! See <https://doc.rust-lang.org/beta/nightly-rustc/src/rustc_lexer/cursor.rs.html>
 
 use std::{ops::Range, str::Chars};
 
