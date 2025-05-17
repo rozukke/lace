@@ -91,7 +91,8 @@ impl Display for TokenKind {
     }
 }
 
-/// Test if a character is considered to be whitespace, including commas.
+/// Test if a character is considered to be whitespace, including commas
+/// or colons but not semicolons
 pub(crate) fn is_whitespace(c: char) -> bool {
     char::is_ascii_whitespace(&c) || matches!(c, ',' | ':')
 }
