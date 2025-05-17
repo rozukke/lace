@@ -10,8 +10,7 @@ use super::CommandName;
 /// Error parsing a command.
 #[derive(Debug, PartialEq)]
 pub enum Command {
-    #[allow(clippy::enum_variant_names)]
-    InvalidCommand {
+    Invalid {
         command_name: String,
         suggested: Option<CommandName>,
     },
@@ -32,14 +31,13 @@ pub enum Command {
 /// Error parsing command arguments.
 #[derive(Debug, PartialEq)]
 pub enum Argument {
-    /// For `eval`.
-    MissingArgumentList { argument_name: &'static str },
-    #[allow(clippy::enum_variant_names)]
-    MissingArgument {
+    Missing {
         argument_name: &'static str,
         expected_count: u8,
         actual_count: u8,
     },
+    /// For `eval` and `echo`.
+    MissingList { argument_name: &'static str },
     TooManyArguments {
         expected_count: u8,
         actual_count: u8,
@@ -58,8 +56,7 @@ pub enum Value {
         expected_type: &'static str,
         actual_type: NaiveType,
     },
-    #[allow(clippy::enum_variant_names)]
-    MalformedValue {},
+    Malformed {},
     MalformedInteger {},
     MalformedLabel {},
     MalformedRegister {},
@@ -75,7 +72,7 @@ impl Error for Value {}
 impl fmt::Display for Command {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidCommand {
+            Self::Invalid {
                 command_name,
                 suggested,
             } => {
@@ -124,10 +121,10 @@ impl fmt::Display for Command {
 impl fmt::Display for Argument {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Argument::MissingArgumentList { argument_name } => {
+            Argument::MissingList { argument_name } => {
                 write!(f, "Missing text argument `{}`.", argument_name)?;
             }
-            Argument::MissingArgument {
+            Argument::Missing {
                 argument_name,
                 expected_count,
                 actual_count,
@@ -183,7 +180,7 @@ impl fmt::Display for Value {
                 write!(f, "\n        ")?;
                 write!(f, "Found {}.", actual_type)?;
             }
-            Value::MalformedValue {} => {
+            Value::Malformed {} => {
                 write!(f, "Invalid value.")?;
             }
             Value::MalformedInteger {} => {

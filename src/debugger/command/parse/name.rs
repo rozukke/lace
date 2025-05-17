@@ -142,7 +142,7 @@ impl Arguments<'_> {
                     std::process::exit(0);
                 }
 
-                return Err(error::Command::InvalidCommand {
+                return Err(error::Command::Invalid {
                     command_name: command_name.to_string(),
                     suggested,
                 });

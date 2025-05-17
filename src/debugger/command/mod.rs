@@ -221,7 +221,7 @@ impl<'a> Command<'a> {
             CommandName::Eval => {
                 let instruction = iter.get_rest();
                 if instruction.is_empty() {
-                    return Err(error::Argument::MissingArgumentList {
+                    return Err(error::Argument::MissingList {
                         argument_name: "instruction",
                     });
                 }
@@ -236,7 +236,7 @@ impl<'a> Command<'a> {
             CommandName::Echo => {
                 let string = iter.get_rest();
                 if string.is_empty() {
-                    return Err(error::Argument::MissingArgumentList {
+                    return Err(error::Argument::MissingList {
                         argument_name: "instruction",
                     });
                 }
