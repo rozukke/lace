@@ -37,6 +37,7 @@ impl Stdin {
     }
 }
 
+// TODO(feat): Use proper errors
 fn read_char_from_bytes<F>(mut next_byte: F) -> Result<Option<char>, ()>
 where
     F: FnMut() -> Option<u8>,
@@ -53,7 +54,6 @@ where
         return Err(());
     };
 
-    #[allow(clippy::needless_range_loop)]
     for i in 1..utf8_len {
         let Some(byte) = next_byte() else {
             return Err(());
