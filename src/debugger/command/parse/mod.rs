@@ -136,7 +136,7 @@ impl<'a> Arguments<'a> {
         let actual_count = self.arg_count();
         self.next_integer_or(
             argument_name,
-            Err(error::Argument::MissingArgument {
+            Err(error::Argument::Missing {
                 argument_name,
                 expected_count,
                 actual_count,
@@ -180,7 +180,7 @@ impl<'a> Arguments<'a> {
         };
 
         Err(error::Argument::invalid_value(argument_name, argument)(
-            error::Value::MalformedValue {},
+            error::Value::Malformed {},
         ))
     }
 
@@ -193,7 +193,7 @@ impl<'a> Arguments<'a> {
         let actual_count = self.arg_count();
         self.next_memory_location_or(
             argument_name,
-            Err(error::Argument::MissingArgument {
+            Err(error::Argument::Missing {
                 argument_name,
                 expected_count,
                 actual_count,
@@ -233,7 +233,7 @@ impl<'a> Arguments<'a> {
 
         MemoryLocation::try_parse(argument)
             // `Ok(None)` -> `Err(...)`
-            .and_then(|opt| opt.ok_or(error::Value::MalformedValue {}))
+            .and_then(|opt| opt.ok_or(error::Value::Malformed {}))
             .map_err(error::Argument::invalid_value(argument_name, argument))
     }
 
@@ -245,7 +245,7 @@ impl<'a> Arguments<'a> {
     ) -> Result<Location<'a>, error::Argument> {
         let actual_count = self.arg_count();
         let Some(argument) = self.next_argument_str() else {
-            return Err(error::Argument::MissingArgument {
+            return Err(error::Argument::Missing {
                 argument_name,
                 expected_count,
                 actual_count,
@@ -258,7 +258,7 @@ impl<'a> Arguments<'a> {
 
         Location::try_parse(argument)
             // `Ok(None)` -> `Err(...)`
-            .and_then(|opt| opt.ok_or(error::Value::MalformedValue {}))
+            .and_then(|opt| opt.ok_or(error::Value::Malformed {}))
             .map_err(error::Argument::invalid_value(argument_name, argument))
     }
 

@@ -10,8 +10,7 @@ use super::CommandName;
 /// Error parsing a command.
 #[derive(Debug, PartialEq)]
 pub enum Command {
-    #[allow(clippy::enum_variant_names)]
-    InvalidCommand {
+    Invalid {
         command_name: String,
         suggested: Option<CommandName>,
     },
@@ -32,14 +31,13 @@ pub enum Command {
 /// Error parsing command arguments.
 #[derive(Debug, PartialEq)]
 pub enum Argument {
-    /// For `eval`.
-    MissingArgumentList { argument_name: &'static str },
-    #[allow(clippy::enum_variant_names)]
-    MissingArgument {
+    Missing {
         argument_name: &'static str,
         expected_count: u8,
         actual_count: u8,
     },
+    /// For `eval` and `echo`.
+    MissingList { argument_name: &'static str },
     TooManyArguments {
         expected_count: u8,
         actual_count: u8,
@@ -58,8 +56,7 @@ pub enum Value {
         expected_type: &'static str,
         actual_type: NaiveType,
     },
-    #[allow(clippy::enum_variant_names)]
-    MalformedValue {},
+    Malformed {},
     MalformedInteger {},
     MalformedLabel {},
     MalformedRegister {},
@@ -75,13 +72,20 @@ impl Error for Value {}
 impl fmt::Display for Command {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidCommand {
+            Self::Invalid {
                 command_name,
                 suggested,
             } => {
-                write!(f, "Not a command: `{}`", command_name)?;
+                write!(f, "Not a command: `{}`.", command_name)?;
                 if let Some(suggested) = suggested {
                     write!(f, "\n    Did you mean `{}`?", suggested)?;
+                }
+                if let Some(mnemonic) = is_mnemonic(command_name) {
+                    write!(
+                        f,
+                        "\n    To simulate an instruction, run `eval {} (...)`.",
+                        mnemonic
+                    )?;
                 }
             }
             Self::InvalidSubcommand {
@@ -91,7 +95,7 @@ impl fmt::Display for Command {
             } => {
                 write!(
                     f,
-                    "Invalid subcommand: `{} {}`",
+                    "Invalid subcommand: `{} {}`.",
                     command_name, subcommand_name
                 )?;
                 if let Some(suggested) = suggested {
@@ -99,7 +103,7 @@ impl fmt::Display for Command {
                 }
             }
             Self::MissingSubcommand { command_name } => {
-                write!(f, "Missing subcommand: `{} (...)`", command_name)?;
+                write!(f, "Missing subcommand: `{} (...)`.", command_name)?;
             }
             Self::InvalidArgument {
                 command_name,
@@ -117,10 +121,10 @@ impl fmt::Display for Command {
 impl fmt::Display for Argument {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Argument::MissingArgumentList { argument_name } => {
+            Argument::MissingList { argument_name } => {
                 write!(f, "Missing text argument `{}`.", argument_name)?;
             }
-            Argument::MissingArgument {
+            Argument::Missing {
                 argument_name,
                 expected_count,
                 actual_count,
@@ -170,13 +174,13 @@ impl fmt::Display for Value {
                 expected_type,
                 actual_type,
             } => {
-                write!(f, "Incorrect value type")?;
+                write!(f, "Incorrect value type.")?;
                 write!(f, "\n        ")?;
                 write!(f, "Expected {}.", expected_type)?;
                 write!(f, "\n        ")?;
                 write!(f, "Found {}.", actual_type)?;
             }
-            Value::MalformedValue {} => {
+            Value::Malformed {} => {
                 write!(f, "Invalid value.")?;
             }
             Value::MalformedInteger {} => {
@@ -210,4 +214,19 @@ impl Argument {
             error,
         }
     }
+}
+
+const MNEMONICS: &[&str] = &[
+    "add", "and", "br", "brnzp", "brnz", "brzp", "brnp", "brn", "brz", "brp", "jmp", "jsr", "jsrr",
+    "ld", "ldi", "ldr", "lea", "not", "ret", "rti", "st", "sti", "str", "pop", "push", "call",
+    "rets", "trap", "getc", "out", "puts", "in", "putsp", "halt", "putn", "reg",
+];
+
+fn is_mnemonic(command_name: &str) -> Option<&'static str> {
+    for mnemonic in MNEMONICS {
+        if mnemonic.eq_ignore_ascii_case(command_name) {
+            return Some(mnemonic);
+        }
+    }
+    None
 }

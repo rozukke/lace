@@ -142,7 +142,7 @@ impl Arguments<'_> {
                     std::process::exit(0);
                 }
 
-                return Err(error::Command::InvalidCommand {
+                return Err(error::Command::Invalid {
                     command_name: command_name.to_string(),
                     suggested,
                 });
@@ -150,7 +150,7 @@ impl Arguments<'_> {
         }
     }
 
-    // TODO(doc)
+    /// If command name matches that given, then try to parse subcommand as well.
     fn name_matches_with_subcommand(
         &mut self,
         command_name: &str,
@@ -165,7 +165,8 @@ impl Arguments<'_> {
 
         // Normalize name and get as `'static`
         // Only used for errors
-        let command_name = commands[0]; // Array must be non-empty if this branch is being ran
+        assert!(!subcommands.is_empty());
+        let command_name = commands[0];
 
         let Some(subcommand_name) = self.next_token_str() else {
             match default {

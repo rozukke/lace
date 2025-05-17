@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::fmt::{self, Write as _};
 
-use crate::runtime::RunState;
+use crate::runtime::{RunFlag, RunState};
 
 /// Colors used by [`Output::Debugger`].
 ///
@@ -49,13 +49,13 @@ macro_rules! dprint {
 macro_rules! dprintln {
     // Choose message depending on `Output::is_minimal`
     ( Alternate, $category:expr,
-      $minimal:literal,                         // If minimal
+      $minimal:literal,                     // If minimal
       [ $fmt:expr $(, $($tt:tt)* )? ] $(,)? // Otherwise
     ) => {{
         if $crate::output::Output::is_minimal() {
             $crate::dprint!(Always, $category, concat!($minimal, "\n"));
         } else {
-            $crate::dprint!(Always, $category, $fmt $(, $($tt)* )?);
+            $crate::dprint!(Always, $category, concat!($fmt, "\n") $(, $($tt)* )?);
         }
     }};
 
@@ -220,7 +220,7 @@ impl Output {
         }
 
         self.print("\x1b[2m┌───────────────────────────────────┐\x1b[0m\n");
-        self.print("\x1b[2m│        \x1b[3mhex     int    uint    chr\x1b[0m\x1b[2m │\x1b[0m\n");
+        self.print("\x1b[2m│        \x1b[3mhex    uint     int    chr\x1b[0m\x1b[2m │\x1b[0m\n");
 
         // R0-7
         for i in 0..8 {
@@ -235,10 +235,16 @@ impl Output {
         self.print("\x1b[2m│\x1b[0m");
         self.print("    \x1b[1mPC\x1b[0m");
         self.print(format_args!(" 0x{:04x}", state.pc()));
-        self.print("\x1b[2m    │    \x1b[0m");
+        self.print("\x1b[2m    │  \x1b[0m");
         self.print(" \x1b[1mCC\x1b[0m");
-        self.print(format_args!("  {:03b}", state.flag() as u8));
-        self.print("     \x1b[2m│\x1b[0m\n");
+        self.print(" ");
+        self.print(match state.flag() {
+            RunFlag::N /*.*/=> "NEGATIVE",
+            RunFlag::Z /*.*/=> "  ZERO  ",
+            RunFlag::P /*.*/=> "POSITIVE",
+            RunFlag::Uninit => " ****** ",
+        });
+        self.print("   \x1b[2m│\x1b[0m\n");
 
         self.print("\x1b[2m└─────────────────┴─────────────────┘\x1b[0m\n");
     }
