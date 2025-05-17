@@ -479,13 +479,13 @@ mod test {
 
     #[test]
     fn str_escaped() {
-        let mut lex = Cursor::new(r#"there is an escaped \" in this str\n"#);
+        let mut lex = Cursor::new(r#""there is an escaped \" in this str\n""#);
         assert!(lex.advance_token().is_ok())
     }
 
     #[test]
     fn str_comment() {
-        let mut lex = Cursor::new(r#"there is an escaped \" in this str\n;"#);
+        let mut lex = Cursor::new(r#""there is an escaped \" in this str\n;""#);
         assert!(lex.advance_token().is_ok())
     }
 
@@ -521,9 +521,9 @@ mod test {
 
     #[test]
     fn register_comment() {
-        let mut lex = Cursor::new("R0");
+        let mut lex = Cursor::new("R0;");
         assert_eq!(
-            lex.advance_real().unwrap().kind,
+            lex.advance_token().unwrap().kind,
             TokenKind::Reg(Register::R0)
         );
     }
