@@ -1,8 +1,6 @@
 use std::{
     cmp::Ordering,
-    i16,
     io::{self, stdin, stdout, IsTerminal, Read, Write},
-    u16, u32, u8, usize,
 };
 
 use crate::{
@@ -90,23 +88,23 @@ impl RunEnvironment {
             ));
         }
 
-        return Ok(env);
+        Ok(env)
     }
 
     pub fn from_raw(raw: &[u16]) -> Result<RunEnvironment> {
-        if raw.len() == 0 {
+        if raw.is_empty() {
             exception!("provided file is empty");
         }
 
         let orig = raw[0] as usize;
-        if orig as usize + raw.len() > MEMORY_MAX {
+        if orig + raw.len() > MEMORY_MAX {
             exception!("assembly file is too long and cannot fit in memory");
         }
 
         let mut mem = [0; MEMORY_MAX];
         let raw = &raw[1..];
 
-        mem[orig..orig + raw.len()].clone_from_slice(&raw);
+        mem[orig..orig + raw.len()].clone_from_slice(raw);
         // Add `HALT` at end of code and data
         // Prevents PC running through no-ops to the end of memory
         mem[orig + raw.len()] = 0xF025;
@@ -512,7 +510,7 @@ impl RunState {
             0x23 => {
                 let ch = read_char();
                 *self.reg_mut(0) = ch as u16;
-                Output::Normal.print(ch as char);
+                Output::Normal.print(ch);
                 stdout().flush().unwrap();
             }
             // putsp

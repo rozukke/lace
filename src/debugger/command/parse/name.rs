@@ -17,7 +17,7 @@ macro_rules! name_list {
         ]
     };
 }
-const COMMANDS: &'static [CommandNameEntry] = name_list![
+const COMMANDS: &[CommandNameEntry] = name_list![
     Help
         ["h", "help", "--help", "-h", ":h", "man", "info", "wtf"]
         []
@@ -76,7 +76,7 @@ const COMMANDS: &'static [CommandNameEntry] = name_list![
         ["break-remove", "break-rm", "bremove", "brm", "breakpointremove", "breakpoint-remove"]
 ];
 const COMMAND_STEP: CandidateList = &["step", "s"];
-const SUBCOMMANDS_STEP: &'static [CommandNameEntry] = name_list![
+const SUBCOMMANDS_STEP: &[CommandNameEntry] = name_list![
     StepOver
         []
         ["next"]
@@ -88,7 +88,7 @@ const SUBCOMMANDS_STEP: &'static [CommandNameEntry] = name_list![
         ["finish", "fin"]
 ];
 const COMMAND_BREAK: CandidateList = &["b", "break"];
-const SUBCOMMANDS_BREAK: &'static [CommandNameEntry] = name_list![
+const SUBCOMMANDS_BREAK: &[CommandNameEntry] = name_list![
     BreakList
         ["l", "list"]
         ["print", "show", "display", "dump", "ls"]
@@ -133,7 +133,7 @@ impl Arguments<'_> {
         }
 
         match find_name_match(command_name, COMMANDS) {
-            Ok(command) => return Ok(command),
+            Ok(command) => Ok(command),
 
             Err(suggested) => {
                 // User clearly wants return to bash
@@ -142,10 +142,10 @@ impl Arguments<'_> {
                     std::process::exit(0);
                 }
 
-                return Err(error::Command::InvalidCommand {
+                Err(error::Command::InvalidCommand {
                     command_name: command_name.to_string(),
                     suggested,
-                });
+                })
             }
         }
     }
@@ -175,14 +175,12 @@ impl Arguments<'_> {
         };
 
         match find_name_match(subcommand_name, subcommands) {
-            Ok(command) => return Ok(Some(command)),
-            Err(suggested) => {
-                return Err(error::Command::InvalidSubcommand {
-                    command_name,
-                    subcommand_name: subcommand_name.to_string(),
-                    suggested,
-                });
-            }
+            Ok(command) => Ok(Some(command)),
+            Err(suggested) => Err(error::Command::InvalidSubcommand {
+                command_name,
+                subcommand_name: subcommand_name.to_string(),
+                suggested,
+            }),
         }
     }
 }

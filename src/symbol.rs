@@ -51,7 +51,7 @@ impl Label {
     pub fn insert(label: &str, line: u16) -> Result<()> {
         with_symbol_table(|sym| {
             // Some is returned if the label already exists
-            if let Some(_) = sym.insert(label.to_string(), line) {
+            if sym.insert(label.to_string(), line).is_some() {
                 Err(miette!("Label exists"))
             } else {
                 Ok(())

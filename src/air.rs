@@ -1,5 +1,3 @@
-use std::{i16, u16, u32};
-
 use miette::{bail, Result, Severity};
 
 use crate::{
@@ -32,7 +30,7 @@ impl Air {
 
     /// Set the .orig offset for the program. Error if set twice.
     pub fn set_orig(&mut self, val: u16) -> Result<()> {
-        if let Some(_) = self.orig {
+        if self.orig.is_some() {
             bail!("Origin set twice.")
         } else {
             self.orig = Some(val);
@@ -57,6 +55,10 @@ impl Air {
         self.ast.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.ast.len() == 0
+    }
+
     pub fn backpatch(&mut self) -> Result<()> {
         for stmt in self.ast.iter_mut() {
             stmt.backpatch()?;
@@ -70,7 +72,7 @@ impl<'a> IntoIterator for &'a Air {
     type IntoIter = std::slice::Iter<'a, AsmLine>;
 
     fn into_iter(self) -> Self::IntoIter {
-        (&self.ast).into_iter()
+        self.ast.iter()
     }
 }
 
