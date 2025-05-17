@@ -143,7 +143,7 @@ pub fn parse_generic_unexpected(src: &'static str, expected: &str, found: Token)
 }
 
 pub fn parse_eof(src: &'static str) -> Report {
-    let offset = src.len().checked_sub(1).unwrap_or(0);
+    let offset = src.len().saturating_sub(1);
     miette!(
         severity = Severity::Error,
         code = "parse::unexpected_eof",
