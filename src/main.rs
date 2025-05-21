@@ -240,7 +240,7 @@ fn main() -> miette::Result<()> {
                                 std::process::exit(1)
                             }
                         });
-                        let _ = match assemble(&contents) {
+                        match assemble(&contents) {
                             Ok(_) => {
                                 message(Green, "Success", "no errors found!");
                             }
@@ -271,7 +271,7 @@ enum MsgColor {
     Red,
 }
 
-fn file_message(color: MsgColor, left: &str, right: &PathBuf) {
+fn file_message(color: MsgColor, left: &str, right: &Path) {
     let right = format!("target {}", right.to_str().unwrap());
     message(color, left, &right);
 }
@@ -289,7 +289,7 @@ where
 }
 
 fn run(name: &PathBuf, debugger_opts: Option<debugger::Options>, minimal: bool) -> Result<()> {
-    file_message(MsgColor::Green, "Assembling", &name);
+    file_message(MsgColor::Green, "Assembling", name);
     let mut program = if let Some(ext) = name.extension() {
         match ext.to_str().unwrap() {
             "lc3" | "obj" => {
@@ -298,7 +298,7 @@ fn run(name: &PathBuf, debugger_opts: Option<debugger::Options>, minimal: bool) 
                 }
 
                 // Read to byte buffer
-                let mut file = File::open(&name).into_diagnostic()?;
+                let mut file = File::open(name).into_diagnostic()?;
                 let f_size = file.metadata().unwrap().len();
                 let mut buffer = Vec::with_capacity(f_size as usize);
                 file.read_to_end(&mut buffer).into_diagnostic()?;
@@ -314,7 +314,7 @@ fn run(name: &PathBuf, debugger_opts: Option<debugger::Options>, minimal: bool) 
                 RunEnvironment::from_raw(&u16_buf)?
             }
             "asm" => {
-                let contents = StaticSource::new(fs::read_to_string(&name).into_diagnostic()?);
+                let contents = StaticSource::new(fs::read_to_string(name).into_diagnostic()?);
                 let air = assemble(&contents)?;
                 RunEnvironment::try_from(air, debugger_opts)?
             }
@@ -331,7 +331,7 @@ fn run(name: &PathBuf, debugger_opts: Option<debugger::Options>, minimal: bool) 
     message(MsgColor::Green, "Running", "emitted binary");
     program.run();
 
-    file_message(MsgColor::Green, "Completed", &name);
+    file_message(MsgColor::Green, "Completed", name);
     Ok(())
 }
 

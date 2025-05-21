@@ -50,13 +50,13 @@ pub fn read_key() -> Key {
         terminal::is_raw_mode_enabled().is_ok_and(|is| is),
         "terminal must be in raw mode to read key",
     );
-    let key = loop {
+
+    loop {
         let event = event::read().expect("failed to read terminal event");
         if let Ok(key) = event.try_into() {
             break key;
         }
-    };
-    key
+    }
 }
 
 /// Read one byte from interactive terminal.
@@ -108,7 +108,7 @@ fn with_counter<F, R>(func: F) -> R
 where
     F: FnOnce(&mut u8) -> R,
 {
-    BUFFERED_BYTE_COUNT.with(|counter| func(&mut *counter.borrow_mut()))
+    BUFFERED_BYTE_COUNT.with(|counter| func(&mut counter.borrow_mut()))
 }
 
 /// Read single character from interactive terminal.

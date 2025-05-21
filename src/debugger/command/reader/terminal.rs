@@ -377,11 +377,11 @@ impl TerminalHistory {
 /// Return character index of start of the word to the left of cursor. Uses Vim rules.
 ///
 /// - If `full_word == true`, then it considers a word boundary to only be between whitespace and
-/// non-whitespace characters. Eg. `abc def` has word boundaries directly before and after the
-/// whitespace character.
+///   non-whitespace characters. Eg. `abc def` has word boundaries directly before and after the
+///   whitespace character.
 /// - If `full_word == false`, then it additionally considers a word boundary
-/// to be between alphanumeric characters and non-alphanumeric characters. Eg: `abc+def` has word
-/// boundaries directly before and after the `+` character.
+///   to be between alphanumeric characters and non-alphanumeric characters. Eg: `abc+def` has word
+///   boundaries directly before and after the `+` character.
 fn find_word_next(string: &str, cursor: usize, full_word: bool) -> usize {
     let mut chars = string.char_indices().skip(cursor);
     // At end of line (covers empty string case)
